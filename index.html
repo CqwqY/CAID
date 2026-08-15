@@ -1560,6 +1560,33 @@ a:hover { text-decoration: underline; }
           </div>
         </div>
 
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="mouse-pointer-click"></i>跨网页启动 · 拖到书签栏</div>
+          <div class="setting-desc">把下面的胶囊按钮拖到浏览器书签栏，即可在<b>任意网页</b>点书签启动 Page-Agent，跳出工作台也能用。</div>
+          <div class="bookmarklet-box">
+            <a id="paBookmarklet" class="bookmarklet-btn" href="#" draggable="true">
+              <i data-lucide="bot" style="display:inline-block;width:16px;height:16px;vertical-align:-3px;margin-right:6px;"></i>
+              启动 Page-Agent
+            </a>
+            <div class="bookmarklet-hint">
+              👆 把上面的胶囊拖到浏览器书签栏。然后去任意网页，点击该书签，Page-Agent 会自动出现在右下角。
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn small" id="paTryGithubBtn"><i data-lucide="external-link"></i>先试试：打开 GitHub（新标签）</button>
+            <button class="btn small" id="paTryMdnBtn"><i data-lucide="external-link"></i>试试：打开 MDN（新标签）</button>
+            <button class="btn small secondary" id="paJumpBtn"><i data-lucide="rocket"></i>跳转到任意网页…</button>
+          </div>
+          <div class="form-hint" style="margin-top:8px;">在打开的新页面里，点刚才拖到书签栏的 "启动 Page-Agent" 书签即可使用。</div>
+          <div class="setting-desc">
+            <ul style="margin-left:18px;line-height:1.8;">
+              <li>在目标网页点书签，Page-Agent 即可操控该页面 DOM</li>
+              <li>如让它"点击登录按钮""打开导航里的第三个链接""复制所有链接地址"</li>
+              <li>此方式使用官方 Demo LLM，若需稳定服务，请在本页面切换到自定义模式（自定义模式会把 LLM 配置存进书签）</li>
+            </ul>
+          </div>
+        </div>
+
         <div class="setting-block" id="paCustomCfg" style="display:none;">
           <div class="setting-title"><i data-lucide="key-round"></i>Page-Agent · 自定义 LLM</div>
           <div class="setting-desc">切换到自定义模式后，Page-Agent 将使用此处的 LLM 配置，与 AI 回答的配置完全独立。适用于需要稳定服务的场景。</div>
@@ -1908,6 +1935,8 @@ function renderShortcuts() {
   if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
   const btnPA = ctrl.querySelector('#btnPageAgent');
   if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
+  setupPaBookmarklet();
+  setupPaJumpBtns();
   refreshIcons();
 }
 
@@ -2930,6 +2959,8 @@ $('#saveSettingsBtn').addEventListener('click', () => {
   // 同步备份到 IndexedDB（防止 localStorage 丢失）
   ConfigBackup.save('llmCfg', state.llmCfg);
   ConfigBackup.save('paCfg', state.paCfg);
+  // 重新生成 Bookmarklet（携带自定义 LLM 配置）
+  regeneratePaBookmarklet();
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
@@ -3144,6 +3175,115 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => { _pressedKeys.delete(e.code); });
 window.addEventListener('blur', () => _pressedKeys.clear());
+
+// ============ Page-Agent Bookmarklet 生成 ============
+// 作用：生成可拖到书签栏的 <a href="javascript:...">，在任意网页点击即可注入 page-agent demo 脚本
+function setupPaBookmarklet() {
+  const btn = document.getElementById('paBookmarklet');
+  if (!btn) return;
+  btn.href = buildPaBookmarkletCode();
+  // 当用户切换到自定义 LLM 模式并保存后，更新书签的 href（携带自定义配置）
+  btn.setAttribute('title', '拖到浏览器书签栏，点击在任意网页启动 Page-Agent');
+  // 防止点击直接跳转（书签栏用拖拽，而非点击打开）
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    toast('请把按钮拖到浏览器书签栏，然后在任意网页点击该书签', 'info', 3000);
+  });
+}
+
+// 根据当前 state.paCfg 重新生成 Bookmarklet 的 javascript: href
+function regeneratePaBookmarklet() {
+  const btn = document.getElementById('paBookmarklet');
+  if (btn) btn.href = buildPaBookmarkletCode();
+}
+
+// 跳转测试按钮绑定（在设置面板 Page-Agent Tab 里）
+function setupPaJumpBtns() {
+  const gh = document.getElementById('paTryGithubBtn');
+  const mdn = document.getElementById('paTryMdnBtn');
+  const jump = document.getElementById('paJumpBtn');
+  if (gh) gh.addEventListener('click', () => { window.open('https://github.com', '_blank'); toast('GitHub 已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500); });
+  if (mdn) mdn.addEventListener('click', () => { window.open('https://developer.mozilla.org/zh-CN/', '_blank'); toast('MDN 已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500); });
+  if (jump) jump.addEventListener('click', () => {
+    const url = prompt('请输入要跳转的网页地址（例如 https://example.com）：', 'https://');
+    if (url) {
+      let u = url.trim();
+      if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+      window.open(u, '_blank');
+      toast('已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500);
+    }
+  });
+}
+
+// 构建注入脚本：包含 3 段
+//   1) 防重复注入：已注入则 toast 提示
+//   2) 移除旧面板（可能用户点了两次）
+//   3) 动态插入 <script> 加载 page-agent demo.js
+//   4) 自定义模式时，使用 window.PA_LLM_CONFIG 让自定义 LLM 生效（等页面自动初始化完成后替换 LLM）
+function buildPaBookmarkletCode() {
+  // 自定义 LLM 配置（只有模式为 custom 且必填项齐全才携带）
+  let llmCfgJson = 'null';
+  const paCfg = state?.paCfg;
+  if (paCfg && paCfg.mode === 'custom' && paCfg.provider && paCfg.apiKey && paCfg.model) {
+    const cfg = {
+      provider: paCfg.provider,
+      baseUrl: paCfg.baseUrl || '',
+      apiKey: paCfg.apiKey,
+      model: paCfg.model,
+      temperature: paCfg.temperature ?? 0.7
+    };
+    llmCfgJson = JSON.stringify(cfg).replace(/"/g, "'").replace(/</g, '\\x3c');
+  }
+
+  const code = `
+(function(){
+  if (window.__PA_INJECTED__) { alert('Page-Agent 已在当前页面启动'); return; }
+  window.__PA_INJECTED__ = true;
+  var LLMCFG = ${llmCfgJson};
+  var existing = document.querySelector('script[src*="page-agent"]');
+  if (existing) existing.remove();
+  var oldRoot = document.getElementById('__page_agent_el__');
+  if (oldRoot) oldRoot.remove();
+  var s = document.createElement('script');
+  s.src = 'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js';
+  s.crossOrigin = 'anonymous';
+  s.onload = function() {
+    if (LLMCFG && window.PageAgent) {
+      setTimeout(function() {
+        try {
+          // 尝试销毁自动初始化的 agent，并重新用自定义配置创建
+          if (window.agent && typeof window.agent.destroy === 'function') { try { window.agent.destroy(); } catch(e){} }
+          window.agent = new window.PageAgent({
+            language: 'zh-CN',
+            model: {
+              provider: LLMCFG.provider,
+              baseUrl: LLMCFG.baseUrl,
+              apiKey: LLMCFG.apiKey,
+              model: LLMCFG.model,
+              temperature: LLMCFG.temperature
+            }
+          });
+        } catch(err) {
+          console.warn('[Page-Agent] 自定义 LLM 初始化失败，回退到 Demo 免费 LLM：', err);
+        }
+      }, 300);
+    }
+  };
+  document.head.appendChild(s);
+  setTimeout(function(){
+    var note = document.createElement('div');
+    note.style.cssText='position:fixed;left:50%;bottom:120px;transform:translateX(-50%);padding:10px 18px;background:rgba(22,25,38,.9);color:#e6e8f0;border:1px solid rgba(255,255,255,.1);border-radius:999px;font-size:13px;z-index:2147483645;backdrop-filter:blur(8px);box-shadow:0 10px 32px rgba(0,0,0,.35);animation:pa-popin .3s ease;';
+    var styleEl = document.createElement('style');
+    styleEl.textContent = '@keyframes pa-popin { from { opacity:0; transform:translateX(-50%) translateY(10px);} to { opacity:1; transform:translateX(-50%) translateY(0);} }';
+    document.head.appendChild(styleEl);
+    note.textContent = 'Page-Agent 已启动，右下角面板与 AI 对话';
+    document.body.appendChild(note);
+    setTimeout(function(){ if (note.parentNode) note.parentNode.removeChild(note); }, 3500);
+  }, 400);
+})();
+  `.trim().replace(/\s+/g, ' ');
+  return 'javascript:' + encodeURIComponent(code);
+}
 
 init();
 
