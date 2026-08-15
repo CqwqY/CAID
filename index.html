@@ -32,7 +32,7 @@
   --glass-bg:     rgba(22,25,38,0.55);
   --glass-bg-2:   rgba(30,34,52,0.45);
   --glass-border: rgba(255,255,255,0.09);
-  --glass-blur:   14px;
+  --glass-blur:   8px;
   --shadow:       0 8px 32px rgba(0,0,0,0.45);
   --shadow-soft:  0 4px 16px rgba(0,0,0,0.28);
 
@@ -69,7 +69,7 @@ body::after {
   position: fixed;
   inset: 0;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  opacity: 0.6;
+  opacity: 0.35;
   mix-blend-mode: overlay;
   pointer-events: none;
   z-index: 0;
@@ -127,7 +127,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s, border-color 0.25s, background 0.25s;
   flex-shrink: 0;
   user-select: none;
   position: relative;
@@ -150,18 +150,6 @@ a:hover { text-decoration: underline; }
   pointer-events: none;
   z-index: -1;
 }
-.shortcut::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: radial-gradient(60% 80% at 50% 0%, rgba(140,177,255,0.35), transparent 65%);
-  opacity: 0;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  transform: translateY(4px);
-  pointer-events: none;
-  z-index: -2;
-}
 .shortcut:hover {
   transform: translateY(-2px) scale(1.02);
   filter: brightness(1.1);
@@ -171,7 +159,6 @@ a:hover { text-decoration: underline; }
     0 10px 26px rgba(91,141,255,0.48),
     0 0 0 1px rgba(140,177,255,0.35);
 }
-.shortcut:hover::after { opacity: 1; transform: translateY(0); }
 .shortcut:active {
   transform: translateY(0) scale(0.99);
   filter: brightness(0.95);
@@ -253,7 +240,7 @@ a:hover { text-decoration: underline; }
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--ink);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s, border-color 0.25s, background 0.25s;
   position: relative;
   overflow: hidden;
   box-shadow:
@@ -328,7 +315,7 @@ a:hover { text-decoration: underline; }
   border-radius: 20px;
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), box-shadow 0.28s, border-color 0.28s;
   box-shadow:
     0 12px 44px rgba(0,0,0,0.48),
     inset 0 1px 0 rgba(255,255,255,0.05);
@@ -339,19 +326,8 @@ a:hover { text-decoration: underline; }
   position: absolute;
   inset: 1px;
   border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%);
   pointer-events: none;
-}
-.search-box::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: radial-gradient(50% 60% at 50% 0%, rgba(91,141,255,0.18), transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-  z-index: -1;
 }
 .search-box:focus-within {
   border-color: rgba(91,141,255,0.55);
@@ -361,7 +337,6 @@ a:hover { text-decoration: underline; }
     0 18px 56px rgba(91,141,255,0.20),
     inset 0 1px 0 rgba(255,255,255,0.06);
 }
-.search-box:focus-within::after { opacity: 1; }
 .search-inner {
   display: flex;
   align-items: center;
@@ -390,23 +365,28 @@ a:hover { text-decoration: underline; }
   gap: 4px;
   flex-shrink: 0;
 }
-.search-hint {
+.search-go {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
-  margin-right: 6px;
-  white-space: nowrap;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 4px 14px rgba(91,141,255,0.3);
 }
-.search-hint kbd {
-  font-family: 'SF Mono', Consolas, monospace;
-  font-size: 10px;
+.search-go svg { width: 18px; height: 18px; stroke-width: 2.5; }
+.search-go:hover {
+  transform: scale(1.06);
+  filter: brightness(1.1);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 6px 20px rgba(91,141,255,0.4);
 }
+.search-go:active { transform: scale(0.96); }
 
 /* Suggestions */
 .suggestions {
@@ -497,7 +477,7 @@ a:hover { text-decoration: underline; }
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s, border-color 0.25s, background 0.25s;
   position: relative;
   overflow: hidden;
   box-shadow:
@@ -518,15 +498,6 @@ a:hover { text-decoration: underline; }
   color: #fff;
   border-color: transparent;
   box-shadow: 0 8px 26px rgba(0,0,0,0.42);
-}
-.mode-pill.active::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: radial-gradient(60% 80% at 50% 0%, rgba(255,255,255,0.25), transparent 65%);
-  pointer-events: none;
-  opacity: 0.7;
 }
 .mode-pill[data-mode="ai-ans"].active {
   background: linear-gradient(135deg, #4ed394 0%, #38c27e 50%, #27a468 100%);
@@ -660,29 +631,20 @@ a:hover { text-decoration: underline; }
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: 16px;
   overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s, border-color 0.25s;
   box-shadow:
     0 10px 32px rgba(0,0,0,0.32),
     inset 0 1px 0 rgba(255,255,255,0.04);
   position: relative;
+  will-change: transform;
 }
 .comp-card::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%);
   pointer-events: none;
   border-radius: inherit;
-}
-.comp-card::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: radial-gradient(70% 50% at 0% 0%, rgba(91,141,255,0.10), transparent 60%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.3s ease;
 }
 .comp-card:hover {
   border-color: rgba(255,255,255,0.15);
@@ -691,7 +653,6 @@ a:hover { text-decoration: underline; }
     0 18px 48px rgba(0,0,0,0.42),
     inset 0 1px 0 rgba(255,255,255,0.06);
 }
-.comp-card:hover::after { opacity: 1; }
 .comp-header {
   display: flex;
   align-items: center;
@@ -777,7 +738,7 @@ a:hover { text-decoration: underline; }
   color: var(--ink);
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s, color 0.18s;
 }
 .btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); }
 .btn svg { width: 14px; height: 14px; }
@@ -806,7 +767,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
   position: relative;
 }
 .bookmark-item:hover { border-color: var(--accent); background: var(--bg3); }
@@ -940,7 +901,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
 }
 .history-item:hover { background: var(--bg3); border-color: var(--accent); }
 .history-time {
@@ -988,7 +949,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
-  transition: all 0.15s;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
 }
 .todo-item.done .todo-text {
   text-decoration: line-through;
@@ -1002,7 +963,7 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
 }
 .todo-check:hover { border-color: var(--accent); }
 .todo-item.done .todo-check {
@@ -1180,7 +1141,7 @@ a:hover { text-decoration: underline; }
   font-weight: 500;
   color: var(--muted);
   border-radius: 4px;
-  transition: all 0.15s;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
 }
 .modal-tab.active {
   background: var(--bg2);
@@ -1345,7 +1306,7 @@ a:hover { text-decoration: underline; }
             <span class="search-icon"><i data-lucide="search"></i></span>
             <input type="text" id="searchInput" placeholder="搜索、提问或输入命令… (Tab 切换模式)" autocomplete="off" spellcheck="false">
             <div class="search-btns">
-              <span class="search-hint"><kbd>Enter</kbd> 搜索</span>
+              <button class="search-go" id="searchGoBtn" title="搜索 (Enter)"><i data-lucide="arrow-right"></i></button>
             </div>
           </div>
         </div>
@@ -1689,6 +1650,8 @@ const debounce = (fn, ms = 200) => {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 };
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// lucide.createIcons 防抖版：合并短时间内的多次调用，避免全量 DOM 扫描
+const refreshIcons = debounce(() => { if (window.lucide) lucide.createIcons(); }, 50);
 
 // Time formatting
 const fmtTime = (d = new Date()) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1945,7 +1908,7 @@ function renderShortcuts() {
   if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
   const btnPA = ctrl.querySelector('#btnPageAgent');
   if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function openShortcutModal(sc = null) {
@@ -2003,7 +1966,7 @@ function showCtxMenu(x, y, items) {
   menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
   menu.style.top = Math.min(y, window.innerHeight - items.length * 34) + 'px';
   menu.classList.add('open');
-  lucide.createIcons();
+  refreshIcons();
   setTimeout(() => document.addEventListener('click', hideCtxMenu, { once: true }), 0);
 }
 function hideCtxMenu() { $('#ctxMenu').classList.remove('open'); }
@@ -2014,7 +1977,7 @@ function openModal(id, onOpen) {
   m.classList.add('open');
   document.body.style.overflow = 'hidden';
   if (onOpen) onOpen();
-  lucide.createIcons();
+  refreshIcons();
 }
 function closeModal(id) {
   $('#' + id).classList.remove('open');
@@ -2099,7 +2062,7 @@ async function updateSuggestions() {
     suggestionsEl.innerHTML = html;
     state.suggestions = recent.map(h => ({ text: h.query, type: 'history', mode: h.mode }));
     suggestionsEl.classList.add('open');
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
   // Bing + local history in parallel
@@ -2142,7 +2105,7 @@ async function updateSuggestions() {
   });
   suggestionsEl.innerHTML = html;
   suggestionsEl.classList.add('open');
-  lucide.createIcons();
+  refreshIcons();
 }
 
 const debouncedSuggest = debounce(updateSuggestions, 200);
@@ -2151,6 +2114,7 @@ searchInput.addEventListener('input', () => {
   updateIntentHint();
 });
 searchInput.addEventListener('focus', () => { updateSuggestions(); updateIntentHint(); });
+$('#searchGoBtn').addEventListener('click', () => executeSearch(searchInput.value));
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrapper')) suggestionsEl.classList.remove('open');
 });
@@ -2307,7 +2271,7 @@ function renderHistory(filter = '') {
   }
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state"><i data-lucide="history"></i>暂无搜索记录</div>`;
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
   list.innerHTML = items.slice(0, 100).map(h => `
@@ -2345,7 +2309,7 @@ function renderHistory(filter = '') {
       updateCounts();
     });
   });
-  lucide.createIcons();
+  refreshIcons();
 }
 $('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
 $('#clearHistoryBtn').addEventListener('click', () => {
@@ -2366,7 +2330,7 @@ async function runAIAnswer(q, isSearch = false) {
   const providerLabel = { dashscope:'通义千问', openai:'OpenAI', ollama:'Ollama', custom:'自定义' };
   $('#answerModel').textContent = (isSearch ? 'AI 搜索 · ' : '') + (providerLabel[cfg.provider] || 'LLM');
   body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--muted);"><i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>${isSearch ? '正在搜索并总结…' : '正在生成回答…'}</div>`;
-  lucide.createIcons();
+  refreshIcons();
 
   // 搜索模式：无 API Key 时直接回退 Bing + 提示
   if (isSearch && !cfg.apiKey) {
@@ -2387,7 +2351,7 @@ async function runAIAnswer(q, isSearch = false) {
           用 Bing 搜索「${escapeHtml(q)}」
         </button>
       </div>`;
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
 
@@ -2523,7 +2487,7 @@ function addSaveButtons(container) {
     linkBar.appendChild(saveAllBtn);
     container.appendChild(linkBar);
   }
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function ruleEngineFallback(q) {
@@ -2723,7 +2687,7 @@ async function renderSnippets(filter = '') {
   $('#snippetCount').textContent = items.length;
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state"><i data-lucide="file-code"></i>暂无代码片段</div>`;
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
   list.innerHTML = items.map(s => `
@@ -2767,7 +2731,7 @@ async function renderSnippets(filter = '') {
       }
     });
   });
-  lucide.createIcons();
+  refreshIcons();
 }
 $('#snippetSearch').addEventListener('input', (e) => renderSnippets(e.target.value));
 $('#addSnippetBtn').addEventListener('click', () => openSnippetModal());
@@ -2820,7 +2784,7 @@ function renderTodos(filter = '') {
   $('#todoProgressFill').style.width = (total ? (done/total*100) : 0) + '%';
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state"><i data-lucide="check-square"></i>暂无待办任务，加一条试试？</div>`;
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
   const pLabel = { high:'高', mid:'中', low:'低' };
@@ -2850,7 +2814,7 @@ function renderTodos(filter = '') {
       updateCounts();
     });
   });
-  lucide.createIcons();
+  refreshIcons();
 }
 $('#addTodoBtn').addEventListener('click', () => {
   const v = $('#todoInput').value.trim();
@@ -2980,7 +2944,7 @@ $('#testLLMBtn').addEventListener('click', async () => {
   const btn = $('#testLLMBtn');
   const orig = btn.innerHTML;
   btn.innerHTML = `<i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>测试中…`;
-  lucide.createIcons();
+  refreshIcons();
   try {
     const resp = await fetch(c.baseUrl + '/chat/completions', {
       method: 'POST',
@@ -2993,7 +2957,7 @@ $('#testLLMBtn').addEventListener('click', async () => {
     toast('连接失败：' + (e.message||String(e)), 'error', 4000);
   } finally {
     btn.innerHTML = orig;
-    lucide.createIcons();
+    refreshIcons();
   }
 });
 
@@ -3104,56 +3068,66 @@ async function init() {
 }
 
 // ============ Page-Agent 面板控制 ============
-let paAgent = null;
-let paStarted = false;
+// demo 版自动初始化（自带免费 LLM），这里只负责切换面板显示/隐藏
+let paPanel = null;
+let paPanelHidden = false;
+let paReloading = false;
 
-function initPageAgent() {
-  if (!window.PageAgent) {
-    setTimeout(initPageAgent, 300);
-    return;
+function findPageAgentPanel() {
+  if (paPanel && document.contains(paPanel)) return paPanel;
+  paPanel = null;
+  for (const el of document.body.children) {
+    const cs = getComputedStyle(el);
+    const z = parseInt(cs.zIndex) || 0;
+    if (cs.position === 'fixed' && z >= 2147483640) {
+      paPanel = el;
+      return el;
+    }
   }
-  try {
-    // demo 版：使用内置免费 LLM，不传 LLM 配置
-    paAgent = new window.PageAgent({ language: 'zh-CN' });
-    window._paAgent = paAgent;
-  } catch(e) {
-    console.warn('[Page-Agent] 初始化失败:', e);
-  }
+  return null;
+}
+
+// 重新加载 Page-Agent demo 脚本（面板被关闭后调用，无需刷新页面）
+function reloadPageAgent() {
+  if (paReloading) return;
+  paReloading = true;
+  // 移除旧脚本（如果存在）
+  const oldScript = document.querySelector('script[src*="page-agent"]');
+  if (oldScript) oldScript.remove();
+  paPanel = null;
+  paPanelHidden = false;
+  // 重新注入 demo 脚本，它会自动创建新面板
+  const s = document.createElement('script');
+  s.src = 'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js';
+  s.crossOrigin = 'anonymous';
+  s.onload = () => {
+    paReloading = false;
+    // 等面板渲染后缓存引用
+    setTimeout(() => { paPanel = findPageAgentPanel(); }, 500);
+    toast('Page-Agent 已重新加载', 'success', 1500);
+  };
+  s.onerror = () => {
+    paReloading = false;
+    toast('Page-Agent 加载失败，请检查网络', 'error');
+  };
+  document.body.appendChild(s);
 }
 
 function togglePageAgentPanel() {
-  if (!paAgent) {
-    toast('Page-Agent 尚未加载完成，请稍后再试', 'warn');
+  const panel = findPageAgentPanel();
+  if (!panel) {
+    // 面板不存在（被关闭或移除），重新加载
+    toast('正在重新加载 Page-Agent…', 'info', 1500);
+    reloadPageAgent();
     return;
   }
-  if (!paStarted) {
-    // 首次呼出：启动 agent，面板自动出现
-    try {
-      if (typeof paAgent.start === 'function') {
-        paAgent.start();
-      } else if (typeof paAgent.showPanel === 'function') {
-        paAgent.showPanel();
-      }
-      paStarted = true;
-      toast('Page-Agent 已呼出', 'success', 1500);
-    } catch(e) {
-      console.warn('[Page-Agent] 启动失败:', e);
-      toast('Page-Agent 启动失败: ' + e.message, 'error');
-    }
+  paPanelHidden = !paPanelHidden;
+  if (paPanelHidden) {
+    panel.style.display = 'none';
+    toast('Page-Agent 已隐藏', 'info', 1200);
   } else {
-    // 已启动：通过 DOM 切换面板显示/隐藏
-    const panel = document.querySelector('[class*="page-agent"], [id*="page-agent"]');
-    if (panel) {
-      const isHidden = panel.style.display === 'none';
-      panel.style.display = isHidden ? '' : 'none';
-      toast(isHidden ? 'Page-Agent 已显示' : 'Page-Agent 已隐藏', 'info', 1200);
-    } else {
-      // 找不到面板元素，尝试 stop/start
-      if (typeof paAgent.stop === 'function') {
-        paAgent.stop();
-        toast('Page-Agent 已隐藏', 'info', 1200);
-      }
-    }
+    panel.style.display = '';
+    toast('Page-Agent 已显示', 'success', 1200);
   }
 }
 
@@ -3171,9 +3145,6 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => { _pressedKeys.delete(e.code); });
 window.addEventListener('blur', () => _pressedKeys.clear());
 
-// 页面加载后延迟初始化 Page-Agent（等 demo 脚本加载完成）
-setTimeout(initPageAgent, 800);
-
 init();
 
 // Add keyframes for spinner
@@ -3182,6 +3153,6 @@ ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
 document.head.appendChild(ks);
 </script>
 <!-- Page-Agent demo（阿里巴巴开源 GUI Agent，自带免费测试 LLM，仅供评估） -->
-<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js?autoInit=false" crossorigin="anonymous"></script>
+<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js" crossorigin="anonymous"></script>
 </body>
 </html>
