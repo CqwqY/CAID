@@ -3603,11 +3603,130 @@ function initModdedPageAgent() {
       }
     }
 
-    // ======== 路径 2：无自定义 LLM → 保留原版 demo agent ========
-    // 原版 demo 自带免费 LLM，能正常工作。我们通过 DOM 增强（meta 标签 + 隐藏指令块 + 工具函数）
-    // 让 LLM 扫描到跳转规则和工具函数列表，不干扰 demo 的 API 认证。
-    toast('✅ Page-Agent 魔改版（原版 agent + DOM 增强 · 工具函数已注入）已启动', 'success', 3200);
+    // ======== 路径 2：无自定义 LLM → 保留原版 demo agent + 输入 Hook ========
+    // 原版 demo 自带免费 LLM，能正常工作。我们通过 DOM 增强 + 输入 Hook
+    // 在用户消息发送前自动 prepend 规则文本，让 LLM 收到增强指令。
+    hookPaInputSend();
+    toast('✅ Page-Agent 魔改版（原版 agent + 输入增强 Hook 已注入）已启动', 'success', 3200);
   }, 500);
+}
+
+/* ========== Page-Agent 魔改版 · 输入 Hook ==========
+   找到 Page-Agent 面板里的输入框和发送按钮，在用户消息发送前自动 prepend 规则文本。
+   不劫持 fetch/XHR，完全在 DOM 层面处理，不破坏 demo 的 API 认证。
+   支持：Enter 键发送、发送按钮点击、Ctrl+Enter 提交等。
+*/
+function hookPaInputSend() {
+  if (window.__PA_INPUT_HOOKED__) return;
+
+  const RULE_PREFIX = buildInputRulePrefix();
+  const MAX_WAIT = 8000;
+  const START = Date.now();
+
+  function tryHook() {
+    const panel = findPageAgentPanel();
+    if (!panel) {
+      if (Date.now() - START < MAX_WAIT) {
+        setTimeout(tryHook, 200);
+      } else {
+        console.warn('[Modded PA] hookPaInputSend: 超时找不到面板');
+      }
+      return;
+    }
+    const textarea = panel.querySelector('textarea');
+    if (!textarea) {
+      if (Date.now() - START < MAX_WAIT) {
+        setTimeout(tryHook, 200);
+      } else {
+        console.warn('[Modded PA] hookPaInputSend: 找不到 textarea');
+      }
+      return;
+    }
+    setupTextareaHook(textarea, panel, RULE_PREFIX);
+  }
+
+  tryHook();
+}
+
+function setupTextareaHook(textarea, panel, rulePrefix) {
+  if (textarea.__paHooked) return;
+  textarea.__paHooked = true;
+  window.__PA_INPUT_HOOKED__ = true;
+
+  let sending = false;
+
+  function prependRulesIfNeeded() {
+    if (sending) return;
+    const raw = textarea.value;
+    if (!raw || !raw.trim()) return;
+    if (raw.startsWith('【CAID规则】')) return;
+    sending = true;
+    textarea.value = rulePrefix + '\n\n' + raw;
+    textarea.__paOriginal = raw;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // Hook: Enter 键发送（捕获阶段，优先于 demo 自己的 keydown 处理）
+  textarea.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      prependRulesIfNeeded();
+    }
+  }, true);
+
+  // Hook: 发送按钮点击
+  function findSendBtn() {
+    const buttons = panel.querySelectorAll('button');
+    for (const btn of buttons) {
+      const html = (btn.innerHTML || '').toLowerCase();
+      const text = (btn.textContent || '').toLowerCase();
+      if (html.includes('send') || html.includes('paper-plane') || html.includes('arrow-right') ||
+          html.includes('arrow-up') || text.includes('发送') || text.includes('send')) {
+        return btn;
+      }
+    }
+    // fallback: 最后一个按钮
+    return buttons.length > 0 ? buttons[buttons.length - 1] : null;
+  }
+
+  const btn = findSendBtn();
+  if (btn) {
+    btn.addEventListener('click', function() {
+      prependRulesIfNeeded();
+    }, true);
+  }
+
+  // Hook: 表单 submit
+  const form = textarea.closest('form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      prependRulesIfNeeded();
+    }, true);
+  }
+
+  // 当 textarea 被清空（消息已发送），重置 sending 标志
+  textarea.addEventListener('input', function() {
+    if (!textarea.value) {
+      sending = false;
+      delete textarea.__paOriginal;
+    }
+  });
+
+  console.log('[Modded PA] 输入 Hook 已安装');
+}
+
+function buildInputRulePrefix() {
+  return '【CAID规则】\n' +
+    '你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\n' +
+    '1. 默认正常回答用户问题，不要跳转。\n' +
+    '2. 仅当用户明确说「返回主网站/回工作台/go home」时，调用 window.paGoHome() 跳转。\n' +
+    '3. 需要操作页面时，优先调用以下已挂载在 window 上的工具函数：\n' +
+    '   - paGoHome() 跳主站 | paNavigate(url,newTab?) 跳转 | paOpenTab(url) 新标签\n' +
+    '   - paLinks() 取链接 | paText() 取文本 | paInfo() 页面信息\n' +
+    '   - paFill(sel,val,submit?) 填表 | paScroll() 滚动 | paCopy(text) 复制\n' +
+    '   - paSave(filename,content) 下载 | paInject(js) 注入脚本 | paInjectCSS(css) 注入样式\n' +
+    '4. 用户说「打开 GitHub/谷歌/百度」等，用 paNavigate(url,true) 新标签打开。\n' +
+    '5. 修改页面行为（拦截点击/挂钩函数），用 paInject(js) 注入。\n' +
+    '6. 用中文回答。';
 }
 
 // 清理重复的 Page-Agent 浮动面板（试 new 可能会多建一个，留最后出现的那个）
@@ -4046,11 +4165,44 @@ function buildPaBookmarkletCode() {
         }, 350);
         return;
       }
-      /* === No custom LLM: 保留原版 demo agent（免费 LLM），纯 DOM 增强 === */
+      /* === No custom LLM: 保留原版 demo agent + 输入 Hook === */
       if (!LLMCFG) {
-        /* 不劫持 fetch/XHR（会干扰 demo 的 API 认证），通过 DOM 增强让 LLM 扫描到规则 */
-        /* Meta 标签和隐藏指令块已在上面注入，工具函数也已挂在 window 上 */
-        /* 这些是被动增强，不干扰 demo 的任何 API 调用 */
+        /* 在用户消息发送前自动 prepend 规则文本 */
+        var RULE_PREFIX = '【CAID规则】\\n你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\\n1. 默认正常回答用户问题，不要跳转。\\n2. 仅当用户明确说「返回主网站/回工作台/go home」时，调用 window.paGoHome() 跳转。\\n3. 工具函数：paGoHome() | paNavigate(url,newTab?) | paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)\\n4. 打开其他网站用 paNavigate(url,true) 新标签。\\n5. 修改页面行为用 paInject(js) 注入。\\n6. 用中文回答。';
+        var MAX_WAIT = 8000;
+        var START_TS = Date.now();
+        function tryHookInput() {
+          var panel = null;
+          var els = document.querySelectorAll('div,section,aside');
+          for (var e = 0; e < els.length; e++) {
+            var cs = window.getComputedStyle(els[e]);
+            if (cs.position === 'fixed' && parseInt(cs.zIndex) >= 2147483640) { panel = els[e]; break; }
+          }
+          if (!panel) { if (Date.now() - START_TS < MAX_WAIT) { setTimeout(tryHookInput, 200); } return; }
+          var ta = panel.querySelector('textarea');
+          if (!ta) { if (Date.now() - START_TS < MAX_WAIT) { setTimeout(tryHookInput, 200); } return; }
+          if (ta.__paHooked) return;
+          ta.__paHooked = true;
+          var sending = false;
+          function prepend() {
+            if (sending) return;
+            var raw = ta.value;
+            if (!raw || !raw.trim()) return;
+            if (raw.indexOf('【CAID规则】') === 0) return;
+            sending = true;
+            ta.value = RULE_PREFIX + '\\n\\n' + raw;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          ta.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) prepend();
+          }, true);
+          var btns = panel.querySelectorAll('button');
+          for (var bi = 0; bi < btns.length; bi++) {
+            (function(b){ b.addEventListener('click', prepend, true); })(btns[bi]);
+          }
+          ta.addEventListener('input', function() { if (!ta.value) { sending = false; } });
+        }
+        tryHookInput();
       }
     };
     document.head.appendChild(s);
