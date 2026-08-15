@@ -337,6 +337,7 @@ a:hover { text-decoration: underline; }
 .mode-pill:hover { color: var(--ink); }
 .mode-pill.active { color: var(--bg); border-color: transparent; }
 .mode-pill[data-mode="auto"].active { background: var(--accent); }
+.mode-pill[data-mode="ai-sync"].active { background: var(--purple); }
 .mode-pill[data-mode="ai-ans"].active { background: var(--accent2); }
 .mode-pill[data-mode="bing"].active { background: var(--warn); }
 
@@ -541,6 +542,78 @@ a:hover { text-decoration: underline; }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 
+/* Bookmark grid */
+.bookmark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.bookmark-item:hover { border-color: var(--accent); background: var(--bg3); }
+.bookmark-favicon {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: var(--bg3);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.bookmark-favicon img { width: 100%; height: 100%; object-fit: cover; }
+.bookmark-info { flex: 1; min-width: 0; }
+.bookmark-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bookmark-url {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bookmark-del {
+  position: absolute;
+  top: 4px; right: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: var(--muted);
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg2);
+}
+.bookmark-item:hover .bookmark-del { opacity: 1; }
+.bookmark-del:hover { background: var(--danger); color: #fff; }
+.bookmark-del svg { width: 12px; height: 12px; }
+.bookmark-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.bookmark-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(88,166,255,0.12);
+  color: var(--accent);
+}
+
 /* Snippet list */
 .snippet-list, .history-list, .todo-list {
   max-height: 360px;
@@ -646,6 +719,7 @@ a:hover { text-decoration: underline; }
 }
 .history-mode.bing { background: rgba(240,136,62,0.12); color: var(--warn); }
 .history-mode.ai { background: rgba(63,185,80,0.12); color: var(--accent2); }
+.history-mode.agent { background: rgba(163,113,247,0.12); color: var(--purple); }
 .history-mode.nav { background: rgba(88,166,255,0.12); color: var(--accent); }
 .history-del {
   color: var(--muted);
@@ -1034,6 +1108,7 @@ a:hover { text-decoration: underline; }
 
       <div class="mode-bar">
         <button class="mode-pill active" data-mode="auto"><i data-lucide="wand-2"></i>自动</button>
+        <button class="mode-pill" data-mode="ai-sync"><i data-lucide="bot"></i>AI 协同</button>
         <button class="mode-pill" data-mode="ai-ans"><i data-lucide="message-square-text"></i>AI 回答</button>
         <button class="mode-pill" data-mode="bing"><i data-lucide="globe"></i>Bing</button>
       </div>
@@ -1052,6 +1127,23 @@ a:hover { text-decoration: underline; }
     <!-- Components Section -->
     <div class="components-section">
       <div class="components-grid">
+
+        <!-- Bookmarks -->
+        <div class="comp-card" data-comp="bookmarks">
+          <div class="comp-header">
+            <div class="comp-icon blue"><i data-lucide="bookmark"></i></div>
+            <div class="comp-title">书签管理</div>
+            <span class="comp-count" id="bookmarkCount">0</span>
+            <span class="comp-collapse"><i data-lucide="chevron-down"></i></span>
+          </div>
+          <div class="comp-body">
+            <input type="text" class="comp-search" id="bookmarkSearch" placeholder="搜索书签…">
+            <div class="comp-actions">
+              <button class="btn small success" id="addBookmarkBtn"><i data-lucide="plus"></i>添加书签</button>
+            </div>
+            <div class="bookmark-grid" id="bookmarkGrid"></div>
+          </div>
+        </div>
 
         <!-- Snippets -->
         <div class="comp-card" data-comp="snippets">
@@ -1163,6 +1255,34 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
+<!-- Bookmark Modal -->
+<div class="modal-backdrop" id="bookmarkModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="bookmarkModalTitle">添加书签</div>
+      <button class="modal-close" data-close><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">名称</label>
+        <input type="text" class="form-input" id="bmName" placeholder="例如：React 官方文档">
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="text" class="form-input" id="bmUrl" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">标签（用逗号分隔）</label>
+        <input type="text" class="form-input" id="bmTags" placeholder="react, frontend, docs">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close>取消</button>
+      <button class="btn success" id="saveBookmarkBtn">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Snippet Modal -->
 <div class="modal-backdrop" id="snippetModal">
   <div class="modal">
@@ -1229,7 +1349,7 @@ a:hover { text-decoration: underline; }
       <div class="settings-panel" data-panel="llm">
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="cpu"></i>云端 LLM 配置</div>
-          <div class="setting-desc">用于 AI 回答模式的 LLM 配置。支持 DashScope（通义千问）、OpenAI、或自定义 OpenAI 兼容 API。</div>
+          <div class="setting-desc">用于 AI 回答模式、AI 协同模式。支持 DashScope（通义千问）、OpenAI、或自定义 API。</div>
           <div class="form-group">
             <label class="form-label">Provider</label>
             <select class="form-select" id="cfgProvider">
@@ -1275,9 +1395,9 @@ a:hover { text-decoration: underline; }
             <div class="bookmarklet-hint">← 将此按钮拖拽到书签栏 →</div>
           </div>
           <div style="font-size:12px;color:var(--muted);line-height:1.8;">
-            · 拖拽后，在任意网页点击书签即可注入官方 Page-Agent<br>
-            · 部分网站因 CSP 策略无法注入脚本，可换浏览器或使用扩展<br>
-            · 脚本从 unpkg CDN 加载，请确保网络可访问
+            · Bookmarklet 内嵌您的 LLM 配置，点击即注入 page-agent<br>
+            · 部分网站因 CSP 策略无法注入，可复制内容到主页处理<br>
+            · 更换 Key 请重新拖拽书签
           </div>
         </div>
       </div>
@@ -1356,6 +1476,7 @@ const LS = {
 // ============ IndexedDB via Dexie ============
 const db = new Dexie('caid_workbench');
 db.version(1).stores({
+  bookmarks: '++id, name, url, *tags, createdAt',
   snippets: '++id, title, lang, *tags, createdAt',
   history: '++id, query, mode, timestamp',
 });
@@ -1402,7 +1523,44 @@ const DEFAULT_SHORTCUTS = [
   { id: 's8', name: '掘金', url: 'https://juejin.cn', icon: 'flame', color: '#1e80ff' },
 ];
 
-const DEFAULT_SNIPPETS = [];
+const DEFAULT_BOOKMARKS = [
+  { name: 'React 官方文档', url: 'https://react.dev', tags: ['react','frontend','docs'], createdAt: Date.now() },
+  { name: 'Vue 官方文档', url: 'https://vuejs.org', tags: ['vue','frontend','docs'], createdAt: Date.now() },
+  { name: '现代 JavaScript 教程', url: 'https://javascript.info', tags: ['js','tutorial'], createdAt: Date.now() },
+  { name: 'Can I use', url: 'https://caniuse.com', tags: ['browser','compat'], createdAt: Date.now() },
+  { name: 'GitHub Gist', url: 'https://gist.github.com', tags: ['gist','snippets'], createdAt: Date.now() },
+  { name: 'DevDocs', url: 'https://devdocs.io', tags: ['docs','api'], createdAt: Date.now() },
+];
+
+const DEFAULT_SNIPPETS = [
+  { title: '防抖函数 debounce', lang: 'javascript', tags: ['utils','async'], code:
+`function debounce(fn, wait = 300) {
+  let t;
+  return function(...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}`, createdAt: Date.now() },
+  { title: '节流函数 throttle', lang: 'javascript', tags: ['utils','async'], code:
+`function throttle(fn, wait = 300) {
+  let last = 0;
+  return function(...args) {
+    const now = Date.now();
+    if (now - last >= wait) {
+      last = now;
+      fn.apply(this, args);
+    }
+  };
+}`, createdAt: Date.now() },
+  { title: '深拷贝 JSON safe', lang: 'javascript', tags: ['utils'], code:
+`const deepClone = (obj) => JSON.parse(JSON.stringify(obj));`, createdAt: Date.now() },
+  { title: '读取本地 JSON (Python)', lang: 'python', tags: ['io','json'], code:
+`import json
+
+def load_json(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)`, createdAt: Date.now() },
+];
 
 const DEFAULT_LLM_CFG = {
   provider: 'dashscope',
@@ -1423,6 +1581,7 @@ const state = {
   suggestionIdx: -1,
   suggestions: [],
   editingShortcut: null,
+  editingBookmark: null,
   editingSnippet: null,
 };
 
@@ -1659,7 +1818,7 @@ async function updateSuggestions() {
         <div class="suggestion-item" data-idx="${i}">
           <span class="suggestion-icon"><i data-lucide="clock"></i></span>
           <span class="suggestion-text">${escapeHtml(h.query)}</span>
-          <span class="suggestion-tag ${h.mode === 'bing' ? '' : h.mode === 'ai' ? 'green' : 'blue'}">${historyModeLabel(h.mode)}</span>
+          <span class="suggestion-tag ${h.mode === 'bing' ? '' : h.mode === 'ai' ? 'green' : h.mode === 'agent' ? 'purple' : 'blue'}">${historyModeLabel(h.mode)}</span>
         </div>
       `).join('')}
     `;
@@ -1669,11 +1828,12 @@ async function updateSuggestions() {
     lucide.createIcons();
     return;
   }
-  // Bing + local history in parallel
+  // Bing + local history + bookmarks in parallel
   const qLower = q.toLowerCase();
-  const [bing, localH] = await Promise.all([
+  const [bing, localH, bms] = await Promise.all([
     fetchBingSuggestions(q),
     Promise.resolve(state.searchHistory.filter(h => h.query.toLowerCase().includes(qLower)).slice(0, 5).map(h => h.query)),
+    db.bookmarks.filter(b => (b.name||'').toLowerCase().includes(qLower) || (b.url||'').toLowerCase().includes(qLower)).limit(5).toArray().catch(() => [])
   ]);
   // Dedup & build list
   const seen = new Set();
@@ -1685,19 +1845,20 @@ async function updateSuggestions() {
     state.suggestions.push({ text, type, ...extra });
     groups.push({ text, type, tag, tagCls });
   };
+  bms.forEach(b => push(b.name + ' · ' + b.url, 'bookmark', '书签', 'blue', { url: b.url }));
   localH.forEach(h => push(h, 'history', '历史', 'blue'));
   bing.forEach(b => push(b, 'bing', 'Bing', ''));
   if (groups.length === 0) { suggestionsEl.classList.remove('open'); return; }
   // Render
   const byType = {};
   groups.forEach(g => { (byType[g.type] ||= []).push(g); });
-  const labelMap = { history: '历史匹配', bing: 'Bing 建议' };
+  const labelMap = { bookmark: '书签匹配', history: '历史匹配', bing: 'Bing 建议' };
   let html = '';
   let i = 0;
   Object.entries(byType).forEach(([type, items]) => {
     html += `<div class="suggestions-group-label">${labelMap[type] || type}</div>`;
     items.forEach(g => {
-      const icon = g.type === 'history' ? 'clock' : 'search';
+      const icon = g.type === 'bookmark' ? 'bookmark' : g.type === 'history' ? 'clock' : 'search';
       html += `
         <div class="suggestion-item" data-idx="${i}">
           <span class="suggestion-icon"><i data-lucide="${icon}"></i></span>
@@ -1729,6 +1890,12 @@ suggestionsEl.addEventListener('click', (e) => {
   const s = state.suggestions[i];
   if (!s) return;
   searchInput.value = s.text;
+  if (s.type === 'bookmark' && s.url) {
+    window.open(s.url, '_blank');
+    addHistory(s.text, 'nav', s.url);
+    suggestionsEl.classList.remove('open');
+    return;
+  }
   executeSearch(s.text);
 });
 
@@ -1756,6 +1923,11 @@ searchInput.addEventListener('keydown', (e) => {
     const selected = state.suggestionIdx >= 0 ? state.suggestions[state.suggestionIdx] : null;
     if (!e.ctrlKey && selected) {
       searchInput.value = selected.text;
+      if (selected.type === 'bookmark' && selected.url) {
+        window.open(selected.url, '_blank');
+        addHistory(selected.text, 'nav', selected.url);
+        return;
+      }
       executeSearch(selected.text);
     } else {
       executeSearch(searchInput.value.trim());
@@ -1777,7 +1949,7 @@ function setSearchMode(m) {
   updateIntentHint();
 }
 function cycleSearchMode() {
-  const order = ['auto','ai-ans','bing'];
+  const order = ['auto','ai-sync','ai-ans','bing'];
   const cur = order.indexOf(state.searchMode);
   setSearchMode(order[(cur + 1) % order.length]);
 }
@@ -1790,9 +1962,17 @@ function classifyIntent(q) {
   if (/^(https?:\/\/|www\.)/i.test(trimmed) || /^[\w-]+\.(com|cn|net|org|io|dev|ai|app|co|me|xyz|top)(\/|$)/i.test(trimmed)) {
     return { type: 'url', label: '直接导航' };
   }
-  // Error debug / question / command → all go to AI answer
-  if (/错误|bug|error|exception|fail|报错|崩溃|exception|traceback|debug|排查|修复|怎么|如何|是什么|怎么用|文档|教程|示例|guide|tutorial|docs|documentation|api|mdn|参考/i.test(trimmed) || /\?|？$/.test(trimmed) || /^(打开|搜索|查找|找到|总结|摘要|清空|切换|添加|删除|修改|编辑|保存|导出|导入|帮我|请)/.test(trimmed) || trimmed.length >= 8) {
-    return { type: 'doc', label: 'AI 回答' };
+  // Error debug
+  if (/错误|bug|error|exception|fail|报错|崩溃|exception|traceback|debug|排查|修复/i.test(trimmed)) {
+    return { type: 'debug', label: '错误调试 → AI 分析' };
+  }
+  // Command (verb start)
+  if (/^(打开|搜索|查找|找到|总结|摘要|清空|切换|添加|删除|修改|编辑|保存|导出|导入|帮我|请)/.test(trimmed) || /\?|？$/.test(trimmed)) {
+    return { type: 'command', label: '自然语言命令 → AI 协同' };
+  }
+  // Doc query
+  if (/文档|怎么|如何|是什么|怎么用|用法|示例|教程|guide|tutorial|docs|documentation|api|mdn|参考/i.test(trimmed) || trimmed.length >= 8) {
+    return { type: 'doc', label: '文档查询 → AI 回答' };
   }
   return { type: 'generic', label: '通用搜索' };
 }
@@ -1804,7 +1984,7 @@ function updateIntentHint() {
     const it = classifyIntent(q);
     hint.innerHTML = `自动识别：<b>${it.label}</b> · 按 <kbd style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换模式`;
   } else {
-    const map = { 'ai-ans':'AI 回答模式', 'bing':'Bing 搜索模式' };
+    const map = { 'ai-sync':'AI 协同模式', 'ai-ans':'AI 回答模式', 'bing':'Bing 搜索模式' };
     hint.innerHTML = `当前模式：<b>${map[state.searchMode]||''}</b> · 按 <kbd style=\"font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;\">Tab</kbd> 切换`;
   }
 }
@@ -1814,7 +1994,8 @@ function resolveMode(q) {
   if (state.searchMode === 'auto') {
     const it = classifyIntent(q);
     if (it.type === 'url') return 'navigate';
-    if (it.type === 'doc' || it.type === 'debug') return 'ai-ans';
+    if (it.type === 'debug' || it.type === 'doc') return 'ai-ans';
+    if (it.type === 'command') return 'ai-sync';
     return 'bing';
   }
   return state.searchMode;
@@ -1836,6 +2017,9 @@ function executeSearch(q) {
   } else if (mode === 'ai-ans') {
     runAIAnswer(q);
     addHistory(q, 'ai');
+  } else if (mode === 'ai-sync') {
+    runAIAgent(q);
+    addHistory(q, 'agent');
   }
   searchInput.value = '';
   $('#intentHint').textContent = '';
@@ -1851,7 +2035,7 @@ function addHistory(query, mode, extra = '') {
   updateCounts();
 }
 function historyModeLabel(m) {
-  return { bing:'Bing', ai:'AI回答', nav:'导航' }[m] || m;
+  return { bing:'Bing', ai:'AI回答', agent:'AI协同', nav:'导航' }[m] || m;
 }
 function renderHistory(filter = '') {
   const list = $('#historyList');
@@ -2114,7 +2298,8 @@ const created = await request('/api/users', {
 
 ### 本地快速搜索
 
-- **Bing 搜索**：按 `Tab` 切换到 Bing 模式后再 Enter
+- **Bing 搜索**：按 \`Tab\` 切换到 Bing 模式后再 Enter
+- **本地书签**：检查下方「书签管理」组件是否有匹配结果
 - **代码片段**：在「代码片段」中搜索相关代码`;
   }
   return ans;
@@ -2122,6 +2307,159 @@ const created = await request('/api/users', {
 
 function openAnswerPanel() { $('#answerPanel').classList.add('open'); }
 $('#closeAnswer').addEventListener('click', () => $('#answerPanel').classList.remove('open'));
+
+// ============ AI Agent (Page-Agent) ============
+function runAIAgent(cmd) {
+  openAnswerPanel();
+  const body = $('#answerBody');
+  body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--purple);"><i data-lucide="bot"></i><b>AI 协同模式</b>正在执行：<code style="margin:0 6px;">${escapeHtml(cmd)}</code></div>`;
+  lucide.createIcons();
+  setTimeout(() => {
+    body.innerHTML = executeLocalAgent(cmd);
+  }, 400);
+}
+function executeLocalAgent(cmd) {
+  const c = cmd.toLowerCase();
+  const actions = [];
+  // Simple rule-based DOM agent
+  let res = `## 🤖 AI 协同执行结果
+
+> 执行命令：**${escapeHtml(cmd)}**
+
+`;
+  if (/清空.*搜索|清除.*搜索|清空输入|清除输入/.test(c)) {
+    searchInput.value = '';
+    actions.push('✅ 已清空搜索框内容');
+  } else if (/切换.*模式|mode|模式/.test(c)) {
+    if (/ai|人工智能/.test(c)) { setSearchMode('ai-ans'); actions.push('✅ 已切换到 AI 回答模式'); }
+    else if (/协同|agent|操控/.test(c)) { setSearchMode('ai-sync'); actions.push('✅ 已切换到 AI 协同模式'); }
+    else if (/bing|必应/.test(c)) { setSearchMode('bing'); actions.push('✅ 已切换到 Bing 模式'); }
+    else { cycleSearchMode(); actions.push('✅ 已循环切换搜索模式'); }
+  } else if (/打开设置|进入设置|设置/.test(c)) {
+    actions.push('✅ 正在打开设置面板…');
+    setTimeout(() => openModal('settingsModal', fillSettingsForm), 200);
+  } else if (/添加.*任务|添加.*待办|todo|新增任务/.test(c)) {
+    const m = cmd.match(/(?:添加|新增).*?(?:任务|待办)[：: ]*(.+)$/) || cmd.match(/(.+?)$/);
+    if (m && m[1]) {
+      const title = m[1].trim();
+      addTodoItem(title, 'mid');
+      actions.push(`✅ 已添加待办：「${title}」`);
+    }
+  } else if (/滚动到底部|下滚|看组件/.test(c)) {
+    document.querySelector('.components-section').scrollIntoView({ behavior: 'smooth' });
+    actions.push('✅ 已滚动到组件区域');
+  } else if (/回到顶部|顶部|top/.test(c)) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    actions.push('✅ 已回到顶部');
+  } else {
+    res += `
+> ℹ️ 未匹配到本地页面操作指令。如果已配置 LLM Key，此命令会被发送到 page-agent 进行更复杂的 DOM 操作。
+
+### 当前支持的本地命令示例
+- 清空搜索框
+- 切换到 AI 回答模式 / 切换到 Bing 模式
+- 打开设置
+- 添加任务：明天前修复登录 bug
+- 滚动到底部 / 回到顶部
+`;
+  }
+  if (actions.length) {
+    res += '### 已执行的动作\n\n' + actions.map(a => `- ${a}`).join('\n');
+  }
+  return marked.parse(res);
+}
+
+// ============ Bookmarks ============
+async function renderBookmarks(filter = '') {
+  const grid = $('#bookmarkGrid');
+  let items = await db.bookmarks.orderBy('createdAt').reverse().toArray().catch(() => []);
+  if (!items || items.length === 0) {
+    // Seed
+    try { await db.bookmarks.bulkAdd(DEFAULT_BOOKMARKS.map(b => ({...b, id: uid()}))); } catch(e){}
+    items = await db.bookmarks.orderBy('createdAt').reverse().toArray().catch(() => []);
+  }
+  if (filter) {
+    const f = filter.toLowerCase();
+    items = items.filter(b => (b.name||'').toLowerCase().includes(f) || (b.url||'').toLowerCase().includes(f) || (b.tags||[]).some(t => t.toLowerCase().includes(f)));
+  }
+  $('#bookmarkCount').textContent = items.length;
+  if (items.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><i data-lucide="bookmark"></i>暂无书签，点击「添加书签」开始收藏</div>`;
+    lucide.createIcons();
+    return;
+  }
+  grid.innerHTML = items.map(b => {
+    const host = (() => { try { return new URL(b.url).hostname; } catch { return ''; } })();
+    const first = (b.name || '?').charAt(0).toUpperCase();
+    return `
+    <div class="bookmark-item" data-id="${b.id}">
+      <div class="bookmark-favicon" style="color:var(--accent);">
+        <img src="" alt="" onerror="this.style.display='none';this.parentElement.textContent='${first}';" srcset="">
+        ${first}
+      </div>
+      <div class="bookmark-info">
+        <div class="bookmark-name" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</div>
+        <div class="bookmark-url" title="${escapeHtml(b.url)}">${escapeHtml(host)}</div>
+        ${(b.tags||[]).length ? `<div class="bookmark-tags">${b.tags.slice(0,3).map(t=>`<span class="bookmark-tag">#${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+      </div>
+      <button class="bookmark-del" title="删除"><i data-lucide="x"></i></button>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.bookmark-item').forEach(el => {
+    const id = el.dataset.id;
+    const item = items.find(b => b.id == id);
+    if (!item) return;
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.bookmark-del')) return;
+      window.open(item.url, '_blank');
+      addHistory(item.name, 'nav', item.url);
+    });
+    el.querySelector('.bookmark-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`删除书签「${item.name}」？`)) {
+        db.bookmarks.delete(item.id).then(() => { renderBookmarks(filter); updateCounts(); toast('已删除','success'); });
+      }
+    });
+  });
+  // Favicons
+  items.forEach(b => {
+    const node = grid.querySelector(`.bookmark-item[data-id="${b.id}"] img`);
+    if (node) {
+      try {
+        const u = new URL(b.url);
+        node.src = `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=64`;
+      } catch(e){ node.style.display = 'none'; }
+    }
+  });
+  lucide.createIcons();
+}
+$('#bookmarkSearch').addEventListener('input', (e) => renderBookmarks(e.target.value));
+$('#addBookmarkBtn').addEventListener('click', () => openBookmarkModal());
+function openBookmarkModal(b = null) {
+  state.editingBookmark = b;
+  $('#bookmarkModalTitle').textContent = b ? '编辑书签' : '添加书签';
+  $('#bmName').value = b?.name || '';
+  $('#bmUrl').value = b?.url || '';
+  $('#bmTags').value = (b?.tags||[]).join(', ');
+  openModal('bookmarkModal');
+}
+$('#saveBookmarkBtn').addEventListener('click', async () => {
+  const name = $('#bmName').value.trim();
+  let url = $('#bmUrl').value.trim();
+  const tags = $('#bmTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  if (!name) return toast('请输入名称','warn');
+  if (!url) return toast('请输入 URL','warn');
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  if (state.editingBookmark) {
+    await db.bookmarks.update(state.editingBookmark.id, { name, url, tags });
+  } else {
+    await db.bookmarks.add({ id: uid(), name, url, tags, createdAt: Date.now() });
+  }
+  closeModal('bookmarkModal');
+  renderBookmarks();
+  updateCounts();
+  toast('已保存','success');
+});
 
 // ============ Snippets ============
 async function renderSnippets(filter = '') {
@@ -2292,6 +2630,7 @@ $$('.comp-card').forEach(card => {
 // ============ Counts ============
 async function updateCounts() {
   try {
+    $('#bookmarkCount').textContent = await db.bookmarks.count() || 0;
     $('#snippetCount').textContent = await db.snippets.count() || 0;
   } catch(e){}
   $('#historyCount').textContent = state.searchHistory.length;
@@ -2371,7 +2710,7 @@ $('#exportBtn').addEventListener('click', async () => {
     if (k && !k.startsWith('__bing_cb_')) out.localStorage[k] = localStorage.getItem(k);
   }
   // IndexedDB tables
-  const tables = ['snippets','history'];
+  const tables = ['bookmarks','snippets','history'];
   for (const t of tables) {
     try { out.indexedDB[t] = await db[t].toArray(); } catch(e){}
   }
@@ -2417,6 +2756,7 @@ $('#importFile').addEventListener('change', (e) => {
       renderShortcuts();
       renderHistory();
       renderTodos();
+      renderBookmarks();
       renderSnippets();
       updateCounts();
       toast('导入成功！','success');
@@ -2428,10 +2768,11 @@ $('#importFile').addEventListener('change', (e) => {
   r.readAsText(f);
 });
 $('#resetBtn').addEventListener('click', async () => {
-  if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？')) return;
+  if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、书签、片段、历史、待办、配置）！确定继续？')) return;
   if (!confirm('⚠️ 再次确认：数据将被永久删除，不可恢复！')) return;
   localStorage.clear();
   try {
+    await db.bookmarks.clear();
     await db.snippets.clear();
     await db.history.clear();
   } catch(e){}
@@ -2439,9 +2780,17 @@ $('#resetBtn').addEventListener('click', async () => {
   toast('正在重置…');
 });
 
-// ============ Bookmarklet Build (Official Page-Agent) ============
+// ============ Bookmarklet Build ============
 function buildBookmarklet() {
-  const code = `javascript:(function(){var s=document.createElement('script');s.src='https://unpkg.com/page-agent@latest/dist/umd/index.js';s.onload=function(){if(window.PageAgent){try{window.PageAgent.init();}catch(e){alert('PageAgent 初始化失败: '+e.message);}}else{alert('PageAgent 加载失败，请检查网络');}};s.onerror=function(){alert('PageAgent 脚本加载失败');};document.head.appendChild(s);})();`;
+  const cfg = state.llmCfg;
+  const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
+    baseUrl: cfg.baseUrl,
+    apiKey: cfg.apiKey,
+    model: cfg.model,
+    temp: cfg.temperature,
+    v: 1,
+  }))));
+  const code = `javascript:(function(){var s=document.createElement('script');s.src='https://unpkg.com/page-agent@latest/dist/umd/index.js';s.onload=function(){try{var cfg=JSON.parse(decodeURIComponent(escape(atob('${payload}'))));if(window.PageAgent){window.PageAgent.init({apiKey:cfg.apiKey,baseUrl:cfg.baseUrl,model:cfg.model});var d=document.createElement('div');d.id='_caid_agent_panel';d.innerHTML='<div style=\"position:fixed;right:20px;bottom:20px;z-index:999999;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,.5);color:#e6edf3;font-family:system-ui;\"><div style=\"font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;\"><span style=\"color:#58a6ff;\">🤖</span>CAID AI 助手已注入</div><div style=\"font-size:12px;color:#8b949e;\">当前页支持自然语言操控</div></div>';document.body.appendChild(d);setTimeout(function(){if(d)d.remove();},4000);}else{alert('PageAgent 加载失败');}}catch(e){alert('CAID 注入失败: '+e.message);}};document.head.appendChild(s);})();`;
   const el = $('#bookmarkletDrag');
   el.href = code;
   el.title = '拖拽我到书签栏';
@@ -2457,6 +2806,7 @@ async function init() {
   renderShortcuts();
   renderHistory();
   renderTodos();
+  await renderBookmarks();
   await renderSnippets();
   updateCounts();
 
