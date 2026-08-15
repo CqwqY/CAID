@@ -1718,6 +1718,34 @@ const LS = {
   del(k) { localStorage.removeItem(k); },
 };
 
+// ============ 配置持久化（IndexedDB 备份 + 自动恢复） ============
+// localStorage 可能因浏览器清缓存/路径变更/隐私模式而丢失
+// IndexedDB 更持久，作为配置的二级备份
+const ConfigBackup = {
+  async save(key, value) {
+    try { await db.config.put({ key, value, savedAt: Date.now() }); } catch(e) {}
+  },
+  async load(key) {
+    try { const row = await db.config.get(key); return row?.value ?? null; } catch(e) { return null; }
+  },
+  // 检查 localStorage 中的配置是否丢失，如果丢失则从 IndexedDB 恢复
+  async restoreIfMissing(key, currentVal) {
+    if (currentVal && Object.keys(currentVal).length > 0 &&
+        (currentVal.apiKey || currentVal.baseUrl || currentVal.model)) {
+      // localStorage 有有效配置，备份到 IndexedDB
+      await this.save(key, currentVal);
+      return currentVal;
+    }
+    // localStorage 无有效配置，尝试从 IndexedDB 恢复
+    const backup = await this.load(key);
+    if (backup) {
+      LS.set(key, backup);
+      return backup;
+    }
+    return currentVal;
+  },
+};
+
 // 颜色混合：用于胶囊按钮渐变深色端（hexA 向 hexB 按 ratio 混合，ratio=0 返回 A, =1 返回 B）
 function mixWith(hexA, hexB, ratio = 0.5) {
   const a = hexA.replace('#','');
@@ -1743,6 +1771,11 @@ const db = new Dexie('caid_workbench');
 db.version(1).stores({
   snippets: '++id, title, lang, *tags, createdAt',
   history: '++id, query, mode, timestamp',
+});
+db.version(2).stores({
+  snippets: '++id, title, lang, *tags, createdAt',
+  history: '++id, query, mode, timestamp',
+  config: 'key',  // 配置备份表（比 localStorage 更持久）
 });
 
 // ============ Toast ============
@@ -1903,12 +1936,15 @@ function renderShortcuts() {
   const ctrl = document.createElement('div');
   ctrl.className = 'topbar-controls';
   ctrl.innerHTML = `
+    <button class="icon-btn" id="btnPageAgent" title="Page-Agent (Ctrl+I+L)"><i data-lucide="bot"></i></button>
     <button class="icon-btn" id="btnSettings" title="设置"><i data-lucide="settings"></i></button>
   `;
   bar.appendChild(add);
   bar.appendChild(ctrl);
   const btnSettings = ctrl.querySelector('#btnSettings');
   if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
+  const btnPA = ctrl.querySelector('#btnPageAgent');
+  if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
   lucide.createIcons();
 }
 
@@ -2189,8 +2225,8 @@ function executeSearch(q) {
   if (!q) return;
   suggestionsEl.classList.remove('open');
   state.suggestionIdx = -1;
-  // 保留便捷：如果输入是完整 URL，直接新标签打开
   const trimmed = q.trim();
+  // URL 直接打开
   if (/^(https?:\/\/|www\.)/i.test(trimmed) || /^[\w-]+\.(com|cn|net|org|io|dev|ai|app|co|me|xyz|top)(\/|$)/i.test(trimmed)) {
     let url = trimmed;
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
@@ -2198,6 +2234,26 @@ function executeSearch(q) {
     addHistory(trimmed, 'nav', url);
     searchInput.value = '';
     $('#intentHint').textContent = '';
+    return;
+  }
+  // 命令识别："帮我搜一下 XXX"
+  const searchCmd = trimmed.match(/^(?:帮我搜一下|帮我搜|搜一下|搜索)\s*(.+)/i);
+  if (searchCmd) {
+    const query = searchCmd[1].trim();
+    runAIAnswer(query, true); // true = 搜索模式
+    addHistory(query, 'ai');
+    searchInput.value = '';
+    $('#intentHint').textContent = '';
+    return;
+  }
+  // 命令识别："保存 XXX" 快捷保存代码片段
+  const saveCmd = trimmed.match(/^(?:保存|存一下|保存片段)\s*([\s\S]+)/i);
+  if (saveCmd) {
+    const text = saveCmd[1].trim();
+    openSnippetModal(null, { title: '快速保存', code: text, lang: 'text' });
+    searchInput.value = '';
+    $('#intentHint').textContent = '';
+    toast('已打开保存面板', 'info');
     return;
   }
   const mode = state.searchMode;
@@ -2217,6 +2273,15 @@ function updateIntentHint() {
   const q = searchInput.value.trim();
   const hint = $('#intentHint');
   if (!q) { hint.innerHTML = ''; return; }
+  // 命令识别
+  if (/^(?:帮我搜一下|帮我搜|搜一下|搜索)\s/i.test(q)) {
+    hint.innerHTML = `<b style="color:var(--accent2);">AI 搜索</b> · AI 先给结论再附链接`;
+    return;
+  }
+  if (/^(?:保存|存一下|保存片段)\s/i.test(q)) {
+    hint.innerHTML = `<b style="color:var(--purple);">保存片段</b> · 快速保存到代码片段`;
+    return;
+  }
   const map = { 'ai-ans':'AI 回答模式', 'bing':'Bing 搜索模式' };
   hint.innerHTML = `当前模式：<b>${map[state.searchMode]||''}</b> · 按 <kbd style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换`;
 }
@@ -2294,28 +2359,59 @@ $('#clearHistoryBtn').addEventListener('click', () => {
 });
 
 // ============ AI Answer ============
-async function runAIAnswer(q) {
+async function runAIAnswer(q, isSearch = false) {
   openAnswerPanel();
   const body = $('#answerBody');
   const cfg = state.llmCfg;
   const providerLabel = { dashscope:'通义千问', openai:'OpenAI', ollama:'Ollama', custom:'自定义' };
-  $('#answerModel').textContent = providerLabel[cfg.provider] || 'LLM';
-  body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--muted);"><i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>正在生成回答…</div>`;
+  $('#answerModel').textContent = (isSearch ? 'AI 搜索 · ' : '') + (providerLabel[cfg.provider] || 'LLM');
+  body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--muted);"><i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>${isSearch ? '正在搜索并总结…' : '正在生成回答…'}</div>`;
   lucide.createIcons();
+
+  // 搜索模式：无 API Key 时直接回退 Bing + 提示
+  if (isSearch && !cfg.apiKey) {
+    body.innerHTML = `
+      <div style="padding:14px;background:rgba(255,180,84,0.08);border:1px solid rgba(255,180,84,0.2);border-radius:10px;color:var(--warn);margin-bottom:12px;">
+        <b>未配置 LLM API Key</b>，无法执行 AI 搜索总结。
+      </div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.8;">
+        你可以：
+        <ol style="margin-left:18px;">
+          <li>前往 <b>设置 → AI 回答</b> 配置 API Key 后重试</li>
+          <li>按 <kbd style="font-size:11px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换到 Bing 模式直接搜索</li>
+        </ol>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn primary" onclick="window.open('https://www.bing.com/search?q=${encodeURIComponent(q)}','_blank')">
+          <i data-lucide="external-link" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:4px;"></i>
+          用 Bing 搜索「${escapeHtml(q)}」
+        </button>
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
 
   if (!cfg.apiKey) {
     // Rule engine fallback
     body.innerHTML = ruleEngineFallback(q);
     if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    addSaveButtons(body);
     return;
   }
   // Call LLM
   try {
     let url = cfg.baseUrl + '/chat/completions';
+    const sysPrompt = isSearch
+      ? `你是一个搜索助手。用户想搜索某个主题，请：
+1. 先用一句话给出结论/概述
+2. 然后补充关键要点（2-4 条）
+3. 最后附上 2-4 个参考链接（用 Markdown 格式，标题+URL）
+回答简洁、信息密度高。代码块用 Markdown 标注语言。`
+      : '你是一个帮助程序员的助手。回答简洁，代码块使用 Markdown 标注语言，必要时给出示例代码。';
     const body_data = {
       model: cfg.model,
       messages: [
-        { role: 'system', content: '你是一个帮助程序员的助手。回答简洁，代码块使用 Markdown 标注语言，必要时给出示例代码。' },
+        { role: 'system', content: sysPrompt },
         { role: 'user', content: q }
       ],
       temperature: +cfg.temperature || 0.7,
@@ -2358,6 +2454,8 @@ async function runAIAnswer(q) {
     if (!fullMd) throw new Error('无返回内容');
     body.innerHTML = marked.parse(fullMd);
     if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    // 为代码块和链接添加"保存"按钮
+    addSaveButtons(body);
   } catch (e) {
     body.innerHTML = `
       <div style="padding:14px;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.2);border-radius:8px;color:var(--danger);">
@@ -2365,7 +2463,7 @@ async function runAIAnswer(q) {
         <span style="color:var(--muted);font-size:12px;">${escapeHtml(e.message || String(e))}</span><br><br>
         <span style="color:var(--muted);font-size:13px;">可能原因：</span>
         <ul style="margin-left:18px;color:var(--muted);font-size:13px;">
-          <li>未配置正确的 API Key（设置 → AI 模型）</li>
+          <li>未配置正确的 API Key（设置 → AI 回答）</li>
           <li>Base URL 不可达或模型名称错误</li>
           <li>当前为 file:// 协议被浏览器 CORS 拦截（建议部署到静态托管）</li>
         </ul>
@@ -2375,7 +2473,57 @@ async function runAIAnswer(q) {
       ${ruleEngineFallback(q)}
     `;
     if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    addSaveButtons(body);
   }
+}
+
+// ============ 为 AI 回答添加"保存"按钮 ============
+function addSaveButtons(container) {
+  // 为每个代码块添加"保存到片段"按钮
+  container.querySelectorAll('pre').forEach((pre, i) => {
+    if (pre.querySelector('.pa-save-bar')) return; // 避免重复添加
+    const code = pre.querySelector('code');
+    if (!code) return;
+    const lang = (code.className.match(/language-(\w+)/) || [])[1] || 'text';
+    const codeText = code.textContent;
+    const bar = document.createElement('div');
+    bar.className = 'pa-save-bar';
+    bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-bottom:none;border-radius:8px 8px 0 0;font-size:12px;color:var(--muted);';
+    bar.innerHTML = `<span style="font-family:monospace;">${escapeHtml(lang)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.cssText = 'padding:3px 10px;font-size:12px;height:auto;';
+    btn.innerHTML = `<i data-lucide="bookmark-plus" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:3px;"></i>保存到片段`;
+    btn.addEventListener('click', () => {
+      // 从代码内容推断标题
+      let title = 'AI 回答片段';
+      const firstLine = codeText.split('\n')[0].trim();
+      if (firstLine.length > 0 && firstLine.length <= 50) title = firstLine.replace(/^(function|const|class|def|import|export)\s+/, '').slice(0, 40);
+      openSnippetModal(null, { title, code: codeText, lang });
+      toast('已打开保存面板', 'info');
+    });
+    bar.appendChild(btn);
+    pre.style.borderRadius = '0 0 8px 8px';
+    pre.parentNode.insertBefore(bar, pre);
+  });
+  // 为链接列表添加"保存全部链接"按钮（如果有多个链接）
+  const links = container.querySelectorAll('a[href]');
+  if (links.length >= 2) {
+    const linkBar = document.createElement('div');
+    linkBar.style.cssText = 'margin-top:12px;padding:8px 12px;background:rgba(91,141,255,0.06);border:1px solid rgba(91,141,255,0.15);border-radius:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+    const saveAllBtn = document.createElement('button');
+    saveAllBtn.className = 'btn primary';
+    saveAllBtn.style.cssText = 'padding:4px 12px;font-size:12px;height:auto;';
+    saveAllBtn.innerHTML = `<i data-lucide="bookmark-plus" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:3px;"></i>保存全部链接到片段`;
+    saveAllBtn.addEventListener('click', () => {
+      const md = Array.from(links).map(a => `- [${escapeHtml(a.textContent)}](${a.href})`).join('\n');
+      openSnippetModal(null, { title: 'AI 回答参考链接', code: md, lang: 'markdown' });
+      toast('已打开保存面板', 'info');
+    });
+    linkBar.appendChild(saveAllBtn);
+    container.appendChild(linkBar);
+  }
+  lucide.createIcons();
 }
 
 function ruleEngineFallback(q) {
@@ -2504,12 +2652,73 @@ function openAnswerPanel() { $('#answerPanel').classList.add('open'); }
 $('#closeAnswer').addEventListener('click', () => $('#answerPanel').classList.remove('open'));
 
 // ============ Snippets ============
+// 语义搜索：中英文同义词映射表
+const SYNONYM_MAP = {
+  '防抖': ['debounce', '防抖', 'delay'],
+  '节流': ['throttle', '节流', 'throttle'],
+  '异步': ['async', 'await', 'promise', '异步', 'then', 'resolve'],
+  '请求': ['fetch', 'axios', 'request', '请求', 'http', 'xhr', 'ajax'],
+  '路由': ['router', 'route', '路由', 'navigation', 'navigate'],
+  '状态': ['state', 'store', '状态', 'redux', 'vuex', 'pinia'],
+  '钩子': ['hook', 'hooks', 'useEffect', 'useMemo', 'useCallback', 'useState', '钩子'],
+  '组件': ['component', '组件', 'vue', 'react', 'svelte'],
+  '样式': ['css', 'style', '样式', 'scss', 'tailwind', 'styled'],
+  '深拷贝': ['deep', 'clone', '深拷贝', 'copy', 'structuredClone'],
+  '排序': ['sort', '排序', 'order', 'arrange'],
+  '加密': ['crypto', 'encrypt', '加密', 'hash', 'md5', 'sha'],
+  '正则': ['regex', 'regexp', '正则', 'match', 'pattern', 'replace'],
+  '存储': ['storage', 'localstorage', '存储', 'cookie', 'sessionstorage', 'indexeddb'],
+  '时间': ['date', 'time', '时间', 'moment', 'dayjs', 'format'],
+  '工具': ['util', 'utils', '工具', 'helper', 'format'],
+  '类型': ['type', 'typescript', '类型', 'interface', 'enum', 'generic'],
+  '错误': ['error', '错误', 'catch', 'try', 'exception', 'throw'],
+  '测试': ['test', '测试', 'jest', 'vitest', 'mocha', 'spec'],
+  '动画': ['animation', '动画', 'transition', 'transform', 'keyframe'],
+};
+// 扩展搜索词：返回包含原词 + 同义词的数组
+function expandQuery(q) {
+  const ql = q.toLowerCase();
+  const terms = new Set([ql, q]);
+  for (const [cn, syns] of Object.entries(SYNONYM_MAP)) {
+    if (ql.includes(cn) || syns.some(s => ql.includes(s.toLowerCase()))) {
+      syns.forEach(s => terms.add(s.toLowerCase()));
+    }
+  }
+  return Array.from(terms);
+}
+// 模糊匹配：Levenshtein 距离的简化版（判断是否有部分匹配）
+function fuzzyMatch(text, query) {
+  if (!text || !query) return false;
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  if (t.includes(q)) return true;
+  // 允许 1 个字符的拼写错误（仅对长度 >= 4 的词）
+  if (q.length >= 4) {
+    for (let i = 0; i <= t.length - q.length; i++) {
+      let mismatches = 0;
+      for (let j = 0; j < q.length; j++) {
+        if (t[i+j] !== q[j]) { mismatches++; if (mismatches > 1) break; }
+      }
+      if (mismatches <= 1) return true;
+    }
+  }
+  return false;
+}
+
 async function renderSnippets(filter = '') {
   const list = $('#snippetList');
   let items = await db.snippets.orderBy('createdAt').reverse().toArray().catch(() => []);
   if (filter) {
-    const f = filter.toLowerCase();
-    items = items.filter(s => (s.title||'').toLowerCase().includes(f) || (s.code||'').toLowerCase().includes(f) || (s.tags||[]).some(t => t.toLowerCase().includes(f)) || (s.lang||'').toLowerCase().includes(f));
+    // 语义搜索：扩展关键词 + 模糊匹配
+    const terms = expandQuery(filter);
+    items = items.filter(s => {
+      const haystack = [
+        (s.title||''), (s.code||''), (s.lang||''),
+        ...(s.tags||[])
+      ].join(' ').toLowerCase();
+      // 任一扩展词命中即匹配
+      return terms.some(term => haystack.includes(term) || fuzzyMatch(haystack, term));
+    });
   }
   $('#snippetCount').textContent = items.length;
   if (items.length === 0) {
@@ -2562,13 +2771,13 @@ async function renderSnippets(filter = '') {
 }
 $('#snippetSearch').addEventListener('input', (e) => renderSnippets(e.target.value));
 $('#addSnippetBtn').addEventListener('click', () => openSnippetModal());
-function openSnippetModal(s = null) {
+function openSnippetModal(s = null, prefill = null) {
   state.editingSnippet = s;
-  $('#snippetModalTitle').textContent = s ? '编辑代码片段' : '添加代码片段';
-  $('#snTitle').value = s?.title || '';
-  $('#snLang').value = s?.lang || 'javascript';
-  $('#snTags').value = (s?.tags||[]).join(', ');
-  $('#snCode').value = s?.code || '';
+  $('#snippetModalTitle').textContent = s ? '编辑代码片段' : (prefill ? '保存代码片段' : '添加代码片段');
+  $('#snTitle').value = s?.title || prefill?.title || '';
+  $('#snLang').value = s?.lang || prefill?.lang || 'javascript';
+  $('#snTags').value = (s?.tags||[]).join(', ') || (prefill?.tags||[]).join(', ');
+  $('#snCode').value = s?.code || prefill?.code || '';
   openModal('snippetModal');
 }
 $('#saveSnippetBtn').addEventListener('click', async () => {
@@ -2754,6 +2963,9 @@ $('#saveSettingsBtn').addEventListener('click', () => {
     language: $('#paLanguage').value,
   };
   LS.set('paCfg', state.paCfg);
+  // 同步备份到 IndexedDB（防止 localStorage 丢失）
+  ConfigBackup.save('llmCfg', state.llmCfg);
+  ConfigBackup.save('paCfg', state.paCfg);
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
@@ -2794,7 +3006,7 @@ $('#exportBtn').addEventListener('click', async () => {
     if (k && !k.startsWith('__bing_cb_')) out.localStorage[k] = localStorage.getItem(k);
   }
   // IndexedDB tables
-  const tables = ['snippets','history'];
+  const tables = ['snippets','history','config'];
   for (const t of tables) {
     try { out.indexedDB[t] = await db[t].toArray(); } catch(e){}
   }
@@ -2864,6 +3076,10 @@ $('#resetBtn').addEventListener('click', async () => {
 
 // ============ Init ============
 async function init() {
+  // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
+  state.llmCfg = await ConfigBackup.restoreIfMissing('llmCfg', state.llmCfg);
+  state.paCfg = await ConfigBackup.restoreIfMissing('paCfg', state.paCfg);
+
   // Clock
   updateClock();
   setInterval(updateClock, 1000);
@@ -2886,6 +3102,78 @@ async function init() {
     });
   }
 }
+
+// ============ Page-Agent 面板控制 ============
+let paAgent = null;
+let paStarted = false;
+
+function initPageAgent() {
+  if (!window.PageAgent) {
+    setTimeout(initPageAgent, 300);
+    return;
+  }
+  try {
+    // demo 版：使用内置免费 LLM，不传 LLM 配置
+    paAgent = new window.PageAgent({ language: 'zh-CN' });
+    window._paAgent = paAgent;
+  } catch(e) {
+    console.warn('[Page-Agent] 初始化失败:', e);
+  }
+}
+
+function togglePageAgentPanel() {
+  if (!paAgent) {
+    toast('Page-Agent 尚未加载完成，请稍后再试', 'warn');
+    return;
+  }
+  if (!paStarted) {
+    // 首次呼出：启动 agent，面板自动出现
+    try {
+      if (typeof paAgent.start === 'function') {
+        paAgent.start();
+      } else if (typeof paAgent.showPanel === 'function') {
+        paAgent.showPanel();
+      }
+      paStarted = true;
+      toast('Page-Agent 已呼出', 'success', 1500);
+    } catch(e) {
+      console.warn('[Page-Agent] 启动失败:', e);
+      toast('Page-Agent 启动失败: ' + e.message, 'error');
+    }
+  } else {
+    // 已启动：通过 DOM 切换面板显示/隐藏
+    const panel = document.querySelector('[class*="page-agent"], [id*="page-agent"]');
+    if (panel) {
+      const isHidden = panel.style.display === 'none';
+      panel.style.display = isHidden ? '' : 'none';
+      toast(isHidden ? 'Page-Agent 已显示' : 'Page-Agent 已隐藏', 'info', 1200);
+    } else {
+      // 找不到面板元素，尝试 stop/start
+      if (typeof paAgent.stop === 'function') {
+        paAgent.stop();
+        toast('Page-Agent 已隐藏', 'info', 1200);
+      }
+    }
+  }
+}
+
+// 快捷键 Ctrl+I+L 三键同时按下
+const _pressedKeys = new Set();
+document.addEventListener('keydown', (e) => {
+  _pressedKeys.add(e.code);
+  if ((_pressedKeys.has('ControlLeft') || _pressedKeys.has('ControlRight')) &&
+      _pressedKeys.has('KeyI') && _pressedKeys.has('KeyL')) {
+    e.preventDefault();
+    togglePageAgentPanel();
+    _pressedKeys.clear();
+  }
+});
+document.addEventListener('keyup', (e) => { _pressedKeys.delete(e.code); });
+window.addEventListener('blur', () => _pressedKeys.clear());
+
+// 页面加载后延迟初始化 Page-Agent（等 demo 脚本加载完成）
+setTimeout(initPageAgent, 800);
+
 init();
 
 // Add keyframes for spinner
@@ -2894,6 +3182,6 @@ ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
 document.head.appendChild(ks);
 </script>
 <!-- Page-Agent demo（阿里巴巴开源 GUI Agent，自带免费测试 LLM，仅供评估） -->
-<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js" crossorigin="anonymous"></script>
+<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js?autoInit=false" crossorigin="anonymous"></script>
 </body>
 </html>
