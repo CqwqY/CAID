@@ -3565,10 +3565,9 @@ function loadPaScript(onload, onerror) {
    两条路径都注入：全局工具函数 + meta 标签 + 隐藏指令块 + LLM 请求劫持
 */
 function initModdedPageAgent() {
-  // 1) 注入全局工具函数 & 指令块 & LLM 请求劫持（无论哪条路径都需要）
+  // 1) 注入全局工具函数 & 指令块（纯 DOM 增强，不干扰 demo 的 API 调用）
   injectPaUtilities();
   try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
-  hookLlmRequestsForPageAgent();
 
   if (!window.PageAgent) { console.warn('[Modded PA] window.PageAgent 类未就绪，稍后再试'); return; }
 
@@ -3600,15 +3599,14 @@ function initModdedPageAgent() {
         toast('✅ Page-Agent 魔改版（自定义 LLM · 工具函数优先）已启动', 'success', 2800);
         return;
       } catch (err) {
-        console.warn('[Modded PA] 自定义 LLM 初始化失败，保留 demo agent + 请求劫持：', err);
-        // 失败了也没关系，请求劫持已经生效，demo agent 的 LLM 请求会被注入 system prompt
+        console.warn('[Modded PA] 自定义 LLM 初始化失败，保留 demo agent：', err);
       }
     }
 
-    // ======== 路径 2：无自定义 LLM → 保留 demo agent，靠请求劫持注入 system prompt ========
-    // demo agent 已经在用免费 LLM 工作了，我们不需要销毁它
-    // hookLlmRequestsForPageAgent() 已经在上面调用，会在每次 LLM 请求的 messages 前面注入工具函数列表 + 跳转规则
-    toast('✅ Page-Agent 魔改版（免费 LLM · 请求劫持注入增强指令）已启动', 'success', 3200);
+    // ======== 路径 2：无自定义 LLM → 保留原版 demo agent ========
+    // 原版 demo 自带免费 LLM，能正常工作。我们通过 DOM 增强（meta 标签 + 隐藏指令块 + 工具函数）
+    // 让 LLM 扫描到跳转规则和工具函数列表，不干扰 demo 的 API 认证。
+    toast('✅ Page-Agent 魔改版（原版 agent + DOM 增强 · 工具函数已注入）已启动', 'success', 3200);
   }, 500);
 }
 
@@ -4048,51 +4046,11 @@ function buildPaBookmarkletCode() {
         }, 350);
         return;
       }
-      /* === No custom LLM: 保留 demo agent（免费 LLM），通过请求劫持注入 system prompt === */
+      /* === No custom LLM: 保留原版 demo agent（免费 LLM），纯 DOM 增强 === */
       if (!LLMCFG) {
-        /* 劫持 fetch/XHR，在 LLM 请求的 messages 前面注入增强 system prompt */
-        if (!window.__PA_LLM_HOOKED__) {
-          window.__PA_LLM_HOOKED__ = true;
-          var origFetch = window.fetch;
-          window.fetch = function(input, init) {
-            try {
-              if (init && init.body && typeof init.body === 'string') {
-                var body = JSON.parse(init.body);
-                if (body.messages && Array.isArray(body.messages) && !body.__paSysInjected) {
-                  var hasOurs = false;
-                  for (var i = 0; i < body.messages.length; i++) {
-                    if (body.messages[i].role === 'system' && typeof body.messages[i].content === 'string' && body.messages[i].content.indexOf('PA_UTILS') >= 0) { hasOurs = true; break; }
-                  }
-                  if (!hasOurs) { body.messages.unshift({ role: 'system', content: ENH_SP }); }
-                  body.__paSysInjected = true;
-                  init.body = JSON.stringify(body);
-                }
-              }
-            } catch(e) {}
-            return origFetch.call(this, input, init);
-          };
-          var origOpen = XMLHttpRequest.prototype.open;
-          var origSend = XMLHttpRequest.prototype.send;
-          XMLHttpRequest.prototype.open = function(method, url) { this.__paUrl = url; return origOpen.apply(this, arguments); };
-          XMLHttpRequest.prototype.send = function(body) {
-            try {
-              if (typeof body === 'string' && body.length > 0) {
-                var parsed = JSON.parse(body);
-                if (parsed.messages && Array.isArray(parsed.messages) && !parsed.__paSysInjected) {
-                  var hasOurs2 = false;
-                  for (var j = 0; j < parsed.messages.length; j++) {
-                    if (parsed.messages[j].role === 'system' && typeof parsed.messages[j].content === 'string' && parsed.messages[j].content.indexOf('PA_UTILS') >= 0) { hasOurs2 = true; break; }
-                  }
-                  if (!hasOurs2) { parsed.messages.unshift({ role: 'system', content: ENH_SP }); }
-                  parsed.__paSysInjected = true;
-                  body = JSON.stringify(parsed);
-                }
-              }
-            } catch(e) {}
-            return origSend.call(this, body);
-          };
-        }
-        /* demo agent 已经用免费 LLM 在工作了，不需要销毁重建 */
+        /* 不劫持 fetch/XHR（会干扰 demo 的 API 认证），通过 DOM 增强让 LLM 扫描到规则 */
+        /* Meta 标签和隐藏指令块已在上面注入，工具函数也已挂在 window 上 */
+        /* 这些是被动增强，不干扰 demo 的任何 API 调用 */
       }
     };
     document.head.appendChild(s);
