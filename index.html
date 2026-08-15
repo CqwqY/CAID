@@ -3717,16 +3717,20 @@ function setupTextareaHook(textarea, panel, rulePrefix) {
 function buildInputRulePrefix() {
   return '【CAID规则】\n' +
     '你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\n' +
-    '1. 默认正常回答用户问题，不要跳转。\n' +
-    '2. 仅当用户明确说「返回主网站/回工作台/go home」时，调用 window.paGoHome() 跳转。\n' +
-    '3. 需要操作页面时，优先调用以下已挂载在 window 上的工具函数：\n' +
+    '1. 默认正常回答用户问题，不要跳转，不要操作页面 DOM。\n' +
+    '2. 仅当用户明确说「返回主网站/回工作台/go home」时，必须用 evaluate 执行 JS 代码：window.paGoHome()。不要找页面上的按钮点击。\n' +
+    '3. 用户说「打开 GitHub/谷歌/百度/微博」等网站时，必须用 evaluate 执行：paNavigate("网址", true)。不要用页面搜索框搜索，不要点击页面链接，直接 evaluate 调用函数。\n' +
+    '   示例：用户说"打开 GitHub" → evaluate: paNavigate("https://github.com", true)\n' +
+    '   示例：用户说"打开谷歌" → evaluate: paNavigate("https://google.com", true)\n' +
+    '   示例：用户说"打开百度" → evaluate: paNavigate("https://baidu.com", true)\n' +
+    '4. 可用工具函数（通过 evaluate 调用，不要用 DOM click/fill 操作页面）：\n' +
     '   - paGoHome() 跳主站 | paNavigate(url,newTab?) 跳转 | paOpenTab(url) 新标签\n' +
     '   - paLinks() 取链接 | paText() 取文本 | paInfo() 页面信息\n' +
     '   - paFill(sel,val,submit?) 填表 | paScroll() 滚动 | paCopy(text) 复制\n' +
     '   - paSave(filename,content) 下载 | paInject(js) 注入脚本 | paInjectCSS(css) 注入样式\n' +
-    '4. 用户说「打开 GitHub/谷歌/百度」等，用 paNavigate(url,true) 新标签打开。\n' +
-    '5. 修改页面行为（拦截点击/挂钩函数），用 paInject(js) 注入。\n' +
-    '6. 用中文回答。';
+    '5. 修改页面行为（拦截点击/挂钩函数），用 evaluate: paInject("JS代码") 注入。\n' +
+    '6. 用中文回答。\n' +
+    '重要：导航类请求必须用 evaluate 调用工具函数，禁止用页面搜索框搜索网址。';
 }
 
 // 清理重复的 Page-Agent 浮动面板（试 new 可能会多建一个，留最后出现的那个）
@@ -4168,7 +4172,7 @@ function buildPaBookmarkletCode() {
       /* === No custom LLM: 保留原版 demo agent + 输入 Hook === */
       if (!LLMCFG) {
         /* 在用户消息发送前自动 prepend 规则文本 */
-        var RULE_PREFIX = '【CAID规则】\\n你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\\n1. 默认正常回答用户问题，不要跳转。\\n2. 仅当用户明确说「返回主网站/回工作台/go home」时，调用 window.paGoHome() 跳转。\\n3. 工具函数：paGoHome() | paNavigate(url,newTab?) | paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)\\n4. 打开其他网站用 paNavigate(url,true) 新标签。\\n5. 修改页面行为用 paInject(js) 注入。\\n6. 用中文回答。';
+        var RULE_PREFIX = '【CAID规则】\\n你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\\n1. 默认正常回答用户问题，不要跳转，不要操作页面 DOM。\\n2. 仅当用户明确说「返回主网站/回工作台/go home」时，必须用 evaluate 执行 JS 代码：window.paGoHome()。不要找页面上的按钮点击。\\n3. 用户说「打开 GitHub/谷歌/百度」等网站时，必须用 evaluate 执行：paNavigate(网址, true)。不要用页面搜索框搜索，不要点击页面链接。\\n  示例：用户说打开 GitHub → evaluate: paNavigate(https://github.com, true)\\n  示例：用户说打开百度 → evaluate: paNavigate(https://baidu.com, true)\\n4. 可用工具函数（通过 evaluate 调用，不要用 DOM click/fill）：paGoHome() | paNavigate(url,newTab?) | paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)\\n5. 修改页面行为用 evaluate: paInject(JS代码) 注入。\\n6. 用中文回答。\\n重要：导航类请求必须用 evaluate 调用工具函数，禁止用页面搜索框搜索网址。';
         var MAX_WAIT = 8000;
         var START_TS = Date.now();
         function tryHookInput() {
