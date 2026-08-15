@@ -1540,14 +1540,15 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 模型</button>
+        <button class="modal-tab active" data-tab="llm">AI 回答</button>
+        <button class="modal-tab" data-tab="pageagent">Page-Agent</button>
         <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="llm">
         <div class="setting-block">
-          <div class="setting-title"><i data-lucide="cpu"></i>云端 LLM 配置</div>
-          <div class="setting-desc">用于 AI 回答模式。支持 DashScope（通义千问）、OpenAI、或自定义 API。</div>
+          <div class="setting-title"><i data-lucide="cpu"></i>AI 回答 · LLM 配置</div>
+          <div class="setting-desc">用于搜索框的 AI 回答模式。支持 DashScope（通义千问）、OpenAI、或自定义 API。此配置与 Page-Agent 完全独立。</div>
           <div class="form-group">
             <label class="form-label">Provider</label>
             <select class="form-select" id="cfgProvider">
@@ -1581,6 +1582,68 @@ a:hover { text-decoration: underline; }
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="shield"></i>降级策略</div>
           <div class="setting-desc">当未配置 Key 或 Key 失效时，使用规则引擎 + Demo LLM。您的 Key 仅保存在本地浏览器 localStorage。</div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="pageagent" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="bot"></i>Page-Agent · 运行模式</div>
+          <div class="setting-desc">Page-Agent 是阿里巴巴开源的纯前端 GUI 智能体，用自然语言操控本页面 DOM（点击、输入、导航等）。当前使用 <b style="color:var(--accent2);">Demo 免费 LLM</b>，仅供评估。</div>
+          <div class="form-group">
+            <label class="form-label">LLM 来源</label>
+            <select class="form-select" id="paMode">
+              <option value="demo" selected>Demo 免费 LLM（官方测试 API，仅供评估）</option>
+              <option value="custom">自定义 LLM（使用自己的 API Key）</option>
+            </select>
+            <div class="form-hint" id="paModeHint">Demo 模式无需任何配置，页面右下角已自动出现 Page-Agent 面板。</div>
+          </div>
+        </div>
+
+        <div class="setting-block" id="paCustomCfg" style="display:none;">
+          <div class="setting-title"><i data-lucide="key-round"></i>Page-Agent · 自定义 LLM</div>
+          <div class="setting-desc">切换到自定义模式后，Page-Agent 将使用此处的 LLM 配置，与 AI 回答的配置完全独立。适用于需要稳定服务的场景。</div>
+          <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select class="form-select" id="paProvider">
+              <option value="dashscope">DashScope (通义千问)</option>
+              <option value="openai">OpenAI</option>
+              <option value="ollama">Ollama 本地</option>
+              <option value="custom">自定义 OpenAI 兼容</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Base URL</label>
+            <input type="text" class="form-input" id="paBaseUrl" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input type="password" class="form-input" id="paApiKey" placeholder="sk-...">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Model</label>
+              <input type="text" class="form-input" id="paModel" placeholder="qwen-turbo（推荐低成本快速模型）">
+            </div>
+            <div class="form-group">
+              <label class="form-label">语言</label>
+              <select class="form-select" id="paLanguage">
+                <option value="zh-CN" selected>中文</option>
+                <option value="en-US">English</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="info"></i>使用说明</div>
+          <div class="setting-desc">
+            <ul style="margin-left:18px;line-height:1.8;">
+              <li>页面右下角的浮动面板即为 Page-Agent</li>
+              <li>在面板中输入自然语言，如"清空搜索框""切换到 AI 回答模式""打开 GitHub"</li>
+              <li>Demo 免费 LLM 有配额限制，不稳定，正式使用请切换到自定义模式</li>
+              <li>Page-Agent 操控的是页面 DOM，不会跳出本页面</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -1725,6 +1788,16 @@ const DEFAULT_LLM_CFG = {
   temperature: 0.7,
 };
 
+// Page-Agent 配置（与 AI 回答的 llmCfg 完全独立）
+const DEFAULT_PA_CFG = {
+  mode: 'demo',           // 'demo' = 免费 LLM | 'custom' = 自定义 Key
+  provider: 'dashscope',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  apiKey: '',
+  model: 'qwen-turbo',
+  language: 'zh-CN',
+};
+
 // ============ App State ============
 const state = {
   shortcuts: LS.get('shortcuts', DEFAULT_SHORTCUTS),
@@ -1732,6 +1805,7 @@ const state = {
   todos: LS.get('todos', []),
   uiPrefs: LS.get('uiPrefs', { collapsed: {} }),
   llmCfg: LS.get('llmCfg', DEFAULT_LLM_CFG),
+  paCfg: LS.get('paCfg', DEFAULT_PA_CFG),
   searchMode: 'ai-ans',
   suggestionIdx: -1,
   suggestions: [],
@@ -2609,7 +2683,45 @@ function fillSettingsForm() {
   $('#cfgModel').value = c.model || '';
   $('#cfgTemp').value = c.temperature ?? 0.7;
   $('#cfgProvider').dispatchEvent(new Event('change'));
+  fillPageAgentForm();
 }
+// Page-Agent 表单填充
+function fillPageAgentForm() {
+  const pa = state.paCfg;
+  $('#paMode').value = pa.mode || 'demo';
+  $('#paProvider').value = pa.provider || 'dashscope';
+  $('#paBaseUrl').value = pa.baseUrl || '';
+  $('#paApiKey').value = pa.apiKey || '';
+  $('#paModel').value = pa.model || '';
+  $('#paLanguage').value = pa.language || 'zh-CN';
+  togglePaCustomCfg(pa.mode || 'demo');
+}
+// Demo / 自定义 模式切换
+function togglePaCustomCfg(mode) {
+  const customBlock = $('#paCustomCfg');
+  const hint = $('#paModeHint');
+  if (mode === 'custom') {
+    customBlock.style.display = '';
+    hint.textContent = '自定义模式：Page-Agent 将使用您配置的 LLM，需要重新加载页面生效。';
+  } else {
+    customBlock.style.display = 'none';
+    hint.textContent = 'Demo 模式无需任何配置，页面右下角已自动出现 Page-Agent 面板。';
+  }
+}
+$('#paMode').addEventListener('change', (e) => togglePaCustomCfg(e.target.value));
+// Page-Agent Provider 预设
+$('#paProvider').addEventListener('change', (e) => {
+  const p = e.target.value;
+  const presets = {
+    dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' },
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    ollama: { baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' },
+    custom: { baseUrl: '', model: '' },
+  };
+  const pr = presets[p];
+  if (!$('#paBaseUrl').value) $('#paBaseUrl').value = pr.baseUrl;
+  if (!$('#paModel').value) $('#paModel').value = pr.model;
+});
 $('#cfgProvider').addEventListener('change', (e) => {
   const p = e.target.value;
   const presets = {
@@ -2623,6 +2735,7 @@ $('#cfgProvider').addEventListener('change', (e) => {
   if (!$('#cfgModel').value) $('#cfgModel').value = pr.model;
 });
 $('#saveSettingsBtn').addEventListener('click', () => {
+  // AI 回答 LLM 配置
   state.llmCfg = {
     provider: $('#cfgProvider').value,
     baseUrl: $('#cfgBaseUrl').value.trim(),
@@ -2631,6 +2744,16 @@ $('#saveSettingsBtn').addEventListener('click', () => {
     temperature: parseFloat($('#cfgTemp').value) || 0.7,
   };
   LS.set('llmCfg', state.llmCfg);
+  // Page-Agent 配置（独立保存）
+  state.paCfg = {
+    mode: $('#paMode').value,
+    provider: $('#paProvider').value,
+    baseUrl: $('#paBaseUrl').value.trim(),
+    apiKey: $('#paApiKey').value.trim(),
+    model: $('#paModel').value.trim(),
+    language: $('#paLanguage').value,
+  };
+  LS.set('paCfg', state.paCfg);
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
@@ -2770,5 +2893,7 @@ const ks = document.createElement('style');
 ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
 document.head.appendChild(ks);
 </script>
+<!-- Page-Agent demo（阿里巴巴开源 GUI Agent，自带免费测试 LLM，仅供评估） -->
+<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js" crossorigin="anonymous"></script>
 </body>
 </html>
