@@ -2048,6 +2048,63 @@ ${utilDoc}
 `);
 }
 
+/* ========== Page-Agent 魔改版 · LLM 请求劫持 ==========
+   无论 demo agent 还自定义 agent，发给 LLM 的请求最终都走 fetch 或 XMLHttpRequest。
+   我们劫持这两个 API，检测请求体里有没有 messages 数组（OpenAI 兼容格式），
+   如果有就在 messages 最前面注入一条 system message（含工具函数列表 + 跳转规则）。
+   这样即使没法通过 systemPrompt 参数传递指令，LLM 也能收到我们的增强规则。
+   用 __paSysInjected 标记避免重复注入。
+*/
+function hookLlmRequestsForPageAgent() {
+  if (window.__PA_LLM_HOOKED__) return;
+  window.__PA_LLM_HOOKED__ = true;
+  const SP_TEXT = buildEnhancedSystemPrompt('zh-CN');
+
+  /* ---- 劫持 fetch ---- */
+  const origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    try {
+      if (init && init.body && typeof init.body === 'string') {
+        const body = JSON.parse(init.body);
+        if (body.messages && Array.isArray(body.messages) && !body.__paSysInjected) {
+          // 避免重复注入
+          const hasOurs = body.messages.some(m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('PA_UTILS'));
+          if (!hasOurs) {
+            body.messages.unshift({ role: 'system', content: SP_TEXT });
+          }
+          body.__paSysInjected = true;
+          init.body = JSON.stringify(body);
+        }
+      }
+    } catch(e) { /* 不是 JSON body 或其他格式，跳过 */ }
+    return origFetch.call(this, input, init);
+  };
+
+  /* ---- 劫持 XMLHttpRequest ---- */
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this.__paUrl = url;
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function(body) {
+    try {
+      if (typeof body === 'string' && body.length > 0) {
+        const parsed = JSON.parse(body);
+        if (parsed.messages && Array.isArray(parsed.messages) && !parsed.__paSysInjected) {
+          const hasOurs = parsed.messages.some(m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('PA_UTILS'));
+          if (!hasOurs) {
+            parsed.messages.unshift({ role: 'system', content: SP_TEXT });
+          }
+          parsed.__paSysInjected = true;
+          body = JSON.stringify(parsed);
+        }
+      }
+    } catch(e) { /* 不是 JSON，跳过 */ }
+    return origSend.call(this, body);
+  };
+}
+
 // Time formatting
 const fmtTime = (d = new Date()) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 const fmtDate = (d = new Date()) => {
@@ -3510,18 +3567,17 @@ function loadPaScript(onload, onerror) {
 }
 
 /* ========== Page-Agent 魔改版 · 初始化入口 ==========
-   无条件尝试重建 agent：注入工具函数 → 构建增强 systemPrompt → 重建。
-   - 有自定义 LLM 配置：直接销毁 demo，用自定义配置 new PageAgent
-   - 无自定义 LLM 配置：demo.js 自带免费 LLM，不传参数 new PageAgent() 即可创建新实例
-       · 成功 → 销毁 demo agent，替换为新的（工具函数 + meta + 隐藏指令仍生效）
-       · 失败 → 安全回落：保留原始 demo agent
-   注意：demo.js 的 PageAgent 构造函数要求传 model 才能带 systemPrompt，
-         不传 model 时只能不传任何参数让 demo.js 用内置免费配置。
+   策略：保留 demo agent（免费 LLM），通过劫持 fetch/XHR 在 LLM 请求里注入 system prompt。
+   - 有自定义 LLM：销毁 demo → 用自定义配置 new PageAgent（含 systemPrompt）
+   - 无自定义 LLM：保留 demo agent → 劫持 LLM 请求注入 system prompt + 工具函数
+   两条路径都注入：全局工具函数 + meta 标签 + 隐藏指令块 + LLM 请求劫持
 */
 function initModdedPageAgent() {
-  // 1) 先注入全局工具函数 & 指令块（无论成功失败都需要，100% 幂等）
+  // 1) 注入全局工具函数 & 指令块 & LLM 请求劫持（无论哪条路径都需要）
   injectPaUtilities();
   try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
+  hookLlmRequestsForPageAgent();
+
   if (!window.PageAgent) { console.warn('[Modded PA] window.PageAgent 类未就绪，稍后再试'); return; }
 
   const paCfg = (state && state.paCfg) ? state.paCfg : {};
@@ -3529,12 +3585,9 @@ function initModdedPageAgent() {
   const hasCustomModel = paCfg.mode === 'custom' && paCfg.apiKey && paCfg.model;
   const systemPrompt = buildEnhancedSystemPrompt(language);
 
-  // 延迟执行，给 demo 脚本的自动初始化留点时间（否则我们 destroy 会冲突）
+  // 延迟执行，给 demo 脚本的自动初始化留点时间
   setTimeout(() => {
-    let created = false;
-    let fallbackMsg = null;
-
-    // ======== 路径 1：用户配置了自定义 LLM → 直接销毁 + 重建（含 systemPrompt）========
+    // ======== 路径 1：用户配置了自定义 LLM → 销毁 demo + 重建（含 systemPrompt）========
     if (hasCustomModel) {
       try {
         if (window.agent && typeof window.agent.destroy === 'function') {
@@ -3552,48 +3605,18 @@ function initModdedPageAgent() {
           },
           systemPrompt
         });
-        created = true;
         toast('✅ Page-Agent 魔改版（自定义 LLM · 工具函数优先）已启动', 'success', 2800);
+        return;
       } catch (err) {
-        fallbackMsg = '自定义 LLM 初始化失败：' + (err && err.message ? err.message : err);
-        console.warn('[Modded PA] 路径 1 失败：', err);
+        console.warn('[Modded PA] 自定义 LLM 初始化失败，保留 demo agent + 请求劫持：', err);
+        // 失败了也没关系，请求劫持已经生效，demo agent 的 LLM 请求会被注入 system prompt
       }
     }
 
-    // ======== 路径 2：无自定义 LLM → 不传参数 new PageAgent()，用 demo 内置免费 LLM ========
-    if (!created && !hasCustomModel) {
-      let tempAgent = null;
-      try {
-        // demo.js 的 PageAgent 类不传参数时会用内置免费 LLM 配置初始化
-        tempAgent = new window.PageAgent();
-      } catch (err) {
-        fallbackMsg = 'new PageAgent() 无参数初始化失败：' + (err && err.message ? err.message : err);
-        console.warn('[Modded PA] 路径 2 试重建失败，保留 demo agent：', err);
-        tempAgent = null;
-      }
-      if (tempAgent) {
-        // 试 new 成功 → 正式销毁老 agent，把 temp 转正
-        try {
-          if (window.agent && typeof window.agent.destroy === 'function') {
-            try { window.agent.destroy(); } catch(e){}
-          }
-          window.agent = tempAgent;
-          // 延迟清理重复面板，确保 tempAgent 挂上去了再扫描
-          setTimeout(cleanupDuplicatePaPanels, 200);
-          created = true;
-          toast('✅ Page-Agent 魔改版（免费 LLM · 工具函数已注入）已启动', 'success', 3200);
-        } catch (err2) {
-          fallbackMsg = '替换 agent 引用时出错：' + (err2 && err2.message ? err2.message : err2);
-          console.warn('[Modded PA] 路径 2：销毁/引用替换失败：', err2);
-        }
-      }
-    }
-
-    // ======== 回落提示 ========
-    if (!created && fallbackMsg) {
-      console.info('[Modded PA] 回落模式：工具函数仍可用。' + fallbackMsg);
-      toast('ℹ️ Page-Agent 魔改版：回落模式（工具函数已注入，增强指令走页面通道）', 'info', 4000);
-    }
+    // ======== 路径 2：无自定义 LLM → 保留 demo agent，靠请求劫持注入 system prompt ========
+    // demo agent 已经在用免费 LLM 工作了，我们不需要销毁它
+    // hookLlmRequestsForPageAgent() 已经在上面调用，会在每次 LLM 请求的 messages 前面注入工具函数列表 + 跳转规则
+    toast('✅ Page-Agent 魔改版（免费 LLM · 请求劫持注入增强指令）已启动', 'success', 3200);
   }, 500);
 }
 
@@ -4033,18 +4056,51 @@ function buildPaBookmarkletCode() {
         }, 350);
         return;
       }
-      /* === No custom LLM: 不传参数 new PageAgent()，用 demo 内置免费 LLM === */
-      if (!LLMCFG && window.PageAgent) {
-        setTimeout(function() {
-          var temp = null;
-          try { temp = new window.PageAgent(); }
-          catch(err) { console.warn('[Modded PA Bookmarklet] new PageAgent() failed, keep demo agent:', err); temp = null; }
-          if (temp) {
-            try { if (window.agent && typeof window.agent.destroy === 'function') { try { window.agent.destroy(); } catch(e){} } } catch(_){}
-            window.agent = temp;
-            setTimeout(cleanupDupPanels, 200);
-          }
-        }, 350);
+      /* === No custom LLM: 保留 demo agent（免费 LLM），通过请求劫持注入 system prompt === */
+      if (!LLMCFG) {
+        /* 劫持 fetch/XHR，在 LLM 请求的 messages 前面注入增强 system prompt */
+        if (!window.__PA_LLM_HOOKED__) {
+          window.__PA_LLM_HOOKED__ = true;
+          var origFetch = window.fetch;
+          window.fetch = function(input, init) {
+            try {
+              if (init && init.body && typeof init.body === 'string') {
+                var body = JSON.parse(init.body);
+                if (body.messages && Array.isArray(body.messages) && !body.__paSysInjected) {
+                  var hasOurs = false;
+                  for (var i = 0; i < body.messages.length; i++) {
+                    if (body.messages[i].role === 'system' && typeof body.messages[i].content === 'string' && body.messages[i].content.indexOf('PA_UTILS') >= 0) { hasOurs = true; break; }
+                  }
+                  if (!hasOurs) { body.messages.unshift({ role: 'system', content: ENH_SP }); }
+                  body.__paSysInjected = true;
+                  init.body = JSON.stringify(body);
+                }
+              }
+            } catch(e) {}
+            return origFetch.call(this, input, init);
+          };
+          var origOpen = XMLHttpRequest.prototype.open;
+          var origSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function(method, url) { this.__paUrl = url; return origOpen.apply(this, arguments); };
+          XMLHttpRequest.prototype.send = function(body) {
+            try {
+              if (typeof body === 'string' && body.length > 0) {
+                var parsed = JSON.parse(body);
+                if (parsed.messages && Array.isArray(parsed.messages) && !parsed.__paSysInjected) {
+                  var hasOurs2 = false;
+                  for (var j = 0; j < parsed.messages.length; j++) {
+                    if (parsed.messages[j].role === 'system' && typeof parsed.messages[j].content === 'string' && parsed.messages[j].content.indexOf('PA_UTILS') >= 0) { hasOurs2 = true; break; }
+                  }
+                  if (!hasOurs2) { parsed.messages.unshift({ role: 'system', content: ENH_SP }); }
+                  parsed.__paSysInjected = true;
+                  body = JSON.stringify(parsed);
+                }
+              }
+            } catch(e) {}
+            return origSend.call(this, body);
+          };
+        }
+        /* demo agent 已经用免费 LLM 在工作了，不需要销毁重建 */
       }
     };
     document.head.appendChild(s);
