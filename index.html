@@ -3118,30 +3118,41 @@ function findPageAgentPanel() {
   return null;
 }
 
+// Page-Agent 双源 fallback 地址（unpkg → jsdelivr → npmmirror）
+const PA_SCRIPT_SOURCES = [
+  'https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js',
+  'https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js',
+  'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js'
+];
+function loadPaScript(onload, onerror) {
+  let i = 0;
+  (function next() {
+    if (i >= PA_SCRIPT_SOURCES.length) { if (onerror) onerror(); return; }
+    const s = document.createElement('script');
+    s.crossOrigin = 'anonymous';
+    s.src = PA_SCRIPT_SOURCES[i++];
+    s.onerror = next;
+    s.onload = () => { if (onload) onload(s); };
+    document.body.appendChild(s);
+  })();
+}
+
 // 重新加载 Page-Agent demo 脚本（面板被关闭后调用，无需刷新页面）
 function reloadPageAgent() {
   if (paReloading) return;
   paReloading = true;
-  // 移除旧脚本（如果存在）
   const oldScript = document.querySelector('script[src*="page-agent"]');
   if (oldScript) oldScript.remove();
   paPanel = null;
   paPanelHidden = false;
-  // 重新注入 demo 脚本，它会自动创建新面板
-  const s = document.createElement('script');
-  s.src = 'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js';
-  s.crossOrigin = 'anonymous';
-  s.onload = () => {
+  loadPaScript(() => {
     paReloading = false;
-    // 等面板渲染后缓存引用
     setTimeout(() => { paPanel = findPageAgentPanel(); }, 500);
     toast('Page-Agent 已重新加载', 'success', 1500);
-  };
-  s.onerror = () => {
+  }, () => {
     paReloading = false;
     toast('Page-Agent 加载失败，请检查网络', 'error');
-  };
-  document.body.appendChild(s);
+  });
 }
 
 function togglePageAgentPanel() {
@@ -3215,13 +3226,7 @@ function setupPaJumpBtns() {
   });
 }
 
-// 构建注入脚本：包含 3 段
-//   1) 防重复注入：已注入则 toast 提示
-//   2) 移除旧面板（可能用户点了两次）
-//   3) 动态插入 <script> 加载 page-agent demo.js
-//   4) 自定义模式时，使用 window.PA_LLM_CONFIG 让自定义 LLM 生效（等页面自动初始化完成后替换 LLM）
 function buildPaBookmarkletCode() {
-  // 自定义 LLM 配置（只有模式为 custom 且必填项齐全才携带）
   let llmCfgJson = 'null';
   const paCfg = state?.paCfg;
   if (paCfg && paCfg.mode === 'custom' && paCfg.provider && paCfg.apiKey && paCfg.model) {
@@ -3244,44 +3249,57 @@ function buildPaBookmarkletCode() {
   if (existing) existing.remove();
   var oldRoot = document.getElementById('__page_agent_el__');
   if (oldRoot) oldRoot.remove();
-  var s = document.createElement('script');
-  s.src = 'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js';
-  s.crossOrigin = 'anonymous';
-  s.onload = function() {
-    if (LLMCFG && window.PageAgent) {
-      setTimeout(function() {
-        try {
-          // 尝试销毁自动初始化的 agent，并重新用自定义配置创建
-          if (window.agent && typeof window.agent.destroy === 'function') { try { window.agent.destroy(); } catch(e){} }
-          window.agent = new window.PageAgent({
-            language: 'zh-CN',
-            model: {
-              provider: LLMCFG.provider,
-              baseUrl: LLMCFG.baseUrl,
-              apiKey: LLMCFG.apiKey,
-              model: LLMCFG.model,
-              temperature: LLMCFG.temperature
-            }
-          });
-        } catch(err) {
-          console.warn('[Page-Agent] 自定义 LLM 初始化失败，回退到 Demo 免费 LLM：', err);
-        }
-      }, 300);
-    }
-  };
-  document.head.appendChild(s);
-  setTimeout(function(){
-    var note = document.createElement('div');
-    note.style.cssText='position:fixed;left:50%;bottom:120px;transform:translateX(-50%);padding:10px 18px;background:rgba(22,25,38,.9);color:#e6e8f0;border:1px solid rgba(255,255,255,.1);border-radius:999px;font-size:13px;z-index:2147483645;backdrop-filter:blur(8px);box-shadow:0 10px 32px rgba(0,0,0,.35);animation:pa-popin .3s ease;';
-    var styleEl = document.createElement('style');
-    styleEl.textContent = '@keyframes pa-popin { from { opacity:0; transform:translateX(-50%) translateY(10px);} to { opacity:1; transform:translateX(-50%) translateY(0);} }';
-    document.head.appendChild(styleEl);
-    note.textContent = 'Page-Agent 已启动，右下角面板与 AI 对话';
-    document.body.appendChild(note);
-    setTimeout(function(){ if (note.parentNode) note.parentNode.removeChild(note); }, 3500);
-  }, 400);
+  var sources = [
+    'https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js',
+    'https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js',
+    'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js'
+  ];
+  var si = 0;
+  function tryLoad() {
+    if (si >= sources.length) { showNote('Page-Agent 脚本加载失败，请检查网络'); return; }
+    var s = document.createElement('script');
+    s.crossOrigin = 'anonymous';
+    s.src = sources[si];
+    s.onerror = function() { si++; tryLoad(); };
+    s.onload = function() {
+      showNote('Page-Agent 已启动，右下角面板与 AI 对话');
+      if (LLMCFG && window.PageAgent) {
+        setTimeout(function() {
+          try {
+            if (window.agent && typeof window.agent.destroy === 'function') { try { window.agent.destroy(); } catch(e){} }
+            window.agent = new window.PageAgent({
+              language: 'zh-CN',
+              model: {
+                provider: LLMCFG.provider,
+                baseUrl: LLMCFG.baseUrl,
+                apiKey: LLMCFG.apiKey,
+                model: LLMCFG.model,
+                temperature: LLMCFG.temperature
+              }
+            });
+          } catch(err) {
+            console.warn('[Page-Agent] custom LLM failed, fallback to demo:', err);
+          }
+        }, 300);
+      }
+    };
+    document.head.appendChild(s);
+  }
+  function showNote(text) {
+    setTimeout(function(){
+      var note = document.createElement('div');
+      note.style.cssText='position:fixed;left:50%;bottom:120px;transform:translateX(-50%);padding:10px 18px;background:rgba(22,25,38,.9);color:#e6e8f0;border:1px solid rgba(255,255,255,.1);border-radius:999px;font-size:13px;z-index:2147483645;backdrop-filter:blur(8px);box-shadow:0 10px 32px rgba(0,0,0,.35);animation:pa-popin .3s ease;';
+      var styleEl = document.createElement('style');
+      styleEl.textContent = '@keyframes pa-popin { from { opacity:0; transform:translateX(-50%) translateY(10px);} to { opacity:1; transform:translateX(-50%) translateY(0);} }';
+      document.head.appendChild(styleEl);
+      note.textContent = text;
+      document.body.appendChild(note);
+      setTimeout(function(){ if (note.parentNode) note.parentNode.removeChild(note); }, 3500);
+    }, 400);
+  }
+  tryLoad();
 })();
-  `.trim().replace(/\s+/g, ' ');
+  `.trim().replace(/[\r\n\t]+\s*/g, ' ');
   return 'javascript:' + encodeURIComponent(code);
 }
 
@@ -3291,8 +3309,12 @@ init();
 const ks = document.createElement('style');
 ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
 document.head.appendChild(ks);
+// 动态加载 Page-Agent demo 脚本（双源 fallback，避免单个 CDN 不通）
+if (window.addEventListener) {
+  window.addEventListener('load', () => loadPaScript());
+} else {
+  loadPaScript();
+}
 </script>
-<!-- Page-Agent demo（阿里巴巴开源 GUI Agent，自带免费测试 LLM，仅供评估） -->
-<script src="https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js" crossorigin="anonymous"></script>
 </body>
 </html>
