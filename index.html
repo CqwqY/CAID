@@ -1915,8 +1915,10 @@ a:hover { text-decoration: underline; }
 })();
 
 // ============ Utilities ============
-const $ = (sel, el = document) => el.querySelector(sel);
-const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+// 注意：不要用全局名 `$`，因为主网站（graduate.dpdns.org）可能已经声明过 const/let $，
+// 跨 <script> 在同一全局词法作用域会报 "Identifier '$' has already been declared"。
+const caidQs = (sel, el = document) => el.querySelector(sel);
+const caidQsa = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const debounce = (fn, ms = 200) => {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -2444,7 +2446,7 @@ function toast(msg, type = 'info', dur = 2500) {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = msg;
-  $('#toastContainer').appendChild(el);
+  caidQs('#toastContainer').appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity 0.3s';
     el.style.opacity = '0';
@@ -2455,8 +2457,8 @@ function toast(msg, type = 'info', dur = 2500) {
 // ============ Clock & Greeting ============
 function updateClock() {
   const now = new Date();
-  $('#clockTime').textContent = fmtTime(now);
-  $('#clockDate').textContent = fmtDate(now);
+  caidQs('#clockTime').textContent = fmtTime(now);
+  caidQs('#clockDate').textContent = fmtDate(now);
   const h = now.getHours();
   let g = '继续加油！';
   if (h < 6) g = '夜深了，注意休息 🌙';
@@ -2466,7 +2468,7 @@ function updateClock() {
   else if (h < 18) g = '下午好，专注工作 ✨';
   else if (h < 22) g = '晚上好，辛苦了 ☕';
   else g = '夜深了，早点休息 🌙';
-  $('#clockGreeting').textContent = g;
+  caidQs('#clockGreeting').textContent = g;
 }
 
 // ============ Default Data ============
@@ -2509,7 +2511,7 @@ const state = {
 
 // ============ Shortcuts (Top Blue Bar) ============
 function renderShortcuts() {
-  const bar = $('#shortcutBar');
+  const bar = caidQs('#shortcutBar');
   bar.innerHTML = '';
 
   // 空状态提示
@@ -2614,17 +2616,17 @@ function renderShortcuts() {
 
 function openShortcutModal(sc = null) {
   state.editingShortcut = sc;
-  $('#shortcutModalTitle').textContent = sc ? '编辑快捷入口' : '添加快捷入口';
-  $('#scName').value = sc?.name || '';
-  $('#scIcon').value = sc?.icon || '';
-  $('#scUrl').value = sc?.url || '';
-  $('#scColor').value = sc?.color || '#58a6ff';
+  caidQs('#shortcutModalTitle').textContent = sc ? '编辑快捷入口' : '添加快捷入口';
+  caidQs('#scName').value = sc?.name || '';
+  caidQs('#scIcon').value = sc?.icon || '';
+  caidQs('#scUrl').value = sc?.url || '';
+  caidQs('#scColor').value = sc?.color || '#58a6ff';
   openModal('shortcutModal');
 }
 
-$('#saveShortcutBtn').addEventListener('click', () => {
-  const name = $('#scName').value.trim();
-  let url = $('#scUrl').value.trim();
+caidQs('#saveShortcutBtn').addEventListener('click', () => {
+  const name = caidQs('#scName').value.trim();
+  let url = caidQs('#scUrl').value.trim();
   if (!name) return toast('请输入名称','warn');
   if (!url) return toast('请输入 URL','warn');
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
@@ -2632,8 +2634,8 @@ $('#saveShortcutBtn').addEventListener('click', () => {
     id: state.editingShortcut?.id || uid(),
     name,
     url,
-    icon: $('#scIcon').value.trim() || 'globe',
-    color: $('#scColor').value,
+    icon: caidQs('#scIcon').value.trim() || 'globe',
+    color: caidQs('#scColor').value,
   };
   if (state.editingShortcut) {
     const i = state.shortcuts.findIndex(s => s.id === sc.id);
@@ -2649,7 +2651,7 @@ $('#saveShortcutBtn').addEventListener('click', () => {
 
 // ============ Context Menu ============
 function showCtxMenu(x, y, items) {
-  const menu = $('#ctxMenu');
+  const menu = caidQs('#ctxMenu');
   menu.innerHTML = '';
   items.forEach(it => {
     if (it.sep) {
@@ -2670,18 +2672,18 @@ function showCtxMenu(x, y, items) {
   refreshIcons();
   setTimeout(() => document.addEventListener('click', hideCtxMenu, { once: true }), 0);
 }
-function hideCtxMenu() { $('#ctxMenu').classList.remove('open'); }
+function hideCtxMenu() { caidQs('#ctxMenu').classList.remove('open'); }
 
 // ============ Modals ============
 function openModal(id, onOpen) {
-  const m = $('#' + id);
+  const m = caidQs('#' + id);
   m.classList.add('open');
   document.body.style.overflow = 'hidden';
   if (onOpen) onOpen();
   refreshIcons();
 }
 function closeModal(id) {
-  $('#' + id).classList.remove('open');
+  caidQs('#' + id).classList.remove('open');
   document.body.style.overflow = '';
 }
 document.addEventListener('click', (e) => {
@@ -2699,18 +2701,18 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Settings Tabs
-$('#settingsTabs').addEventListener('click', (e) => {
+caidQs('#settingsTabs').addEventListener('click', (e) => {
   const t = e.target.closest('.modal-tab');
   if (!t) return;
-  $$('#settingsTabs .modal-tab').forEach(x => x.classList.remove('active'));
+  caidQsa('#settingsTabs .modal-tab').forEach(x => x.classList.remove('active'));
   t.classList.add('active');
   const name = t.dataset.tab;
-  $$('.settings-panel').forEach(p => p.style.display = p.dataset.panel === name ? '' : 'none');
+  caidQsa('.settings-panel').forEach(p => p.style.display = p.dataset.panel === name ? '' : 'none');
 });
 
 // ============ Search Engine ============
-const searchInput = $('#searchInput');
-const suggestionsEl = $('#suggestions');
+const searchInput = caidQs('#searchInput');
+const suggestionsEl = caidQs('#suggestions');
 
 async function fetchBingSuggestions(q) {
   return new Promise((resolve) => {
@@ -2815,7 +2817,7 @@ searchInput.addEventListener('input', () => {
   updateIntentHint();
 });
 searchInput.addEventListener('focus', () => { updateSuggestions(); updateIntentHint(); });
-$('#searchGoBtn').addEventListener('click', () => executeSearch(searchInput.value));
+caidQs('#searchGoBtn').addEventListener('click', () => executeSearch(searchInput.value));
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrapper')) suggestionsEl.classList.remove('open');
 });
@@ -2832,7 +2834,7 @@ suggestionsEl.addEventListener('click', (e) => {
 
 // Keyboard nav
 searchInput.addEventListener('keydown', (e) => {
-  const items = $$('.suggestion-item');
+  const items = caidQsa('.suggestion-item');
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     if (!suggestionsEl.classList.contains('open')) { updateSuggestions(); return; }
@@ -2848,7 +2850,7 @@ searchInput.addEventListener('keydown', (e) => {
   } else if (e.key === 'Escape') {
     suggestionsEl.classList.remove('open');
     searchInput.value = '';
-    $('#intentHint').textContent = '';
+    caidQs('#intentHint').textContent = '';
   } else if (e.key === 'Enter') {
     e.preventDefault();
     const selected = state.suggestionIdx >= 0 ? state.suggestions[state.suggestionIdx] : null;
@@ -2871,12 +2873,12 @@ function updateSugSelection(items) {
 }
 
 // ============ Mode Bar ============
-$$('.mode-pill').forEach(p => {
+caidQsa('.mode-pill').forEach(p => {
   p.addEventListener('click', () => setSearchMode(p.dataset.mode));
 });
 function setSearchMode(m) {
   state.searchMode = m;
-  $$('.mode-pill').forEach(p => p.classList.toggle('active', p.dataset.mode === m));
+  caidQsa('.mode-pill').forEach(p => p.classList.toggle('active', p.dataset.mode === m));
   updateIntentHint();
 }
 function cycleSearchMode() {
@@ -2898,7 +2900,7 @@ function executeSearch(q) {
     window.open(url, '_blank');
     addHistory(trimmed, 'nav', url);
     searchInput.value = '';
-    $('#intentHint').textContent = '';
+    caidQs('#intentHint').textContent = '';
     return;
   }
   // 命令识别："帮我搜一下 XXX"
@@ -2908,7 +2910,7 @@ function executeSearch(q) {
     runAIAnswer(query, true); // true = 搜索模式
     addHistory(query, 'ai');
     searchInput.value = '';
-    $('#intentHint').textContent = '';
+    caidQs('#intentHint').textContent = '';
     return;
   }
   // 命令识别："保存 XXX" 快捷保存代码片段
@@ -2917,7 +2919,7 @@ function executeSearch(q) {
     const text = saveCmd[1].trim();
     openSnippetModal(null, { title: '快速保存', code: text, lang: 'text' });
     searchInput.value = '';
-    $('#intentHint').textContent = '';
+    caidQs('#intentHint').textContent = '';
     toast('已打开保存面板', 'info');
     return;
   }
@@ -2931,12 +2933,12 @@ function executeSearch(q) {
     addHistory(trimmed, 'ai');
   }
   searchInput.value = '';
-  $('#intentHint').textContent = '';
+  caidQs('#intentHint').textContent = '';
 }
 
 function updateIntentHint() {
   const q = searchInput.value.trim();
-  const hint = $('#intentHint');
+  const hint = caidQs('#intentHint');
   if (!q) { hint.innerHTML = ''; return; }
   // 命令识别
   if (/^(?:帮我搜一下|帮我搜|搜一下|搜索)\s/i.test(q)) {
@@ -2964,7 +2966,7 @@ function historyModeLabel(m) {
   return { bing:'Bing', ai:'AI回答', nav:'导航' }[m] || m;
 }
 function renderHistory(filter = '') {
-  const list = $('#historyList');
+  const list = caidQs('#historyList');
   let items = state.searchHistory;
   if (filter) {
     const f = filter.toLowerCase();
@@ -3012,8 +3014,8 @@ function renderHistory(filter = '') {
   });
   refreshIcons();
 }
-$('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
-$('#clearHistoryBtn').addEventListener('click', () => {
+caidQs('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
+caidQs('#clearHistoryBtn').addEventListener('click', () => {
   if (!confirm('确认清空所有搜索历史？此操作不可恢复。')) return;
   state.searchHistory = [];
   LS.set('searchHistory', []);
@@ -3026,10 +3028,10 @@ $('#clearHistoryBtn').addEventListener('click', () => {
 // ============ AI Answer ============
 async function runAIAnswer(q, isSearch = false) {
   openAnswerPanel();
-  const body = $('#answerBody');
+  const body = caidQs('#answerBody');
   const cfg = state.llmCfg;
   const providerLabel = { dashscope:'通义千问', openai:'OpenAI', ollama:'Ollama', custom:'自定义' };
-  $('#answerModel').textContent = (isSearch ? 'AI 搜索 · ' : '') + (providerLabel[cfg.provider] || 'LLM');
+  caidQs('#answerModel').textContent = (isSearch ? 'AI 搜索 · ' : '') + (providerLabel[cfg.provider] || 'LLM');
   body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--muted);"><i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>${isSearch ? '正在搜索并总结…' : '正在生成回答…'}</div>`;
   refreshIcons();
 
@@ -3059,7 +3061,7 @@ async function runAIAnswer(q, isSearch = false) {
   if (!cfg.apiKey) {
     // Rule engine fallback
     body.innerHTML = ruleEngineFallback(q);
-    if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
     addSaveButtons(body);
     return;
   }
@@ -3118,7 +3120,7 @@ async function runAIAnswer(q, isSearch = false) {
     }
     if (!fullMd) throw new Error('无返回内容');
     body.innerHTML = marked.parse(fullMd);
-    if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
     // 为代码块和链接添加"保存"按钮
     addSaveButtons(body);
   } catch (e) {
@@ -3137,7 +3139,7 @@ async function runAIAnswer(q, isSearch = false) {
       <div style="color:var(--muted);font-size:12px;margin-bottom:8px;">🔽 以下为本地规则引擎兜底回答（无 LLM）：</div>
       ${ruleEngineFallback(q)}
     `;
-    if (window.hljs) $$('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
     addSaveButtons(body);
   }
 }
@@ -3313,8 +3315,8 @@ const created = await request('/api/users', {
   return ans;
 }
 
-function openAnswerPanel() { $('#answerPanel').classList.add('open'); }
-$('#closeAnswer').addEventListener('click', () => $('#answerPanel').classList.remove('open'));
+function openAnswerPanel() { caidQs('#answerPanel').classList.add('open'); }
+caidQs('#closeAnswer').addEventListener('click', () => caidQs('#answerPanel').classList.remove('open'));
 
 // ============ Snippets ============
 // 语义搜索：中英文同义词映射表
@@ -3371,7 +3373,7 @@ function fuzzyMatch(text, query) {
 }
 
 async function renderSnippets(filter = '') {
-  const list = $('#snippetList');
+  const list = caidQs('#snippetList');
   let items = await db.snippets.orderBy('createdAt').reverse().toArray().catch(() => []);
   if (filter) {
     // 语义搜索：扩展关键词 + 模糊匹配
@@ -3385,7 +3387,7 @@ async function renderSnippets(filter = '') {
       return terms.some(term => haystack.includes(term) || fuzzyMatch(haystack, term));
     });
   }
-  $('#snippetCount').textContent = items.length;
+  caidQs('#snippetCount').textContent = items.length;
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state"><i data-lucide="file-code"></i>暂无代码片段</div>`;
     refreshIcons();
@@ -3434,22 +3436,22 @@ async function renderSnippets(filter = '') {
   });
   refreshIcons();
 }
-$('#snippetSearch').addEventListener('input', (e) => renderSnippets(e.target.value));
-$('#addSnippetBtn').addEventListener('click', () => openSnippetModal());
+caidQs('#snippetSearch').addEventListener('input', (e) => renderSnippets(e.target.value));
+caidQs('#addSnippetBtn').addEventListener('click', () => openSnippetModal());
 function openSnippetModal(s = null, prefill = null) {
   state.editingSnippet = s;
-  $('#snippetModalTitle').textContent = s ? '编辑代码片段' : (prefill ? '保存代码片段' : '添加代码片段');
-  $('#snTitle').value = s?.title || prefill?.title || '';
-  $('#snLang').value = s?.lang || prefill?.lang || 'javascript';
-  $('#snTags').value = (s?.tags||[]).join(', ') || (prefill?.tags||[]).join(', ');
-  $('#snCode').value = s?.code || prefill?.code || '';
+  caidQs('#snippetModalTitle').textContent = s ? '编辑代码片段' : (prefill ? '保存代码片段' : '添加代码片段');
+  caidQs('#snTitle').value = s?.title || prefill?.title || '';
+  caidQs('#snLang').value = s?.lang || prefill?.lang || 'javascript';
+  caidQs('#snTags').value = (s?.tags||[]).join(', ') || (prefill?.tags||[]).join(', ');
+  caidQs('#snCode').value = s?.code || prefill?.code || '';
   openModal('snippetModal');
 }
-$('#saveSnippetBtn').addEventListener('click', async () => {
-  const title = $('#snTitle').value.trim();
-  const lang = $('#snLang').value;
-  const tags = $('#snTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
-  const code = $('#snCode').value;
+caidQs('#saveSnippetBtn').addEventListener('click', async () => {
+  const title = caidQs('#snTitle').value.trim();
+  const lang = caidQs('#snLang').value;
+  const tags = caidQs('#snTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  const code = caidQs('#snCode').value;
   if (!title) return toast('请输入标题','warn');
   if (!code) return toast('请输入代码','warn');
   if (state.editingSnippet) {
@@ -3472,17 +3474,17 @@ function addTodoItem(text, priority = 'mid') {
   updateCounts();
 }
 function renderTodos(filter = '') {
-  const list = $('#todoList');
+  const list = caidQs('#todoList');
   let items = [...state.todos];
   if (filter) {
     const f = filter.toLowerCase();
     items = items.filter(t => t.text.toLowerCase().includes(f));
   }
-  $('#todoCount').textContent = items.length;
+  caidQs('#todoCount').textContent = items.length;
   const total = state.todos.length;
   const done = state.todos.filter(t => t.done).length;
-  $('#todoProgressText').textContent = `${done} / ${total}`;
-  $('#todoProgressFill').style.width = (total ? (done/total*100) : 0) + '%';
+  caidQs('#todoProgressText').textContent = `${done} / ${total}`;
+  caidQs('#todoProgressFill').style.width = (total ? (done/total*100) : 0) + '%';
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state"><i data-lucide="check-square"></i>暂无待办任务，加一条试试？</div>`;
     refreshIcons();
@@ -3517,18 +3519,18 @@ function renderTodos(filter = '') {
   });
   refreshIcons();
 }
-$('#addTodoBtn').addEventListener('click', () => {
-  const v = $('#todoInput').value.trim();
+caidQs('#addTodoBtn').addEventListener('click', () => {
+  const v = caidQs('#todoInput').value.trim();
   if (!v) return;
-  addTodoItem(v, $('#todoPriority').value);
-  $('#todoInput').value = '';
+  addTodoItem(v, caidQs('#todoPriority').value);
+  caidQs('#todoInput').value = '';
 });
-$('#todoInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { $('#addTodoBtn').click(); e.preventDefault(); }
+caidQs('#todoInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { caidQs('#addTodoBtn').click(); e.preventDefault(); }
 });
 
 // ============ Component Collapse ============
-$$('.comp-card').forEach(card => {
+caidQsa('.comp-card').forEach(card => {
   const id = card.dataset.comp;
   if (state.uiPrefs.collapsed?.[id]) card.classList.add('collapsed');
   card.querySelector('.comp-header').addEventListener('click', () => {
@@ -3542,38 +3544,38 @@ $$('.comp-card').forEach(card => {
 // ============ Counts ============
 async function updateCounts() {
   try {
-    $('#snippetCount').textContent = await db.snippets.count() || 0;
+    caidQs('#snippetCount').textContent = await db.snippets.count() || 0;
   } catch(e){}
-  $('#historyCount').textContent = state.searchHistory.length;
-  $('#todoCount').textContent = state.todos.length;
+  caidQs('#historyCount').textContent = state.searchHistory.length;
+  caidQs('#todoCount').textContent = state.todos.length;
 }
 
 // ============ Settings ============
 function fillSettingsForm() {
   const c = state.llmCfg;
-  $('#cfgProvider').value = c.provider || 'dashscope';
-  $('#cfgBaseUrl').value = c.baseUrl || '';
-  $('#cfgApiKey').value = c.apiKey || '';
-  $('#cfgModel').value = c.model || '';
-  $('#cfgTemp').value = c.temperature ?? 0.7;
-  $('#cfgProvider').dispatchEvent(new Event('change'));
+  caidQs('#cfgProvider').value = c.provider || 'dashscope';
+  caidQs('#cfgBaseUrl').value = c.baseUrl || '';
+  caidQs('#cfgApiKey').value = c.apiKey || '';
+  caidQs('#cfgModel').value = c.model || '';
+  caidQs('#cfgTemp').value = c.temperature ?? 0.7;
+  caidQs('#cfgProvider').dispatchEvent(new Event('change'));
   fillPageAgentForm();
 }
 // Page-Agent 表单填充
 function fillPageAgentForm() {
   const pa = state.paCfg;
-  $('#paMode').value = pa.mode || 'demo';
-  $('#paProvider').value = pa.provider || 'dashscope';
-  $('#paBaseUrl').value = pa.baseUrl || '';
-  $('#paApiKey').value = pa.apiKey || '';
-  $('#paModel').value = pa.model || '';
-  $('#paLanguage').value = pa.language || 'zh-CN';
+  caidQs('#paMode').value = pa.mode || 'demo';
+  caidQs('#paProvider').value = pa.provider || 'dashscope';
+  caidQs('#paBaseUrl').value = pa.baseUrl || '';
+  caidQs('#paApiKey').value = pa.apiKey || '';
+  caidQs('#paModel').value = pa.model || '';
+  caidQs('#paLanguage').value = pa.language || 'zh-CN';
   togglePaCustomCfg(pa.mode || 'demo');
 }
 // Demo / 自定义 模式切换
 function togglePaCustomCfg(mode) {
-  const customBlock = $('#paCustomCfg');
-  const hint = $('#paModeHint');
+  const customBlock = caidQs('#paCustomCfg');
+  const hint = caidQs('#paModeHint');
   if (mode === 'custom') {
     customBlock.style.display = '';
     hint.textContent = '自定义模式：Page-Agent 将使用您配置的 LLM，需要重新加载页面生效。';
@@ -3582,9 +3584,9 @@ function togglePaCustomCfg(mode) {
     hint.textContent = 'Demo 模式无需任何配置，页面右下角已自动出现 Page-Agent 面板。';
   }
 }
-$('#paMode').addEventListener('change', (e) => togglePaCustomCfg(e.target.value));
+caidQs('#paMode').addEventListener('change', (e) => togglePaCustomCfg(e.target.value));
 // Page-Agent Provider 预设
-$('#paProvider').addEventListener('change', (e) => {
+caidQs('#paProvider').addEventListener('change', (e) => {
   const p = e.target.value;
   const presets = {
     dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' },
@@ -3593,10 +3595,10 @@ $('#paProvider').addEventListener('change', (e) => {
     custom: { baseUrl: '', model: '' },
   };
   const pr = presets[p];
-  if (!$('#paBaseUrl').value) $('#paBaseUrl').value = pr.baseUrl;
-  if (!$('#paModel').value) $('#paModel').value = pr.model;
+  if (!caidQs('#paBaseUrl').value) caidQs('#paBaseUrl').value = pr.baseUrl;
+  if (!caidQs('#paModel').value) caidQs('#paModel').value = pr.model;
 });
-$('#cfgProvider').addEventListener('change', (e) => {
+caidQs('#cfgProvider').addEventListener('change', (e) => {
   const p = e.target.value;
   const presets = {
     dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
@@ -3605,27 +3607,27 @@ $('#cfgProvider').addEventListener('change', (e) => {
     custom: { baseUrl: '', model: '' },
   };
   const pr = presets[p];
-  if (!$('#cfgBaseUrl').value) $('#cfgBaseUrl').value = pr.baseUrl;
-  if (!$('#cfgModel').value) $('#cfgModel').value = pr.model;
+  if (!caidQs('#cfgBaseUrl').value) caidQs('#cfgBaseUrl').value = pr.baseUrl;
+  if (!caidQs('#cfgModel').value) caidQs('#cfgModel').value = pr.model;
 });
-$('#saveSettingsBtn').addEventListener('click', () => {
+caidQs('#saveSettingsBtn').addEventListener('click', () => {
   // AI 回答 LLM 配置
   state.llmCfg = {
-    provider: $('#cfgProvider').value,
-    baseUrl: $('#cfgBaseUrl').value.trim(),
-    apiKey: $('#cfgApiKey').value.trim(),
-    model: $('#cfgModel').value.trim(),
-    temperature: parseFloat($('#cfgTemp').value) || 0.7,
+    provider: caidQs('#cfgProvider').value,
+    baseUrl: caidQs('#cfgBaseUrl').value.trim(),
+    apiKey: caidQs('#cfgApiKey').value.trim(),
+    model: caidQs('#cfgModel').value.trim(),
+    temperature: parseFloat(caidQs('#cfgTemp').value) || 0.7,
   };
   LS.set('llmCfg', state.llmCfg);
   // Page-Agent 配置（独立保存）
   state.paCfg = {
-    mode: $('#paMode').value,
-    provider: $('#paProvider').value,
-    baseUrl: $('#paBaseUrl').value.trim(),
-    apiKey: $('#paApiKey').value.trim(),
-    model: $('#paModel').value.trim(),
-    language: $('#paLanguage').value,
+    mode: caidQs('#paMode').value,
+    provider: caidQs('#paProvider').value,
+    baseUrl: caidQs('#paBaseUrl').value.trim(),
+    apiKey: caidQs('#paApiKey').value.trim(),
+    model: caidQs('#paModel').value.trim(),
+    language: caidQs('#paLanguage').value,
   };
   LS.set('paCfg', state.paCfg);
   // 同步备份到 IndexedDB（防止 localStorage 丢失）
@@ -3638,15 +3640,15 @@ $('#saveSettingsBtn').addEventListener('click', () => {
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
-$('#testLLMBtn').addEventListener('click', async () => {
+caidQs('#testLLMBtn').addEventListener('click', async () => {
   const c = {
-    provider: $('#cfgProvider').value,
-    baseUrl: $('#cfgBaseUrl').value.trim(),
-    apiKey: $('#cfgApiKey').value.trim(),
-    model: $('#cfgModel').value.trim(),
+    provider: caidQs('#cfgProvider').value,
+    baseUrl: caidQs('#cfgBaseUrl').value.trim(),
+    apiKey: caidQs('#cfgApiKey').value.trim(),
+    model: caidQs('#cfgModel').value.trim(),
   };
   if (!c.apiKey) return toast('请先填入 API Key','warn');
-  const btn = $('#testLLMBtn');
+  const btn = caidQs('#testLLMBtn');
   const orig = btn.innerHTML;
   btn.innerHTML = `<i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>测试中…`;
   refreshIcons();
@@ -3667,7 +3669,7 @@ $('#testLLMBtn').addEventListener('click', async () => {
 });
 
 // Export
-$('#exportBtn').addEventListener('click', async () => {
+caidQs('#exportBtn').addEventListener('click', async () => {
   const out = { exportedAt: new Date().toISOString(), version: 1, localStorage: {}, indexedDB: {} };
   // localStorage
   for (let i = 0; i < localStorage.length; i++) {
@@ -3687,8 +3689,8 @@ $('#exportBtn').addEventListener('click', async () => {
   URL.revokeObjectURL(a.href);
   toast('导出完成','success');
 });
-$('#importBtn').addEventListener('click', () => $('#importFile').click());
-$('#importFile').addEventListener('change', (e) => {
+caidQs('#importBtn').addEventListener('click', () => caidQs('#importFile').click());
+caidQs('#importFile').addEventListener('change', (e) => {
   const f = e.target.files?.[0];
   if (!f) return;
   if (!confirm('导入将覆盖当前所有数据，确定继续？')) { e.target.value = ''; return; }
@@ -3714,7 +3716,7 @@ $('#importFile').addEventListener('change', (e) => {
       state.uiPrefs = LS.get('uiPrefs', { collapsed: {} });
       state.llmCfg = LS.get('llmCfg', DEFAULT_LLM_CFG);
       // Apply collapse state
-      $$('.comp-card').forEach(card => {
+      caidQsa('.comp-card').forEach(card => {
         const id = card.dataset.comp;
         card.classList.toggle('collapsed', !!state.uiPrefs.collapsed?.[id]);
       });
@@ -3731,7 +3733,7 @@ $('#importFile').addEventListener('change', (e) => {
   };
   r.readAsText(f);
 });
-$('#resetBtn').addEventListener('click', async () => {
+caidQs('#resetBtn').addEventListener('click', async () => {
   if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？')) return;
   if (!confirm('⚠️ 再次确认：数据将被永久删除，不可恢复！')) return;
   localStorage.clear();
