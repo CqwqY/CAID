@@ -1578,8 +1578,8 @@ a:hover { text-decoration: underline; }
       </div>
 
       <div class="mode-bar">
-        <button class="mode-pill active" data-mode="ai-ans"><i data-lucide="message-square-text"></i>AI 回答</button>
-        <button class="mode-pill" data-mode="bing"><i data-lucide="globe"></i>Bing 搜索</button>
+        <button class="mode-pill" data-mode="ai-ans"><i data-lucide="message-square-text"></i>AI 回答</button>
+        <button class="mode-pill active" data-mode="bing"><i data-lucide="globe"></i>Bing 搜索</button>
       </div>
       <div class="intent-hint" id="intentHint"></div>
 
@@ -2538,7 +2538,7 @@ const state = {
   uiPrefs: LS.get('uiPrefs', { collapsed: {} }),
   llmCfg: LS.get('llmCfg', DEFAULT_LLM_CFG),
   paCfg: LS.get('paCfg', DEFAULT_PA_CFG),
-  searchMode: 'ai-ans',
+  searchMode: 'bing',
   suggestionIdx: -1,
   suggestions: [],
   editingShortcut: null,
