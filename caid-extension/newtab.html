@@ -12,11 +12,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="lib/zod3.umd.js"></script>
 <script src="lib/zod-v4.umd.js"></script>
-<script src="vendor/lucide.js"></script>
-<script src="vendor/dexie.js"></script>
-<script src="vendor/marked.min.js"></script>
-<link rel="stylesheet" href="vendor/github-dark.min.css">
-<script src="vendor/highlight.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/highlight.min.js"></script>
 <style>
 :root {
   /* 深色 AI 感基础色板（炭黑+靛蓝） */
@@ -2680,6 +2680,14 @@ function renderShortcuts() {
   if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
   const btnSetHome = ctrl.querySelector('#btnSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
+  // 扩展桥：CAID 扩展 background 可直接切换本页副驾面板（仅在扩展内生效；公网无 chrome.runtime 时自动跳过）
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener(function (msg) {
+      if (msg && msg.type === 'CAID_TOGGLE_PANEL' && typeof togglePageAgentPanel === 'function') {
+        togglePageAgentPanel();
+      }
+    });
+  }
   setupPaBookmarklet();
   setupPaJumpBtns();
   injectPaUtilities();

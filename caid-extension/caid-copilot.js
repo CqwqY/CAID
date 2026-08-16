@@ -3,7 +3,7 @@
 // 关键：zod-v4 / page-agent 已由前序注入文件就位，这里直接用真实 Zod v4，无需 duck fallback。
 (function () {
   if (window.__CAID_BOOTED) {
-    var ex = document.getElementById('caidCopilot');
+    var ex = document.getElementById('caidExtCopilot');
     if (ex) ex.classList.add('open');
     return;
   }
@@ -27,35 +27,40 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  function openOptions() {
+    try { if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) { chrome.runtime.openOptionsPage(); return; } } catch (e) {}
+    try { window.open(chrome.runtime.getURL('options.html')); } catch (_) {}
+  }
+
   // ---------- 面板 UI（自带样式，不依赖宿主页 CSS）----------
   const STYLE = `
-#caidCopilot{position:fixed;top:0;right:0;width:400px;height:100vh;max-height:100vh;z-index:2147483647;background:#0f1722;color:#e6f1fb;font:13px/1.5 system-ui,sans-serif;display:flex;flex-direction:column;box-shadow:-6px 0 28px rgba(0,0,0,.45);border-left:1px solid #1f3650;font-family:inherit;}
-#caidCopilot *{box-sizing:border-box;}
-#caidCopilot .cp-head{padding:12px 14px;background:#10243b;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #1f3650;}
-#caidCopilot .cp-title{font-weight:600;font-size:14px;}
-#caidCopilot .cp-status{font-size:11px;color:#7fb0e0;}
-#caidCopilot .cp-close{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:#9fb6cf;font-size:16px;cursor:pointer;}
-#caidCopilot .cp-close:hover{background:#1f3650;}
-#caidCopilot .cp-api-info{padding:4px 14px;font-size:11px;color:#9fb6cf;background:#10243b;border-bottom:1px solid #1f3650;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-#caidCopilot .cp-api-badge{padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;}
-#caidCopilot .cp-api-badge.custom{background:#1f6feb;color:#fff;}
-#caidCopilot .cp-api-badge.free{background:#2a9d5c;color:#fff;}
-#caidCopilot .cp-api-badge.nokey{background:#7a3b3b;color:#fff;}
-#caidCopilot .cp-activity{padding:6px 14px;font-size:12px;color:#ffd479;min-height:18px;border-bottom:1px solid #16273c;}
-#caidCopilot .cp-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
-#caidCopilot .cp-bubble{padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word;max-width:100%;}
-#caidCopilot .cp-bubble-user{background:#16324f;align-self:flex-end;}
-#caidCopilot .cp-bubble-assistant{background:#13233a;}
-#caidCopilot .cp-evt-error{color:#ff8a8a;}
-#caidCopilot .cp-tool{display:inline-block;padding:1px 6px;border-radius:4px;background:#1f3650;color:#9fe1cb;font-size:11px;margin-right:4px;}
-#caidCopilot .cp-tool-call{padding:6px 8px;border-radius:8px;background:#0b2a22;color:#9fe1cb;font-size:11px;margin:0 14px 6px;word-break:break-word;}
-#caidCopilot .cp-code{margin:8px 14px;padding:8px;background:#08111c;border-radius:8px;color:#cfe;white-space:pre-wrap;font:11px/1.4 monospace;max-height:160px;overflow:auto;}
-#caidCopilot .cp-search{margin:8px 14px;padding:8px;border-radius:8px;background:#0b1a2a;font-size:12px;}
-#caidCopilot .cp-search a{color:#7fb0e0;}
-#caidCopilot .cp-tools{padding:0 0 8px;}
-#caidCopilot .cp-input-row{padding:10px 12px;border-top:1px solid #1f3650;display:flex;gap:8px;}
-#caidCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
-#caidCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}
+#caidExtCopilot{position:fixed;top:0;right:0;width:400px;height:100vh;max-height:100vh;z-index:2147483647;background:#0f1722;color:#e6f1fb;font:13px/1.5 system-ui,sans-serif;display:none;box-shadow:-6px 0 28px rgba(0,0,0,.45);border-left:1px solid #1f3650;font-family:inherit;}\n#caidExtCopilot.open{display:flex;flex-direction:column;}
+#caidExtCopilot *{box-sizing:border-box;}
+#caidExtCopilot .cp-head{padding:12px 14px;background:#10243b;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #1f3650;}
+#caidExtCopilot .cp-title{font-weight:600;font-size:14px;}
+#caidExtCopilot .cp-status{font-size:11px;color:#7fb0e0;}
+#caidExtCopilot .cp-close{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:#9fb6cf;font-size:16px;cursor:pointer;}
+#caidExtCopilot .cp-close:hover{background:#1f3650;}
+#caidExtCopilot .cp-api-info{padding:4px 14px;font-size:11px;color:#9fb6cf;background:#10243b;border-bottom:1px solid #1f3650;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+#caidExtCopilot .cp-api-badge{padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;}
+#caidExtCopilot .cp-api-badge.custom{background:#1f6feb;color:#fff;}
+#caidExtCopilot .cp-api-badge.free{background:#2a9d5c;color:#fff;}
+#caidExtCopilot .cp-api-badge.nokey{background:#7a3b3b;color:#fff;}
+#caidExtCopilot .cp-activity{padding:6px 14px;font-size:12px;color:#ffd479;min-height:18px;border-bottom:1px solid #16273c;}
+#caidExtCopilot .cp-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+#caidExtCopilot .cp-bubble{padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word;max-width:100%;}
+#caidExtCopilot .cp-bubble-user{background:#16324f;align-self:flex-end;}
+#caidExtCopilot .cp-bubble-assistant{background:#13233a;}
+#caidExtCopilot .cp-evt-error{color:#ff8a8a;}
+#caidExtCopilot .cp-tool{display:inline-block;padding:1px 6px;border-radius:4px;background:#1f3650;color:#9fe1cb;font-size:11px;margin-right:4px;}
+#caidExtCopilot .cp-tool-call{padding:6px 8px;border-radius:8px;background:#0b2a22;color:#9fe1cb;font-size:11px;margin:0 14px 6px;word-break:break-word;}
+#caidExtCopilot .cp-code{margin:8px 14px;padding:8px;background:#08111c;border-radius:8px;color:#cfe;white-space:pre-wrap;font:11px/1.4 monospace;max-height:160px;overflow:auto;}
+#caidExtCopilot .cp-search{margin:8px 14px;padding:8px;border-radius:8px;background:#0b1a2a;font-size:12px;}
+#caidExtCopilot .cp-search a{color:#7fb0e0;}
+#caidExtCopilot .cp-tools{padding:0 0 8px;}
+#caidExtCopilot .cp-input-row{padding:10px 12px;border-top:1px solid #1f3650;display:flex;gap:8px;}
+#caidExtCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
+#caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}
 `;
   function buildPanel() {
     const style = document.createElement('style');
@@ -63,12 +68,13 @@
     document.head.appendChild(style);
 
     const aside = document.createElement('aside');
-    aside.id = 'caidCopilot';
+    aside.id = 'caidExtCopilot';
     aside.className = 'open';
     aside.innerHTML =
       '<div class="cp-head">' +
         '<span class="cp-title">🤖 CAID 副驾</span>' +
         '<span class="cp-status" id="cpStatus">就绪</span>' +
+        '<button class="cp-close" id="cpSettings" title="副驾设置（LLM / 模型）">⚙</button>' +
         '<button class="cp-close" id="cpClose" title="关闭">×</button>' +
       '</div>' +
       '<div class="cp-api-info" id="cpApiInfo"></div>' +
@@ -395,6 +401,8 @@
       : !hasKey ? '<span class="cp-api-badge nokey">无 API Key</span>'
       : '<span class="cp-api-badge free">免费代理</span>';
     apiInfoEl.innerHTML = badge + '<span>' + cpEscapeHtml(config.model || '未知') + '</span>';
+    if (!hasKey) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = openOptions; }
+    else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
   function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); renderApiInfo(); }
   function renderActivity(detail) {
@@ -489,5 +497,7 @@
   }
   if (sendEl) sendEl.addEventListener('click', sendTask);
   if (inputEl) inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); } });
-  if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidCopilot'); if (cp) cp.classList.remove('open'); });
+  if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidExtCopilot'); if (cp) cp.classList.remove('open'); });
+  var settingsEl = document.getElementById('cpSettings');
+  if (settingsEl) settingsEl.addEventListener('click', openOptions);
 })();

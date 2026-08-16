@@ -21,7 +21,7 @@
 
     btn.addEventListener('click', function () {
       if (window.__CAID_BOOTED) {
-        var p = document.getElementById('caidCopilot');
+        var p = document.getElementById('caidExtCopilot');
         if (p) p.classList.add('open');
         return;
       }

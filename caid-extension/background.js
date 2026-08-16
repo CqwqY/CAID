@@ -12,11 +12,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // 点击工具栏图标 → 在当前活动标签启动副驾
 chrome.action.onClicked.addListener((tab) => {
-  if (tab && tab.id) bootCopilot(tab.id);
+  if (tab && tab.id) bootCopilot(tab.id, tab.url);
 });
 
-async function bootCopilot(tabId) {
+async function bootCopilot(tabId, tabUrl) {
   try {
+    // 主页（扩展自身 newtab）不注入第二套副驾，直接切换页面自带面板
+    if (tabUrl && tabUrl.indexOf('chrome-extension://') === 0) {
+      try { chrome.runtime.sendMessage({ type: 'CAID_TOGGLE_PANEL' }); } catch (e) {}
+      return;
+    }
     const stored = await chrome.storage.local.get(['caidLlm']);
     const llm = stored.caidLlm || {};
 
