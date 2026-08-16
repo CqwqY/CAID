@@ -2245,15 +2245,17 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
   /* === [CAID 显式工具清单 & AgentOutput JSON 强制格式对齐] —— LLM 提示词文本（注意下面两个变量是反引号字符串，不是 JS 注释，别加 /* 开头！）=== */
   const agentOutFmtZh = `
   【CAID 显式工具清单 · DeepSeek / 国产模型 必读】
-  Page-Agent 已在 tools 里额外注入了 4 个显式工具（customTools），你必须优先使用它们，
+  Page-Agent 已在 tools 里额外注入了 6 个显式工具（customTools），你必须优先使用它们，
   而不是在回答里输出"跳转到js"、"跳转到JavaScript"、"我会执行代码"等纯文本/伪代码。
   下面的工具列表 = Page-Agent 当前真正拥有并可调用的全部工具（action.key 必须从这里选，一个字母都不能错）：
     1. navigate_to_main_site     — 返回主网站(零参数)，action 键: navigate_to_main_site
     2. navigate_to_url            — 当前页跳转，action 键: navigate_to_url，参数: { "url": "https://..." }
     3. open_url_in_new_tab        — 新标签打开，action 键: open_url_in_new_tab，参数: { "url": "https://..." }
     4. execute_javascript         — 任意 JS 执行，action 键: execute_javascript，参数: { "script": "JS字符串" }
-    5. Page-Agent 内置工具: click / fill / scroll / drag / keyboard
-    6. Page-Agent 内置宏: done / evaluate —— 注意 evaluate 本质上就是 execute_javascript，功能等价，优先用显式名
+    5. search_web                 — 搜索网页(维基百科+搜索引擎)，action 键: search_web，参数: { "query": "搜索词" }
+    6. search_code                — 搜索代码(GitHub)，action 键: search_code，参数: { "query": "搜索词" }
+    7. Page-Agent 内置工具: click / fill / scroll / drag / keyboard
+    8. Page-Agent 内置宏: done / evaluate —— 注意 evaluate 本质上就是 execute_javascript，功能等价，优先用显式名
   你必须严格按照 Page-Agent MacroTool 要求的 JSON 结构输出，不要夹杂任何自然语言/Markdown/伪代码/三引号代码块。
   正确 JSON 结构（4 个字段全部必填，缺少任何一个字段都会导致 Parse 失败 → 你说的话会被原封不动显示给用户而不会执行工具）：
     {
@@ -2282,14 +2284,16 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
   【格式对齐结束 · 以上是强制要求】`;
   const agentOutFmtEn = `
   === CAID EXPLICIT TOOL LIST & AgentOutput JSON FORMAT (MANDATORY for DeepSeek / non-OpenAI models) ===
-  Page-Agent has injected 4 explicit customTools. You MUST use them instead of writing "navigate to js" in plain text.
+  Page-Agent has injected 6 explicit customTools. You MUST use them instead of writing "navigate to js" in plain text.
   COMPLETE ACTION KEYS YOU CAN CALL (any string outside this list → parse failure → shown raw to user):
     1. navigate_to_main_site     — go back to CAID workbench, no args. action key: navigate_to_main_site
     2. navigate_to_url            — navigate current tab. action key: navigate_to_url, args: { "url": "https://..." }
     3. open_url_in_new_tab        — open in new tab. action key: open_url_in_new_tab, args: { "url": "https://..." }
     4. execute_javascript         — run arbitrary JS. action key: execute_javascript, args: { "script": "string" }
-    5. (built-in) click / fill / scroll / drag / keyboard
-    6. (built-in macros) done / evaluate — evaluate is alias of execute_javascript, prefer explicit names.
+    5. search_web                 — search web (Wikipedia + search engines). action key: search_web, args: { "query": "text" }
+    6. search_code                — search code on GitHub. action key: search_code, args: { "query": "text" }
+    7. (built-in) click / fill / scroll / drag / keyboard
+    8. (built-in macros) done / evaluate — evaluate is alias of execute_javascript, prefer explicit names.
   You MUST output a single JSON object matching the MacroTool schema. NO natural language, NO markdown, NO code blocks.
   Correct structure (all fields required; omitting any → raw text output to user instead of tool invocation):
     {
@@ -4069,7 +4073,9 @@ const CP_TOOL_SCHEMAS = {
   execute_javascript: { type:'object', properties:{ script:{type:'string',description:'JavaScript code to execute on the page'} }, required:['script'] },
   navigate_to_url: { type:'object', properties:{ url:{type:'string',description:'Full URL starting with https:// or http://'} }, required:['url'] },
   open_url_in_new_tab: { type:'object', properties:{ url:{type:'string',description:'Full URL'} }, required:['url'] },
-  navigate_to_main_site: { type:'object', properties:{} }
+  navigate_to_main_site: { type:'object', properties:{} },
+  search_web: { type:'object', properties:{ query:{type:'string',description:'Search query text'} }, required:['query'] },
+  search_code: { type:'object', properties:{ query:{type:'string',description:'Code search query (GitHub)'} }, required:['query'] }
 };
 
 /* mini LLM 客户端：fetch 调 OpenAI 兼容 /chat/completions，支持 function calling */
@@ -4431,6 +4437,108 @@ function buildCaidCustomTools() {
         try { (window.top || window).location.href = MAIN_URL; }
         catch(e) { window.location.href = MAIN_URL; }
         return `✅ Navigating back to CAID main workbench: ${MAIN_URL}`;
+      }
+    },
+
+    /* 5) search_web — 搜索网页（Wikipedia API + 搜索引擎链接） */
+    search_web: {
+      description:
+        'Search the web for information. Returns summaries from Wikipedia and links to full search results. ' +
+        'Use this when the user asks to "搜索 X", "查一下 X", "search for X", "look up X", or when you need factual information. ' +
+        'Results are automatically displayed in the copilot search panel.',
+      inputSchema: mkObj({ query: 'string' }),
+      execute: async function(input, ctx){
+        var query = String(input && input.query || '').trim();
+        if (!query) throw new Error('search_web: query is required');
+        var signal = ctx && ctx.signal;
+        var results = [];
+        try {
+          var wikiUrl = 'https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
+            encodeURIComponent(query) + '&format=json&origin=*&srlimit=5';
+          var resp = await fetch(wikiUrl, { signal: signal });
+          if (resp.ok) {
+            var data = await resp.json();
+            results = (data.query && data.query.search || []).map(function(r){
+              return {
+                title: r.title,
+                url: 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(String(r.title).replace(/ /g, '_')),
+                snippet: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : ''
+              };
+            });
+          }
+        } catch(e) { /* CORS 或网络失败，继续走搜索引擎链接 */ }
+        /* 补充英文维基 */
+        if (results.length < 3) {
+          try {
+            var wikiEnUrl = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
+              encodeURIComponent(query) + '&format=json&origin=*&srlimit=3';
+            var resp2 = await fetch(wikiEnUrl, { signal: signal });
+            if (resp2.ok) {
+              var data2 = await resp2.json();
+              var enResults = (data2.query && data2.query.search || []).map(function(r){
+                return {
+                  title: r.title + ' (EN)',
+                  url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(r.title).replace(/ /g, '_')),
+                  snippet: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : ''
+                };
+              });
+              results = results.concat(enResults);
+            }
+          } catch(e) {}
+        }
+        /* 生成搜索引擎链接 */
+        var googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent(query);
+        var bingUrl = 'https://www.bing.com/search?q=' + encodeURIComponent(query);
+        results.push({ title: '🔍 Google: ' + query, url: googleUrl, snippet: '点击查看完整搜索结果' });
+        results.push({ title: '🔍 Bing: ' + query, url: bingUrl, snippet: '点击查看完整搜索结果' });
+        /* 回填到检索面板 */
+        if (this && this.__cpRender && this.__cpRender.renderSearch) {
+          this.__cpRender.renderSearch(results);
+        }
+        var summary = results.filter(function(r){ return r.snippet && r.url.indexOf('google.com') < 0 && r.url.indexOf('bing.com') < 0; })
+          .map(function(r){ return r.title + ': ' + r.snippet; }).join('\n');
+        return '🔍 网页搜索 "' + query + '" 结果:\n' + (summary || '未找到维基百科条目') +
+          '\n\n完整搜索: Google ' + googleUrl + ' | Bing ' + bingUrl;
+      }
+    },
+
+    /* 6) search_code — 搜索代码（GitHub Search API） */
+    search_code: {
+      description:
+        'Search for code on GitHub. Returns matching files with repository and path info. ' +
+        'Use this when the user asks to "搜代码", "找代码", "search code", "find implementation", or when you need code examples. ' +
+        'Results are automatically displayed in the copilot search panel.',
+      inputSchema: mkObj({ query: 'string' }),
+      execute: async function(input, ctx){
+        var query = String(input && input.query || '').trim();
+        if (!query) throw new Error('search_code: query is required');
+        var signal = ctx && ctx.signal;
+        var results = [];
+        try {
+          var ghUrl = 'https://api.github.com/search/code?q=' + encodeURIComponent(query) + '&per_page=8';
+          var resp = await fetch(ghUrl, {
+            signal: signal,
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (resp.ok) {
+            var data = await resp.json();
+            results = (data.items || []).map(function(r){
+              return {
+                title: (r.repository && r.repository.full_name || '') + ' / ' + r.name,
+                url: r.html_url,
+                snippet: r.path || ''
+              };
+            });
+          }
+        } catch(e) { /* CORS 或速率限制 */ }
+        /* 回填到检索面板 */
+        if (this && this.__cpRender && this.__cpRender.renderSearch) {
+          this.__cpRender.renderSearch(results);
+        }
+        var summary = results.length ?
+          results.map(function(r){ return r.title + ' → ' + r.url + (r.snippet ? ' (' + r.snippet + ')' : ''); }).join('\n') :
+          '未找到代码结果（可能触发了 GitHub API 速率限制，请稍后重试）';
+        return '💻 代码搜索 "' + query + '" 结果:\n' + summary;
       }
     }
   };
