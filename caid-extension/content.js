@@ -32,4 +32,25 @@
   }
 
   addButton();
+
+  // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
+  // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
+  // 主站自带副驾（#caidCopilot 存在）时跳过，避免双副驾。
+  (function tryAutoResume() {
+    if (!chrome || !chrome.storage || !chrome.storage.session) return;
+    if (document.getElementById('caidCopilot')) return; // 主站自带副驾
+    chrome.storage.session.get(['caidHandoff'], function (got) {
+      const h = got && got.caidHandoff;
+      if (!h || !h.toUrl) return;
+      // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
+      if (h.ts && Date.now() - h.ts > 120000) { chrome.storage.session.remove(['caidHandoff']); return; }
+      let match = false;
+      try { match = location.host === new URL(h.toUrl).host; } catch (e) {}
+      if (!match) return;
+      // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
+      chrome.storage.session.remove(['caidHandoff'], function () {
+        chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
+      });
+    });
+  })();
 })();

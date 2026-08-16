@@ -9,6 +9,10 @@
   }
   window.__CAID_BOOTED = true;
 
+  // 后台代理 fetch：优先用扩展注入的 window.__CAID_FETCH（继承系统代理、绕过宿主页 CSP/CORS），
+  // 失败或不存在时退回原生 fetch。仅用于本扩展工具/LLM，不动宿主页其它请求。
+  const caidNet = window.__CAID_FETCH || (window.fetch ? window.fetch.bind(window) : null);
+
   const MAIN_URL = 'https://graduate.dpdns.org/';
   const z = window.ZodV4 && window.ZodV4.z;
   if (!z) { console.error('[CAID] window.ZodV4.z 未加载，副驾无法初始化'); return; }
@@ -154,6 +158,13 @@
       execute: async function (input) {
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('navigate_to_url: url is required');
+        // 断点续传：跳转前保存任务上下文，供新页面副驾续传
+        try {
+          const h = buildHandoff(url);
+          if (h && chrome && chrome.storage && chrome.storage.session) {
+            await chrome.storage.session.set({ caidHandoff: h });
+          }
+        } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
         try { (window.top || window).location.href = url; }
         catch (e) { window.location.href = url; }
         return `✅ Navigating to: ${url}`;
@@ -194,7 +205,7 @@
         try {
           var wikiUrl = 'https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
             encodeURIComponent(query) + '&format=json&origin=*&srlimit=5';
-          var resp = await fetch(wikiUrl, { signal: signal });
+          var resp = await caidNet(wikiUrl, { signal: signal });
           if (resp.ok) {
             var data = await resp.json();
             results = (data.query && data.query.search || []).map(function (r) {
@@ -210,7 +221,7 @@
           try {
             var wikiEnUrl = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
               encodeURIComponent(query) + '&format=json&origin=*&srlimit=3';
-            var resp2 = await fetch(wikiEnUrl, { signal: signal });
+            var resp2 = await caidNet(wikiEnUrl, { signal: signal });
             if (resp2.ok) {
               var data2 = await resp2.json();
               var enResults = (data2.query && data2.query.search || []).map(function (r) {
@@ -246,7 +257,7 @@
         var results = [];
         try {
           var ghUrl = 'https://api.github.com/search/code?q=' + encodeURIComponent(query) + '&per_page=8';
-          var resp = await fetch(ghUrl, { signal: signal, headers: { 'Accept': 'application/vnd.github.v3+json' } });
+          var resp = await caidNet(ghUrl, { signal: signal, headers: { 'Accept': 'application/vnd.github.v3+json' } });
           if (resp.ok) {
             var data = await resp.json();
             results = (data.items || []).map(function (r) {
@@ -379,6 +390,26 @@
   };
   for (const k in tools) tools[k].__cpRender = cpRender;
 
+  // ---------- 断点续传：跳转前序列化任务上下文 ----------
+  function buildHandoff(targetUrl) {
+    if (!agent) return null;
+    const hist = agent.history || [];
+    if (!hist.length) return null;
+    let goal = '';
+    for (let i = hist.length - 1; i >= 0; i--) {
+      if (hist[i] && hist[i].type === 'user') { goal = hist[i].content; break; }
+    }
+    if (!goal) return null;
+    const recent = hist.slice(-12).map(function (ev) {
+      if (ev.type === 'user') return { type: 'user', content: ev.content };
+      if (ev.type === 'assistant') return { type: 'assistant', content: ev.content };
+      if (ev.type === 'step') return { type: 'step', action: { name: ev.action && ev.action.name, input: ev.action && ev.action.input, output: (ev.action && ev.action.output || '').slice(0, 300) } };
+      if (ev.type === 'error') return { type: 'error', message: ev.message };
+      return { type: ev.type };
+    });
+    return { goal: goal, fromUrl: location.href, toUrl: targetUrl, ts: Date.now(), recent: recent };
+  }
+
   // ---------- 创建 agent ----------
   const cfg = window.__CAID_LLM_CFG || {};
   const hasCustom = cfg.apiKey && cfg.model;
@@ -391,6 +422,29 @@
   const config = hasCustom
     ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseUrl || '', apiKey: cfg.apiKey })
     : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run', apiKey: 'NA' });
+
+  // ---------- 只针对 LLM 域名劫持 window.fetch（在 new PageAgent 之前）----------
+  // Page-Agent 在调用时才取 globalThis.fetch，所以在这里换成后台代理即可让 LLM 请求
+  // 继承系统代理、并绕过宿主页 CSP。宿主页其它请求不受影响，也不会串 cookie。
+  (function installLlmProxy() {
+    let llmOrigin = null;
+    try { if (config.baseURL) llmOrigin = new URL(config.baseURL).origin; } catch (e) {}
+    if (!llmOrigin || !window.__CAID_FETCH) return;
+    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url);
+      if (url && String(url).indexOf(llmOrigin) === 0) {
+        try {
+          return window.__CAID_FETCH(url, init).catch(function () {
+            return nativeFetch ? nativeFetch(input, init) : Promise.reject(new Error('CAID LLM 代理失败'));
+          });
+        } catch (e) {
+          if (nativeFetch) return nativeFetch(input, init);
+        }
+      }
+      return nativeFetch ? nativeFetch(input, init) : Promise.reject(new Error('fetch 不可用'));
+    };
+  })();
 
   function renderApiInfo() {
     if (!apiInfoEl) return;
@@ -500,4 +554,25 @@
   if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidExtCopilot'); if (cp) cp.classList.remove('open'); });
   var settingsEl = document.getElementById('cpSettings');
   if (settingsEl) settingsEl.addEventListener('click', openOptions);
+
+  // ---------- 断点续传：若本次启动携带上次跳转的上下文，恢复历史并自动继续 ----------
+  (async function resumeIfNeeded() {
+    try {
+      const h = window.__CAID_HANDOFF;
+      if (!h || !agent) return;
+      // 恢复历史展示
+      if (Array.isArray(h.recent) && h.recent.length) {
+        agent.history = h.recent;
+        agent.dispatchEvent(new Event('historychange'));
+      }
+      if (inputEl && typeof sendTask === 'function') {
+        const cont = '【任务续传】你正在协助用户完成：' + (h.goal || '') +
+          '\n此前你已离开 ' + (h.fromUrl || '上一页') + ' 并自动跳转到当前页面 ' + location.href +
+          '。请先观察当前页面，然后继续完成上述任务（例如执行搜索 / 操作 / 填表）。';
+        logBubble('assistant', '⟳ 检测到任务续传：' + (h.goal || ''));
+        setTimeout(function () { inputEl.value = cont; sendTask(); }, 500);
+      }
+      window.__CAID_HANDOFF = null;
+    } catch (e) { console.warn('[CAID] 续传失败', e); }
+  })();
 })();
