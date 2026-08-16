@@ -13,7 +13,6 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://unpkg.com/zod@4/browser"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/styles/github-dark.min.css">
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/highlight.min.js"></script>
 <style>
@@ -3752,6 +3751,38 @@ async function init() {
 // ============ Page-Agent 副驾（Headless） ============
 // 本地自托管 headless 产物：无 Shadow DOM 面板，只暴露 window.PageAgent 类。
 // UI 由自建侧边栏 #caidCopilot 承载，监听 4 事件渲染。
+
+/* ========== 全局防御：Object.keys/values/entries/getOwnPropertyNames 防 null/undefined ==========
+   Zod v4 toJSONSchema 内部会对 shape / def.shape / shapeValue._zod.def 递归做 Object.keys，
+   而 customTools.inputSchema 的鸭子类型虽然挂了 _zod.toJSONSchema()，但 MacroTool 包装对象
+   z.object({ toolName: duckSchema }) 外层是真 ZodObject，它的 processJSONSchema 会先遍历自己的 shape
+   （shape[toolName] = duckSchema），拿到 duckSchema 后 process 函数里再看是否有 _zod.toJSONSchema，
+   但是这个过程中 Zod v4 的某些分支会先对 schema._zod.def.shape 做 Object.keys，而鸭子类型的
+   _zod.def 只有 {type:'object'}，没有 shape 字段 → undefined → Object.keys(undefined) 崩溃。
+   这里直接 monkey-patch Object 反射方法：null/undefined 时返回空集合，避免 TypeError，这是最稳的兜底。 */
+(function () {
+  var _keys = Object.keys;
+  var _values = Object.values;
+  var _entries = Object.entries;
+  var _getPropNames = Object.getOwnPropertyNames;
+  Object.keys = function (o) {
+    if (o === null || o === undefined) return [];
+    return _keys.call(Object, o);
+  };
+  Object.values = function (o) {
+    if (o === null || o === undefined) return [];
+    return _values.call(Object, o);
+  };
+  Object.entries = function (o) {
+    if (o === null || o === undefined) return [];
+    return _entries.call(Object, o);
+  };
+  Object.getOwnPropertyNames = function (o) {
+    if (o === null || o === undefined) return [];
+    return _getPropNames.call(Object, o);
+  };
+})();
+
 // Page-Agent 本地 headless 源（?autoInit=false → 不自初始化，只暴露 window.PageAgent）
 const PA_SCRIPT_SOURCES = ['lib/page-agent.headless.js?autoInit=false'];
 function loadPaScript(onload, onerror) {
@@ -4118,32 +4149,75 @@ function copilotStop(){
 function buildCaidCustomTools() {
   const MAIN_URL = (typeof MAIN_SITE_URL !== 'undefined') ? MAIN_SITE_URL :
                     (window.__MAIN_SITE_URL__ || 'https://graduate.dpdns.org/');
-  /* Zod v4 已通过 <script src="https://unpkg.com/zod@4/browser"> 挂到 window.z 上。
-     如果 CDN 加载失败，fallback 到鸭子类型（zodToOpenAITool 调 z.toJSONSchema 失败时会在 agent.execute 内部被 catch，
-     但鸭子类型对 safeParse 仍然有效，不会造成崩溃）。 */
-  function mkObj(fields) {
+  /* Zod v4 toJSONSchema 关键逃生口（见 IIFE 里的 process()）：
+       if (s = e._zod.toJSONSchema?.()) o.schema = s;
+     schema 自带 _zod.toJSONSchema() 方法时，Zod 直接用它返回的原生 JSONSchema，
+     不再递归走 objectProcessor → Object.keys(shape)，所以鸭子类型不会崩。
+     我们优先尝试用 Page-Agent IIFE 里的真 Zod（挂 window.PageAgent / 内部闭包），失败时自己写 _zod.toJSONSchema()。 */
+  function mkObj(fields, toJSONSchemaOverride) {
+    /* 尝试真 Zod：Page-Agent IIFE 可能未来会在某个版本暴露 zod 命名空间，这里兜底尝试 */
     try {
-      const z = window.z || (window.PageAgent && window.PageAgent.zod) || null;
+      const z = (window.PageAgent && window.PageAgent.zod) || window.z || null;
       if (z && z.object && z.string) {
         const schemaFields = {};
         for (const k in fields) {
           const f = fields[k];
           if (f === 'string') schemaFields[k] = z.string();
-          else if (f === 'string:req') schemaFields[k] = z.string();
           else if (f === 'string:url') schemaFields[k] = z.string();
-          else if (f === 'empty') {} // z.object({}) 不写 field
         }
         return z.object(schemaFields);
       }
     } catch (_) {}
-    /* fallback: 鸭子类型（不带 shape 里的假属性，避免 z.toJSONSchema → Object.keys(null) 崩溃）
-       因为没有真实 Zod，Page-Agent 内部调 z.toJSONSchema 时会直接在 agent.execute 的 try/catch 里被 catch，
-       而我们自定义 execute 函数内部做自己的参数校验即可 */
+    /* fallback: 手工构造带 _zod.toJSONSchema() 的鸭子类型 */
+    const properties = {};
+    const required = [];
+    const shape = {};
+    for (const k in fields) {
+      const typeHint = fields[k]; // "string" / "string:url"
+      properties[k] = { type: 'string' };
+      required.push(k);
+      shape[k] = {
+        _zod: {
+          def: { type: 'string' },
+          version: { major: 4 },
+          toJSONSchema: function(){ return { type: 'string' }; },
+          traits: new Set(['$ZodType']),
+        }
+      };
+    }
+    const _toJSONSchemaOverride = toJSONSchemaOverride || function(){
+      if (Object.keys(properties).length === 0) return { type: 'object', properties: {}, additionalProperties: false };
+      return { type: 'object', properties: properties, required: required, additionalProperties: false };
+    };
     return {
-      _zod: { def: { type: 'object' }, version: { major: 4 } },
-      shape: fields, // 真实 value 随便填，不会真的去 Object.keys 遍历 shape
-      safeParse: function(v){ return { success: true, data: v || {} }; },
-      describe: function(){ return this; }
+      _zod: {
+        def: { type: 'object', shape: shape, catchall: {
+          _zod: {
+            def: { type: 'never' },
+            version: { major: 4 },
+            toJSONSchema: function(){ return { not: {} }; },
+            traits: new Set(['$ZodType']),
+          }
+        } },
+        version: { major: 4 },
+        toJSONSchema: _toJSONSchemaOverride,
+        traits: new Set(['$ZodType']),
+      },
+      shape: shape,
+      safeParse: function(v){
+        const data = v || {};
+        for (const k in fields) {
+          if (typeof data[k] !== 'string' && typeof data[k] !== 'undefined') {
+            return { success: false, error: { issues: [{ code: 'invalid_type', expected: 'string', path: [k] }] } };
+          }
+        }
+        return { success: true, data: data };
+      },
+      describe: function(){ return this; },
+      optional: function(){ return this; },
+      nullable: function(){ return this; },
+      and: function(){ return this; },
+      or: function(){ return this; },
     };
   }
   return {
@@ -4172,7 +4246,7 @@ function buildCaidCustomTools() {
       description:
         'Navigate the current browser page to a given URL (replaces current page). ' +
         'Use this whenever the user says "打开 X 网页/去 X 网站/访问 X/jump to X/go to X".',
-      inputSchema: mkObj({ url: 'string' }),
+      inputSchema: mkObj({ url: 'string:url' }),
       execute: async function(input){
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('navigate_to_url: url is required');
@@ -4187,7 +4261,7 @@ function buildCaidCustomTools() {
       description:
         'Open a URL in a new browser tab (does not leave the current page). ' +
         'Use this whenever the user says "在新标签打开 X / 新窗口打开 X / open X in new tab".',
-      inputSchema: mkObj({ url: 'string' }),
+      inputSchema: mkObj({ url: 'string:url' }),
       execute: async function(input){
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('open_url_in_new_tab: url is required');
