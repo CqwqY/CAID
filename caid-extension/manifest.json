@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "CAID 程序员工作台",
+  "version": "0.1.0",
+  "description": "继承魔改版 Page-Agent 的程序员工作台：接管新标签页，并在任意网页提供跨页智能体副驾。",
+  "permissions": ["storage", "scripting", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "action": {
+    "default_title": "CAID 副驾：点击在 current page 启动"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/zod-v4.umd.js", "lib/page-agent.headless.js", "caid-copilot.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; connect-src https:; object-src 'self'"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}
