@@ -570,6 +570,18 @@ a:hover { text-decoration: underline; }
   font-size: 14.5px;
   line-height: 1.78;
 }
+.answer-footer {
+  padding: 6px 22px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--rule);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.answer-footer:empty { display: none; }
+.answer-footer .ans-tok-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  background: rgba(34,197,94,0.12); color: #4ade80;
+}
 .answer-body h1, .answer-body h2, .answer-body h3 { margin: 18px 0 10px; font-weight: 700; }
 .answer-body h1 { font-size: 20px; }
 .answer-body h2 { font-size: 17px; border-bottom: 1px solid var(--glass-border); padding-bottom: 8px; }
@@ -1316,6 +1328,29 @@ a:hover { text-decoration: underline; }
   color: var(--muted); font-size: 14px; line-height: 1;
 }
 .cp-close:hover { background: var(--rule); color: var(--ink); }
+.cp-api-info {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--rule);
+  line-height: 1.6;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.cp-api-info .cp-api-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+}
+.cp-api-info .cp-api-badge.free { background: rgba(99,102,241,0.12); color: #818cf8; }
+.cp-api-info .cp-api-badge.custom { background: rgba(34,197,94,0.12); color: #4ade80; }
+.cp-api-info .cp-api-badge.nokey { background: rgba(248,81,73,0.12); color: #f87171; }
+.cp-token-total {
+  margin-left: auto; font-size: 10px; color: var(--muted);
+  white-space: nowrap;
+}
+.cp-step-usage {
+  display: inline-block; margin-left: 6px; font-size: 10px; color: var(--muted);
+  background: var(--bg3); padding: 1px 5px; border-radius: 3px;
+}
 .cp-log {
   flex: 1; overflow-y: auto;
   padding: 8px;
@@ -1555,6 +1590,7 @@ a:hover { text-decoration: underline; }
           <button class="close" id="closeAnswer" title="关闭"><i data-lucide="x"></i></button>
         </div>
         <div class="answer-body" id="answerBody"></div>
+        <div class="answer-footer" id="answerFooter"></div>
       </div>
     </div>
 
@@ -3063,9 +3099,13 @@ async function runAIAnswer(q, isSearch = false) {
     body.innerHTML = ruleEngineFallback(q);
     if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
     addSaveButtons(body);
+    const af = caidQs('#answerFooter');
+    if (af) af.innerHTML = '<span class="ans-tok-badge" style="background:rgba(248,81,73,0.12);color:#f87171;">无 API Key</span><span>本地规则引擎兜底</span>';
     return;
   }
   // Call LLM
+  const ansFooter = caidQs('#answerFooter');
+  if (ansFooter) ansFooter.innerHTML = '';
   try {
     let url = cfg.baseUrl + '/chat/completions';
     const sysPrompt = isSearch
@@ -3083,6 +3123,7 @@ async function runAIAnswer(q, isSearch = false) {
       ],
       temperature: +cfg.temperature || 0.7,
       stream: true,
+      stream_options: { include_usage: true },
     };
     const headers = {
       'Content-Type': 'application/json',
@@ -3095,6 +3136,7 @@ async function runAIAnswer(q, isSearch = false) {
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
     let fullMd = '';
+    let usage = null;
     body.innerHTML = '';
     while (true) {
       const { done, value } = await reader.read();
@@ -3115,6 +3157,8 @@ async function runAIAnswer(q, isSearch = false) {
             body.innerHTML = marked.parse(fullMd);
             body.scrollTop = body.scrollHeight;
           }
+          // 捕获 usage（流式最后一帧或非流式响应里携带）
+          if (j?.usage) usage = j.usage;
         } catch(e){}
       }
     }
@@ -3123,6 +3167,13 @@ async function runAIAnswer(q, isSearch = false) {
     if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
     // 为代码块和链接添加"保存"按钮
     addSaveButtons(body);
+    // 显示 token 消耗
+    if (ansFooter && usage && usage.total_tokens) {
+      ansFooter.innerHTML = '<span class="ans-tok-badge">'+escapeHtml(cfg.model||'')+'</span>'
+        + '<span>Token: '+usage.total_tokens+' (↑'+(usage.prompt_tokens||0)+' ↓'+(usage.completion_tokens||0)+')</span>';
+    } else if (ansFooter && cfg.model) {
+      ansFooter.innerHTML = '<span class="ans-tok-badge">'+escapeHtml(cfg.model)+'</span>';
+    }
   } catch (e) {
     body.innerHTML = `
       <div style="padding:14px;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.2);border-radius:8px;color:var(--danger);">
@@ -3833,6 +3884,9 @@ function initModdedPageAgent() {
   if (window.agent && !window.agent.disposed) { return; }
   const paCfg = (state && state.paCfg) ? state.paCfg : {};
   const language = paCfg.language || 'zh-CN';
+  /* 严格按 Page-Agent Tab 的配置走，与 AI 回答 Tab(llmCfg) 完全独立：
+     - mode='custom' 且填了 apiKey + model → 用用户配的 API
+     - 否则 → 走默认免费代理 */
   const hasCustomModel = paCfg.mode === 'custom' && paCfg.apiKey && paCfg.model;
   const sysPrompt = (typeof buildEnhancedSystemPrompt === 'function') ? buildEnhancedSystemPrompt(language) : '';
   /* customTools 必须接入：否则 LLM 看不到 navigate_to_main_site/navigate_to_url/open_url_in_new_tab/execute_javascript
@@ -3867,6 +3921,7 @@ let cpToolCalls = [];
 function bindCopilotEvents(agent) {
   const cpStatus = document.getElementById('cpStatus');
   const cpActivity = document.getElementById('cpActivity');
+  const cpApiInfo = document.getElementById('cpApiInfo');
   const cpLog = document.getElementById('cpLog');
   const cpInput = document.getElementById('cpInput');
   const cpSend = document.getElementById('cpSend');
@@ -3881,7 +3936,39 @@ function bindCopilotEvents(agent) {
   const cpCode = document.getElementById('cpCode');
   const cpSearch = document.getElementById('cpSearch');
   const STATUS_TEXT = { idle:'空闲', running:'运行中…', completed:'已完成', error:'出错', stopped:'已停止' };
-  function renderStatus(){ if(cpStatus) cpStatus.textContent = STATUS_TEXT[agent.status] || String(agent.status); }
+
+  /* 渲染 API 来源信息 + 累计 token */
+  function renderApiInfo(){
+    if(!cpApiInfo) return;
+    const cfg = agent.config || {};
+    const isCustom = cfg.model && cfg.model !== 'qwen3.5-plus';
+    const model = cfg.model || '未知';
+    let badge = '';
+    if(isCustom){
+      badge = '<span class="cp-api-badge custom">自定义</span>';
+    } else {
+      badge = '<span class="cp-api-badge free">免费代理</span>';
+    }
+    /* 累计所有 step 的 usage token */
+    let totalPrompt = 0, totalCompletion = 0, totalTotal = 0;
+    (agent.history || []).forEach(function(ev){
+      if(ev.usage){
+        totalPrompt += (ev.usage.prompt_tokens || 0);
+        totalCompletion += (ev.usage.completion_tokens || 0);
+        totalTotal += (ev.usage.total_tokens || 0);
+      }
+    });
+    let tokenHtml = '';
+    if(totalTotal > 0){
+      tokenHtml = '<span class="cp-token-total">Token: '+totalTotal+' (↑'+totalPrompt+' ↓'+totalCompletion+')</span>';
+    }
+    cpApiInfo.innerHTML = badge + '<span>'+escapeHtml(model)+'</span>' + tokenHtml;
+  }
+
+  function renderStatus(){
+    if(cpStatus) cpStatus.textContent = STATUS_TEXT[agent.status] || String(agent.status);
+    renderApiInfo();
+  }
   function renderActivity(detail){
     if(!cpActivity) return;
     if(!detail){ cpActivity.textContent=''; return; }
@@ -3907,16 +3994,21 @@ function bindCopilotEvents(agent) {
         const ng = (ev.reflection && ev.reflection.next_goal) ? ev.reflection.next_goal : '';
         const tn = (ev.action && ev.action.name) ? ev.action.name : '';
         const out = String((ev.action && ev.action.output) || '');
+        // 每步 token 消耗
+        var usageHtml = '';
+        if(ev.usage && ev.usage.total_tokens){
+          usageHtml = '<span class="cp-step-usage" title="prompt:'+ev.usage.prompt_tokens+' completion:'+ev.usage.completion_tokens+'">'+ev.usage.total_tokens+' tok</span>';
+        }
         // done 工具：真正的用户回复在 action.input.text / action.input.success（长文本，不截断）
         if(tn === 'done'){
           const doneText = String((ev.action && ev.action.input && ev.action.input.text) || '(无文本)');
           const doneSuccess = ev.action && ev.action.input && ev.action.input.success;
-          div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small></summary>'
+          div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small>'+usageHtml+'</summary>'
             + '<div class="cp-bubble cp-bubble-assistant">'+escapeHtml(doneText).replace(/\n/g,'<br>')+'</div></details>';
         } else {
           const outShort = out.slice(0,240);
           const outFull  = out.length > 240 ? out : '';
-          div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">['+escapeHtml(tn)+']</span></summary>'
+          div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">['+escapeHtml(tn)+']</span>'+usageHtml+'</summary>'
             + '<div class="cp-out">'+escapeHtml(outShort)+(outFull?' <span class="cp-more" title="点击展开全文">…点击展开</span>':'')+'</div>'
             + (outFull?('<pre class="cp-out-full" style="display:none">'+escapeHtml(outFull)+'</pre>'):'')
             + '</details>';
@@ -4005,9 +4097,43 @@ function bindCopilotEvents(agent) {
     });
     if(section) section.classList.remove('collapsed');
   }
+  // 若 history 最后一条 step 是 done 工具，把 done.input.text 转成 assistant 气泡（带去重）。
+  // 这样无论 execute 是从 sendTask 触发，还是自动打招呼（bookmarklet/hook 触发，没经过 sendTask），
+  // AI 最终回复都会以标准 assistant 气泡出现在对话流里，而不是只显示成折叠的 step。
+  function preprocessDoneToAssistant(){
+    if (!agent.history || !Array.isArray(agent.history)) return false;
+    const hist = agent.history;
+    let lastStep = null;
+    for (let i = hist.length - 1; i >= 0; i--) { if (hist[i] && hist[i].type === 'step') { lastStep = hist[i]; break; } }
+    if (!lastStep || !lastStep.action || lastStep.action.name !== 'done') return false;
+    const input = lastStep.action.input;
+    if (!input || typeof input !== 'object') return false;
+    const doneText = String(input.text || '');
+    if (!doneText) return false;
+    // 去重：已经存在相同文本的 assistant 气泡则不再追加
+    for (let i = 0; i < hist.length; i++) {
+      const h = hist[i];
+      if (h && h.type === 'assistant' && String(h.content || '') === doneText) return false;
+    }
+    // 显式赋值，避免隐藏引用问题（某些框架内部的浅代理对象 push 可能失效）
+    agent.history = hist.concat([{ type: 'assistant', content: doneText }]);
+    return true;
+  }
+  function onHistoryChangeSafe(){
+    // 用微任务处理，确保同步 dispatchEvent 链上的其他 history 变更都 push 完后再补 assistant
+    queueMicrotask(function(){
+      const pushed = preprocessDoneToAssistant();
+      renderHistory();
+      renderApiInfo();
+      if (pushed) {
+        // 补了 assistant 后再 render 一次，确保 UI 同步更新
+        setTimeout(function(){ renderHistory(); renderApiInfo(); }, 0);
+      }
+    });
+  }
   agent.addEventListener('statuschange', renderStatus);
   agent.addEventListener('activity', function(e){ renderActivity(e.detail); });
-  agent.addEventListener('historychange', renderHistory);
+  agent.addEventListener('historychange', onHistoryChangeSafe);
   agent.addEventListener('dispose', function(){ if(cpStatus) cpStatus.textContent='已销毁'; });
   /* 模式切换 */
   function setMode(mode){
@@ -4034,11 +4160,17 @@ function bindCopilotEvents(agent) {
       await copilotManualRun(agent, t);
     } else {
       try {
+        // 注意：result.data（done 文本）由 statuschange → completed 时统一提取 assistant 气泡，
+        // 这样既覆盖了 sendTask → execute 的场景，也覆盖了自动打招呼（非 sendTask）的场景。
         const result = await agent.execute(t);
-        // agent.execute 的返回值是 {success, data, history}，data 就是 done 工具的 action.input.text
-        if(result && typeof result.data !== 'undefined'){
-          agent.history.push({ type: 'assistant', content: String(result.data) });
-          agent.dispatchEvent(new Event('historychange'));
+        // 如果 execute 未抛错但没有生成任何 step（极端情况），兜底把 result.data 补进 history
+        if (result && typeof result.data !== 'undefined') {
+          const hist = agent.history || [];
+          const hasAnyStep = hist.some(function(h){ return h && h.type === 'step'; });
+          if (!hasAnyStep) {
+            hist.push({ type: 'assistant', content: String(result.data) });
+            agent.dispatchEvent(new Event('historychange'));
+          }
         }
       } catch(e){
         console.error('[Copilot] execute error:',e);
@@ -4054,7 +4186,7 @@ function bindCopilotEvents(agent) {
   if(cpStepNextBtn) cpStepNextBtn.addEventListener('click', function(){ copilotStepNext(agent); });
   if(cpStopBtn) cpStopBtn.addEventListener('click', function(){ copilotStop(); });
   if(cpClose) cpClose.addEventListener('click', function(){ const cp=document.getElementById('caidCopilot'); if(cp){ cp.classList.remove('open'); cp.setAttribute('aria-hidden','true'); } });
-  renderStatus(); renderHistory(); renderToolCalls();
+  renderStatus(); renderHistory(); renderToolCalls(); renderActivity(null); renderApiInfo();
   /* 暴露渲染函数给手动模式调用 */
   agent.__cpRender = { renderToolCalls:renderToolCalls, renderCode:renderCode, renderSearch:renderSearch, renderHistory:renderHistory };
 }
@@ -5369,6 +5501,7 @@ if (window.addEventListener) {
     <span class="cp-status" id="cpStatus">未启动</span>
     <button class="cp-close" id="cpClose" title="收起">✕</button>
   </header>
+  <div class="cp-api-info" id="cpApiInfo"></div>
 
   <!-- 模式切换条：自动（agent.execute 闭环）/ 手动（副驾直接调 pageController+tools） -->
   <div class="cp-mode-bar">
