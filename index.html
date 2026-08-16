@@ -5289,14 +5289,16 @@ function buildPaBookmarkletCode() {
     h.addEventListener('click', function(){ h.parentElement.classList.toggle('collapsed'); });
   });
   /* Zod 兼容：不可用时 duck-typed schema */
-  function _bkZodObj(shape, desc){
-    try{
-      var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;
-      if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}
-    }catch(_e){}
-    return {_zod:{def:{type:'object'}},shape:shape||{},safeParse:function(v){return{success:true,data:(v&&typeof v==='object')?v:{}};},describe:function(){return this;}};
+  function _bkZodObj(shape,desc){
+    try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}}catch(_e){}
+    var props={},req=[],_shape={};
+    for(var k in (shape||{})){var sk=shape[k];props[k]={type:'string'};req.push(k);if(sk&&sk._zod){_shape[k]=sk;}else{_shape[k]=(function(){var _zp={def:{typeName:'ZodString',type:'string'},version:{major:3},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};})();}}
+    var catchall=(function(){var _zp={def:{typeName:'ZodNever',type:'never'},version:{major:3},toJSONSchema:function(){return{not:{}};},traits:new Set(['$ZodType']),run:function(){return{status:'invalid'};},_parseSync:function(){return{status:'aborted'};},parse:function(){throw new Error('ZodNever');},safeParse:function(){return{success:false,error:{issues:[]}};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,optional:function(){return this;},describe:function(){return this;}};})();
+    var _toJSONSchema=function(){if(Object.keys(props).length===0)return{type:'object',properties:{},additionalProperties:false};return{type:'object',properties:props,required:req,additionalProperties:false};};
+    var objectProto={def:{typeName:'ZodObject',type:'object',shape:_shape,catchall:catchall,unknownKeys:'strip'},version:{major:3},toJSONSchema:_toJSONSchema,traits:new Set(['$ZodType']),run:function(c){var d=(c&&c.parsedInput!==undefined)?c.parsedInput:(c&&c.data);return{status:'valid',value:d||{}};},_parseSync:function(o){var d=o&&o.data;return{status:'valid',value:d||{}};},parse:function(v){return v||{};},safeParse:function(v){var d=v||{};for(var k in (shape||{})){if(typeof d[k]!=='string'&&typeof d[k]!=='undefined'){return{success:false,error:{issues:[{code:'invalid_type',expected:'string',path:[k]}]}};}}return{success:true,data:d};}};
+    return{_def:objectProto.def,_zod:objectProto,shape:_shape,safeParse:objectProto.safeParse,parse:objectProto.parse,parseAsync:function(v){return Promise.resolve(objectProto.parse(v));},describe:function(){return this;},optional:function(){return this;},nullable:function(){return this;},and:function(){return this;},or:function(){return this;}};
   }
-  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}return{_zod:{def:{type:'string'}},safeParse:function(v){return{success:true,data:String(v==null?'':v)};},describe:function(){return this;}};}
+  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}var _zp={def:{typeName:'ZodString',type:'string'},version:{major:3},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};}
   /* customTools（与主站 buildCaidCustomTools 一致） */
   var BK_CT = {
     navigate_to_main_site: {
