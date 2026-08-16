@@ -5262,6 +5262,14 @@ function buildPaBookmarkletCode() {
     var __p = document.getElementById('page-agent-runtime_agent-panel');
     if (__p) try { __p.remove(); } catch(_) {}
   } catch(_) {}
+  /* 注入全局防御：Object.keys/values/entries/getOwnPropertyNames 防 null/undefined（与主站 L3832 同构，须在 Page-Agent 加载前执行） */
+  (function(){
+    var _k=Object.keys,_v=Object.values,_e=Object.entries,_g=Object.getOwnPropertyNames;
+    Object.keys=function(o){if(o===null||o===undefined)return[];return _k.call(Object,o);};
+    Object.values=function(o){if(o===null||o===undefined)return[];return _v.call(Object,o);};
+    Object.entries=function(o){if(o===null||o===undefined)return[];return _e.call(Object,o);};
+    Object.getOwnPropertyNames=function(o){if(o===null||o===undefined)return[];return _g.call(Object,o);};
+  })();
   /* 注入 CSS */
   (function(){
     var st = document.createElement('style');
