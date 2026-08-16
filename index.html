@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="lib/zod3.umd.js"></script>
+<script src="lib/zod-v4.umd.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -4389,11 +4390,13 @@ function buildCaidCustomTools() {
      不再递归走 objectProcessor → Object.keys(shape)，所以鸭子类型不会崩。
      我们优先尝试用 Page-Agent IIFE 里的真 Zod（挂 window.PageAgent / 内部闭包），失败时自己写 _zod.toJSONSchema()。 */
   function mkObj(fields, toJSONSchemaOverride) {
-    /* 优先用本地自托管 lib/zod3.umd.js 挂的真 Zod v3（UMD invoker 写死 window.Zod.z + window.z 别名）
-       Zod v3 vs v4 的 z.object/z.string API 完全兼容，且 z.object 返回的 schema 自带 _zod.run/_parseSync/parse，
-       能过 Page-Agent 内部 normalizeDef/shape.validate 里的 `schema._zod.run` 访问。 */
+    /* 优先用本地自托管 lib/zod-v4.umd.js 挂的真 Zod v4（全局 window.ZodV4.z）。
+       Page-Agent 内部正是 Zod v4，customTools 的 inputSchema 必须是对方认得的真实 Zod v4 schema
+       （自带完整的 _zod 命名空间 / _zod.def / _zod.run / toJSONSchema），
+       否则 v4 解析器 e_safeParse/_zod_parse 在读取 _zod.def 时会因结构不符读到 undefined.length 而崩溃。
+       次选 window.Zod.z（v3）兜底，最后才是手工鸭子类型。 */
     try {
-      const z = (window.Zod && window.Zod.z) || window.z || (window.PageAgent && window.PageAgent.zod) || null;
+      const z = (window.ZodV4 && window.ZodV4.z) || (window.Zod && window.Zod.z) || window.z || (window.PageAgent && window.PageAgent.zod) || null;
       if (z && z.object && z.string) {
         const schemaFields = {};
         for (const k in fields) {
@@ -4454,8 +4457,7 @@ function buildCaidCustomTools() {
       shape[k] = (function(){
         var validStatus = { status: 'valid', value: null };
         var _zodProto = {
-          def: { typeName: 'ZodString', type: 'string' },
-          version: { major: 3 },
+          def: { type: 'string' },
           toJSONSchema: function(){ return { type: 'string' }; },
           traits: new Set(['$ZodType']),
           run: function(ctx) {
@@ -4468,7 +4470,6 @@ function buildCaidCustomTools() {
           safeParse: function(v) { return { success: true, data: v }; },
         };
         return {
-          _def: _zodProto.def,  // Zod v3 习惯访问 _def (非 _zod.def)，双重兼容
           _zod: _zodProto,
           parse: function(v){ return v; },
           safeParse: function(v){ return { success: true, data: v }; },
@@ -4481,8 +4482,7 @@ function buildCaidCustomTools() {
     }
     var catchall = (function(){
       var _zodProto = {
-        def: { typeName: 'ZodNever', type: 'never' },
-        version: { major: 3 },
+        def: { type: 'never' },
         toJSONSchema: function(){ return { not: {} }; },
         traits: new Set(['$ZodType']),
         run: function(){ return { status: 'invalid' }; },
@@ -4491,7 +4491,6 @@ function buildCaidCustomTools() {
         safeParse: function(){ return { success: false, error: { issues:[] } }; },
       };
       return {
-        _def: _zodProto.def,
         _zod: _zodProto,
         parse: _zodProto.parse,
         safeParse: _zodProto.safeParse,
@@ -4505,8 +4504,7 @@ function buildCaidCustomTools() {
     };
     // 顶层 object 鸭子类型：补 _zod.run（normalizeShape/validate 可能用）、_parseSync、parse
     var objectProto = {
-      def: { typeName: 'ZodObject', type: 'object', shape: shape, catchall: catchall, unknownKeys: 'strip' },
-      version: { major: 3 },
+      def: { type: 'object', shape: shape },
       toJSONSchema: _toJSONSchemaOverride,
       traits: new Set(['$ZodType']),
       run: function(ctx){
@@ -4528,7 +4526,6 @@ function buildCaidCustomTools() {
       },
     };
     return {
-      _def: objectProto.def,  // Zod v3 兼容：顶层 _def 字段
       _zod: objectProto,
       shape: shape,
       safeParse: objectProto.safeParse,
@@ -5288,18 +5285,22 @@ function buildPaBookmarkletCode() {
   document.querySelectorAll('#caidCopilot .cp-section-head').forEach(function(h){
     h.addEventListener('click', function(){ h.parentElement.classList.toggle('collapsed'); });
   });
-  /* Zod 兼容：不可用时 duck-typed schema */
+  /* Zod 兼容：优先用真实 Zod v4（window.ZodV4.z，主站 lib/zod-v4.umd.js 注入），
+     不可用时退回与 Zod v4 _zod.def 同构的 duck-typed schema（type:'object'/'string'，无 v3 的 typeName）。 */
   function _bkZodObj(shape,desc){
-    try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}}catch(_e){}
+    try{var z=window.ZodV4&&window.ZodV4.z||window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}}catch(_e){}
     var props={},req=[],_shape={};
-    for(var k in (shape||{})){var sk=shape[k];props[k]={type:'string'};req.push(k);if(sk&&sk._zod){_shape[k]=sk;}else{_shape[k]=(function(){var _zp={def:{typeName:'ZodString',type:'string'},version:{major:3},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};})();}}
-    var catchall=(function(){var _zp={def:{typeName:'ZodNever',type:'never'},version:{major:3},toJSONSchema:function(){return{not:{}};},traits:new Set(['$ZodType']),run:function(){return{status:'invalid'};},_parseSync:function(){return{status:'aborted'};},parse:function(){throw new Error('ZodNever');},safeParse:function(){return{success:false,error:{issues:[]}};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,optional:function(){return this;},describe:function(){return this;}};})();
+    for(var k in (shape||{})){var sk=shape[k];props[k]={type:'string'};req.push(k);if(sk&&sk._zod){_shape[k]=sk;}else{_shape[k]=(function(){var _zp={def:{type:'string'},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};})();}}
+    var catchall=(function(){var _zp={def:{type:'never'},toJSONSchema:function(){return{not:{}};},traits:new Set(['$ZodType']),run:function(){return{status:'invalid'};},_parseSync:function(){return{status:'aborted'};},parse:function(){throw new Error('ZodNever');},safeParse:function(){return{success:false,error:{issues:[]}};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,optional:function(){return this;},describe:function(){return this;}};})();
     var _toJSONSchema=function(){if(Object.keys(props).length===0)return{type:'object',properties:{},additionalProperties:false};return{type:'object',properties:props,required:req,additionalProperties:false};};
-    var objectProto={def:{typeName:'ZodObject',type:'object',shape:_shape,catchall:catchall,unknownKeys:'strip'},version:{major:3},toJSONSchema:_toJSONSchema,traits:new Set(['$ZodType']),run:function(c){var d=(c&&c.parsedInput!==undefined)?c.parsedInput:(c&&c.data);return{status:'valid',value:d||{}};},_parseSync:function(o){var d=o&&o.data;return{status:'valid',value:d||{}};},parse:function(v){return v||{};},safeParse:function(v){var d=v||{};for(var k in (shape||{})){if(typeof d[k]!=='string'&&typeof d[k]!=='undefined'){return{success:false,error:{issues:[{code:'invalid_type',expected:'string',path:[k]}]}};}}return{success:true,data:d};}};
-    return{_def:objectProto.def,_zod:objectProto,shape:_shape,safeParse:objectProto.safeParse,parse:objectProto.parse,parseAsync:function(v){return Promise.resolve(objectProto.parse(v));},describe:function(){return this;},optional:function(){return this;},nullable:function(){return this;},and:function(){return this;},or:function(){return this;}};
+    var objectProto={def:{type:'object',shape:_shape},toJSONSchema:_toJSONSchema,traits:new Set(['$ZodType']),run:function(c){var d=(c&&c.parsedInput!==undefined)?c.parsedInput:(c&&c.data);return{status:'valid',value:d||{}};},_parseSync:function(o){var d=o&&o.data;return{status:'valid',value:d||{}};},parse:function(v){return v||{};},safeParse:function(v){var d=v||{};for(var k in (shape||{})){if(typeof d[k]!=='string'&&typeof d[k]!=='undefined'){return{success:false,error:{issues:[{code:'invalid_type',expected:'string',path:[k]}]}};}}return{success:true,data:d};}};
+    return{_zod:objectProto,shape:_shape,safeParse:objectProto.safeParse,parse:objectProto.parse,parseAsync:function(v){return Promise.resolve(objectProto.parse(v));},describe:function(){return this;},optional:function(){return this;},nullable:function(){return this;},and:function(){return this;},or:function(){return this;}};
   }
-  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}var _zp={def:{typeName:'ZodString',type:'string'},version:{major:3},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_def:_zp.def,_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};}
-  /* customTools（与主站 buildCaidCustomTools 一致） */
+  function _bkZodStr(req){try{var z=window.ZodV4&&window.ZodV4.z||window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}var _zp={def:{type:'string'},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};}
+  /* customTools（与主站 buildCaidCustomTools 一致）。
+     注意：schema 必须在 Zod v4 注入完成后再构建（buildBkCustomTools），
+     否则站外拿到的还是 duck-typed 假 schema，v4 构建的 Page-Agent 解析时会崩溃。 */
+  function buildBkCustomTools(){
   var BK_CT = {
     navigate_to_main_site: {
       description: 'Navigate back to CAID main workbench. Call this when user says: 返回主网站 / 回工作台 / 回首页 / go home / back to main site. NO parameters.',
@@ -5362,6 +5363,9 @@ function buildPaBookmarkletCode() {
       }
     }
   };
+  return BK_CT;
+  }
+  var BK_CT = buildBkCustomTools();
   var cpToolCalls = [];
   var cpMode = 'auto';
   var cpAbortController = null;
@@ -5646,6 +5650,20 @@ function buildPaBookmarkletCode() {
   sources.push('https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js');
   sources.push('https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js');
   var si=0;
+  /* 站外页面没有主站的 lib/zod-v4.umd.js，必须先注入真实 Zod v4：
+     Page-Agent 内部是 Zod v4，customTools 的 inputSchema 若是 duck-typed 假 schema，
+     v4 解析器（_zod_parse / e_safeParse）读内部结构时会 undefined.length 崩溃，
+     手搓 schema 无法模拟 v4 内部（bag/checks/run 链），只有真实 v4 schema 可靠。 */
+  function ensureZodV4(cb){
+    if((window.ZodV4&&window.ZodV4.z)||window.zod_v4){cb();return;}
+    if(!MAIN_URL){cb();return;}
+    var zs=document.createElement('script');
+    zs.crossOrigin='anonymous';
+    zs.src=MAIN_URL+'lib/zod-v4.umd.js';
+    zs.onload=function(){cb();};
+    zs.onerror=function(){console.warn('[BK CAID Copilot] zod-v4 注入失败，customTools 将退化为 duck-typed schema（v4 构建的 Page-Agent 可能报 length 错误）');cb();};
+    (document.head||document.documentElement).appendChild(zs);
+  }
   function tryLoad(){
     if(si>=sources.length){showNote('CAID 副驾核心脚本加载失败，请检查网络 / CSP');return;}
     var s=document.createElement('script');
@@ -5653,7 +5671,9 @@ function buildPaBookmarkletCode() {
     s.src=sources[si];
     s.onerror=function(){si++;tryLoad();};
     s.onload=function(){
+      ensureZodV4(function(){
       showNote('CAID 副驾已启动（魔改版）');
+      BK_CT = buildBkCustomTools(); /* Zod v4 就绪后用真实 schema 重建 customTools */
       var paCfg_={language:${JSON.stringify(lang)},instructions:{system:ENH_SP||''},experimentalScriptExecutionTool:true,enableMask:true,customTools:BK_CT};
       if(LLMCFG){
         paCfg_.model=LLMCFG.model;
@@ -5672,6 +5692,7 @@ function buildPaBookmarkletCode() {
         console.error('[BK CAID Copilot] new agent error:',err);
         showNote('副驾初始化失败:'+err.message);
       }
+      });
     };
     (document.head||document.documentElement).appendChild(s);
   }
