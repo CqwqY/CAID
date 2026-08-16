@@ -1281,6 +1281,201 @@ a:hover { text-decoration: underline; }
   100% { background-position: -200% 0; }
 }
 .skeleton-row { height: 40px; margin-bottom: 8px; }
+
+/* ============ CAID 副驾（Headless）侧边栏 ============ */
+.caid-copilot {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 380px; z-index: 10000;
+  transform: translateX(110%);
+  transition: transform .25s ease;
+  background: var(--bg2);
+  border-left: 1px solid var(--rule);
+  box-shadow: -4px 0 24px rgba(0,0,0,.3);
+  display: flex; flex-direction: column;
+  color: var(--ink);
+  font-size: 13px;
+}
+.caid-copilot.open { transform: translateX(0); }
+.caid-copilot[aria-hidden="true"] { pointer-events: none; }
+.caid-copilot.open[aria-hidden="false"] { pointer-events: auto; }
+.cp-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg3);
+}
+.cp-title { font-weight: 600; flex: 0 0 auto; }
+.cp-status {
+  flex: 1; text-align: right;
+  font-size: 12px; color: var(--muted);
+}
+.cp-close {
+  flex: 0 0 auto; width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--muted); font-size: 14px; line-height: 1;
+}
+.cp-close:hover { background: var(--rule); color: var(--ink); }
+.cp-log {
+  flex: 1; overflow-y: auto;
+  padding: 8px;
+  font-size: 12px; line-height: 1.5;
+}
+.cp-evt {
+  margin-bottom: 6px; padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  border-left: 3px solid var(--rule);
+  word-break: break-word;
+}
+.cp-evt b { color: var(--accent); }
+.cp-evt-step { border-left-color: var(--accent); }
+.cp-evt-observation { border-left-color: var(--purple); }
+.cp-evt-error { border-left-color: var(--danger); }
+.cp-evt-retry { border-left-color: var(--warn); }
+.cp-evt .cp-tool { color: var(--accent-2); font-family: monospace; }
+.cp-evt .cp-out { color: var(--muted); font-family: monospace; font-size: 11px; }
+.cp-activity {
+  padding: 8px 12px;
+  font-size: 12px; color: var(--muted);
+  min-height: 24px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg2);
+}
+.cp-input-row {
+  display: flex; gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg3);
+}
+.cp-input {
+  flex: 1; padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--rule);
+  font-size: 13px;
+}
+.cp-input:focus { outline: none; border-color: var(--accent); }
+.cp-send {
+  flex: 0 0 auto; padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+.cp-send:hover { background: var(--accent-2); }
+
+/* ===== 副驾模式切换条 ===== */
+.cp-mode-bar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg2);
+}
+.cp-mode-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted);
+  font-size: 12px; font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.cp-mode-btn:hover { background: var(--bg3); }
+.cp-mode-btn.active {
+  background: var(--accent); color: #fff;
+}
+.cp-mode-actions {
+  display: none; gap: 4px; margin-left: auto;
+}
+.cp-mode-actions.visible { display: flex; }
+.cp-mode-actions button {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); color: var(--ink);
+  font-size: 11px;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+.cp-mode-actions button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ===== 可折叠区块 ===== */
+.cp-section {
+  border-bottom: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.cp-section[data-section="log"] { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; }
+.cp-section[data-section="log"] .cp-section-body { flex: 1; overflow-y: auto; }
+.cp-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg2);
+  font-size: 12px; font-weight: 600; color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+.cp-section-head:hover { background: var(--bg3); }
+.cp-section-head span { flex: 1; }
+.cp-toggle {
+  width: 20px; height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--muted); font-size: 10px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.cp-section-body {
+  max-height: 280px; overflow-y: auto;
+}
+.cp-section.collapsed .cp-section-body { display: none; }
+.cp-section.collapsed .cp-toggle::before { content: '▸'; }
+.cp-section:not(.collapsed) .cp-toggle::before { content: '▾'; }
+
+/* 代码输出区 */
+.cp-code {
+  padding: 8px;
+  font-family: monospace; font-size: 12px;
+}
+.cp-code pre {
+  margin: 0; padding: 8px;
+  background: var(--bg); border-radius: var(--radius-sm);
+  overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  color: var(--ink); font-size: 11px; line-height: 1.5;
+}
+.cp-code-actions {
+  display: flex; gap: 4px; margin-bottom: 6px;
+}
+.cp-code-actions button {
+  padding: 3px 10px; border-radius: var(--radius-sm);
+  background: var(--bg3); color: var(--muted);
+  font-size: 11px; border: 1px solid var(--rule); cursor: pointer;
+}
+.cp-code-actions button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 检索结果区 */
+.cp-search { padding: 8px; font-size: 12px; }
+.cp-search-item {
+  margin-bottom: 6px; padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); border-left: 3px solid var(--purple);
+}
+.cp-search-item-title { font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+.cp-search-item-url { color: var(--accent); font-size: 10px; word-break: break-all; }
+.cp-search-item-url:hover { text-decoration: underline; }
+.cp-search-item-snippet { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* 工具调用历史 */
+.cp-tools { padding: 8px; font-size: 12px; }
+.cp-tool-call {
+  margin-bottom: 4px; padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); border-left: 3px solid var(--accent-2);
+  font-family: monospace; font-size: 11px;
+}
+.cp-tool-call-name { color: var(--accent-2); font-weight: 600; }
+.cp-tool-call-args { color: var(--muted); }
+.cp-tool-call-result { color: var(--ink); margin-top: 2px; }
+
+/* 空状态提示 */
+.cp-empty {
+  padding: 16px 12px; text-align: center;
+  color: var(--muted); font-size: 11px; font-style: italic;
+}
 </style>
 <script>
 // syntax error self-report (MUST run BEFORE any other <script> blocks)
@@ -1726,30 +1921,6 @@ function navigateToMainSite() {
 window.navigateToMainSite = navigateToMainSite;
 window.__MAIN_SITE_URL__ = MAIN_SITE_URL;
 window.__MAIN_SITE_NAME__ = MAIN_SITE_NAME;
-function injectAgentInstructions() {
-  if (document.getElementById('__agent_instructions_block__')) return;
-  const d = document.createElement('div');
-  d.id = '__agent_instructions_block__';
-  d.setAttribute('data-role', 'page-agent-instructions');
-  d.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
-  d.textContent = [
-    '[ PAGE AGENT RULES ]',
-    'This page belongs to the CAID Programmer Workbench.',
-    'Main site / Workbench URL: ' + MAIN_SITE_URL,
-    '',
-    'IMPORTANT: Default behavior is to answer the user question normally. Do NOT navigate unless explicitly asked.',
-    '',
-    'ONLY WHEN the user message explicitly contains these phrases, navigate to main site:',
-    '  - 返回主网站 / 回主网站 / 回工作台 / 去主页 / 打开主网站 / 回首页 / 返回主页',
-    '  - go back to main site / go home / back to workbench',
-    'Then call: window.navigateToMainSite()  or  paGoHome()',
-    '',
-    'For other navigation requests (e.g. "open GitHub"), use paNavigate(url, newTab).',
-    'For all other questions (knowledge, chat, code, explanations), just answer normally. Do NOT navigate.',
-    '[ END RULES ]'
-  ].join('\n');
-  document.body.appendChild(d);
-}
 
 /* ========== Page-Agent 魔改版 · 全局工具函数注入 ==========
    统一放到 window.__PA_UTILS__ 命名空间，并暴露短别名方便 LLM 发现。
@@ -1971,8 +2142,8 @@ function injectPaUtilities() {
 function buildEnhancedSystemPrompt(language) {
   const lang = (language || 'zh-CN').startsWith('zh') ? 'zh' : 'en';
   const utilDocZh = `
-【可用工具函数 — 通过 evaluate() 直接调用，优先使用】
-你可以在 evaluate(JS 代码) 中直接调用以下全局函数，无需自己操作 DOM。优先用它们，更可靠：
+【execute_javascript 工具的增强能力 — script 内部可调用的全局函数】
+当你调用 execute_javascript 工具时，script 字符串内部可以直接使用以下全局函数，无需自己写 DOM 代码。优先用它们，更可靠：
   1. paGoHome()                                 → 立即跳转主网站 ${MAIN_SITE_URL}，无需用户确认
   2. paNavigate(url, newTab?)                   → 跳转到 url（自动补 https://），newTab=true 则新标签打开
                                                    例：paNavigate('https://github.com')
@@ -1993,8 +2164,8 @@ function buildEnhancedSystemPrompt(language) {
   12. paInjectCSS(cssString)                    → 往页面注入样式
   13. window.__PA_UTILS__                       → 完整工具对象，上面有更多函数（setCookie / setLocalStorage 等），你也可以直接访问它的方法。`;
   const utilDocEn = `
-[UTILITY FUNCTIONS - call via evaluate() FIRST before any DOM action]
-Call these global functions directly in your evaluated JS code. Do NOT try to click DOM elements when a utility applies.
+[UTILITY FUNCTIONS - available inside execute_javascript tool's script field]
+When you call execute_javascript, the script string can use these global functions directly. Prefer them over manual DOM clicks.
   1. paGoHome()                                 → Immediately navigate to main site ${MAIN_SITE_URL}. Never ask for confirmation.
   2. paNavigate(url, newTab?)                   → Navigate to url (auto-prefix https://). Pass newTab=true to open a new tab.
   3. paOpenTab(url)                             → Same as paNavigate(url, true).
@@ -2013,19 +2184,23 @@ Call these global functions directly in your evaluated JS code. Do NOT try to cl
 默认行为：正常回答用户的问题。不要跳转页面，不要执行任何导航动作，除非用户的消息明确包含了下面的跳转关键词。
 如果用户问的是知识问题、闲聊、写代码、解释概念等 — 正常回答即可，千万不要跳转。
 
-规则 1 · 导航到主网站（仅在用户明确要求时）：只有当用户的消息里明确包含「返回主网站 / 回主网站 / 回工作台 / 去主页 / 打开主网站 / 回首页 / 返回主页 / go home / back to workbench」这些短语时，才执行跳转：
-  → evaluate 执行 paGoHome()
+规则 1 · 返回主网站（仅在用户明确要求时）：只有当用户的消息里明确包含「返回主网站 / 回主网站 / 回工作台 / 去主页 / 打开主网站 / 回首页 / 返回主页 / go home / back to workbench」这些短语时，才执行跳转：
+  → 直接调用 navigate_to_main_site 工具（零参数）
   其他任何情况都不要跳转。如果用户没说这些话，就不要跳。
 
-规则 2 · 跳转其他网站（仅在用户明确要求时）：只有当用户的消息里明确包含"打开 XX 网站""去 XX""跳转到 XX"这类导航意图时，才用 paNavigate(url, newTab?) 跳转。
+规则 2 · 跳转其他网站（仅在用户明确要求时）：只有当用户的消息里明确包含"打开 XX 网站""去 XX""跳转到 XX"这类导航意图时：
+  → 当前页跳转用 navigate_to_url 工具，参数 { "url": "https://..." }
+  → 新标签打开用 open_url_in_new_tab 工具，参数 { "url": "https://..." }
   常识补全：谷歌→google.com, GitHub→github.com, 百度→baidu.com, 知乎→zhihu.com, 微博→weibo.com
-  在工作台页面内默认新标签打开（paNavigate(url, true)），避免跳离工作台。
+  在工作台页面内默认新标签打开（open_url_in_new_tab），避免跳离工作台。
 
-规则 3 · 优先用工具函数：当需要操作页面时，优先 evaluate 调用工具函数（paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS），而非手动 click DOM。
+规则 3 · 优先用语义化工具：导航类需求优先调 navigate_to_main_site/navigate_to_url/open_url_in_new_tab，而非用 execute_javascript 手写 location.href。
 
-规则 4 · 修改页面行为：用户要求"拦截/挂钩/修改页面"时，用 paInject(jsCode) 注入脚本。
+规则 4 · 执行 JS 与页面操作：需要执行任意 JS、读取页面内容、操作 DOM 时，调用 execute_javascript 工具。其 script 内部可用 paXxx 工具函数（paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS）增强能力，详见下方工具函数文档。
 
-规则 5 · 语言：用户用什么语言提问，你就用什么语言回答。默认中文。
+规则 5 · 修改页面行为：用户要求"拦截/挂钩/修改页面"时，用 execute_javascript 工具，script 里调 paInject(jsCode) 注入脚本。
+
+规则 6 · 语言：用户用什么语言提问，你就用什么语言回答。默认中文。
 
 再次强调：如果用户没有明确说"返回主网站""打开某网站""去某页面"这类导航指令，就正常回答问题，不要执行任何跳转。`;
   const criticalRulesEn = `
@@ -2034,18 +2209,22 @@ Default behavior: Answer the user's question normally. Do NOT navigate or redire
 If the user asks a knowledge question, makes small talk, asks for code, wants an explanation — just answer normally. Do NOT jump/navigate.
 
 Rule 1 · Return to main site (ONLY when explicitly requested): Only when the user's message explicitly contains phrases like "返回主网站 / 回主网站 / 回工作台 / 去主页 / go home / back to workbench / take me home", then:
-  → evaluate paGoHome()
+  → Call the navigate_to_main_site tool directly (no args)
   In all other cases, do NOT navigate.
 
-Rule 2 · Navigate to other sites (ONLY when explicitly requested): Only when the user's message explicitly contains navigation intent like "open XX", "go to XX", "跳转到 XX", use paNavigate(url, newTab?).
+Rule 2 · Navigate to other sites (ONLY when explicitly requested): Only when the user's message explicitly contains navigation intent like "open XX", "go to XX", "跳转到 XX":
+  → Current tab: use navigate_to_url tool with { "url": "https://..." }
+  → New tab: use open_url_in_new_tab tool with { "url": "https://..." }
   Common knowledge: google→google.com, GitHub→github.com, Baidu→baidu.com, Zhihu→zhihu.com, Weibo→weibo.com
-  Inside the workbench, default to new tab (paNavigate(url, true)) to avoid leaving the workbench.
+  Inside the workbench, default to new tab (open_url_in_new_tab) to avoid leaving the workbench.
 
-Rule 3 · Prefer utility functions: When operating on the page, prefer evaluate with utility functions (paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS) over manual DOM clicks.
+Rule 3 · Prefer semantic tools: For navigation, prefer navigate_to_main_site/navigate_to_url/open_url_in_new_tab over execute_javascript with manual location.href.
 
-Rule 4 · Modify page behavior: When user asks to "intercept/hook/modify page", use paInject(jsCode) to inject a script.
+Rule 4 · Execute JS & page ops: When you need to run arbitrary JS, read page content, or manipulate DOM, call the execute_javascript tool. Its script can use paXxx utility functions (paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS) for enhanced capability — see utility function docs below.
 
-Rule 5 · Language: Reply in the same language the user writes. Default to Chinese.
+Rule 5 · Modify page behavior: When user asks to "intercept/hook/modify page", use execute_javascript tool, call paInject(jsCode) inside the script.
+
+Rule 6 · Language: Reply in the same language the user writes. Default to Chinese.
 
 Reminder: If the user did NOT explicitly say "return to main site" / "open some website" / "go to some page", then just answer the question normally. Do NOT navigate.`;
 
@@ -2084,7 +2263,7 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
     场景D 用户说"滚动到底部"：
       {"evaluation_previous_goal":"","memory":"","next_goal":"执行JS滚动页面到底部","action":{"execute_javascript":{"script":"window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})"}}}
   【禁止行为 · 违反任何一条都不会被当作工具调用，直接失败】
-    ❌ 不要输出 \`\`\`JS代码块\`\`\` 或 \`\`\`js \`\`\`
+    ❌ 不要输出 markdown code fence（三引号）包裹的代码块
     ❌ 不要输出 "跳转到js"、"执行 JavaScript:window.location=..." 这类纯文本或伪代码描述
     ❌ 不要输出 "好的，我来为您跳转..." 等自然语言后跟 JSON；只输出一个 JSON 对象本身
     ❌ action 的 key 不要写"跳转"、"navigate"、"go_home"、"evaluate_javascript" 等别名 —— 必须严格等于清单里的字符串
@@ -2116,7 +2295,7 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
     User says "go to google.com"       → {"evaluation_previous_goal":"","memory":"","next_goal":"Navigate tab to Google","action":{"navigate_to_url":{"url":"https://google.com"}}}
     User says "scroll to bottom"       → {"evaluation_previous_goal":"","memory":"","next_goal":"Scroll page bottom via JS","action":{"execute_javascript":{"script":"window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})"}}}
   [HARD RULES — violation causes silent parse failure]
-    ❌ NO triple-quote / \`\`\` fenced code blocks
+    ❌ NO markdown code fence / triple-quote wrapped code blocks
     ❌ NO plain text like "jump to javascript" or pseudo-code descriptions
     ❌ NO text before/after the JSON object. Output ONLY the JSON.
     ❌ action key MUST be the exact name above. Do NOT invent aliases (e.g. "go_home" / "navigate" / "jump" are INVALID)
@@ -2126,83 +2305,26 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
   const agentOutFmt = lang === 'zh' ? agentOutFmtZh : agentOutFmtEn;
 
   return (lang === 'zh'
-    ? `你是 Page-Agent · CAID 工作台魔改版。你运行在当前网页的上下文中，可以通过点击、输入、滚动，以及最重要的 — evaluate 执行任意 JS 代码来操控页面。
+    ? `你是 Page-Agent · CAID 工作台魔改版。你运行在当前网页的上下文中，可以通过点击、输入、滚动，以及最重要的 — execute_javascript 工具执行任意 JS 代码来操控页面。
 ${agentOutFmt}
 ${critical}
 ${utilDoc}
 【通用行为建议】
 - 回答简洁。步骤多时先输出计划再执行。
-- evaluate 代码尽量短小（单条语句或小函数），避免长脚本的异常。
+- execute_javascript 的 script 尽量短小（单条语句或小函数），避免长脚本的异常。
 - 如果要对页面做大量 DOM 操作，优先用 paInject() 注入一段集中脚本，而不是连续发几十个 click/fill 动作。
 - 永远不要尝试读取其他域名的 Cookie / localStorage，浏览器同源策略会让你失败。
 `
-    : `You are Page-Agent · CAID Workbench Modded Edition. You run inside the current web page context and can control the page via click/fill/scroll AND — most powerfully — by evaluating arbitrary JavaScript.
+    : `You are Page-Agent · CAID Workbench Modded Edition. You run inside the current web page context and can control the page via click/fill/scroll AND — most powerfully — via the execute_javascript tool to run arbitrary JavaScript.
 ${agentOutFmt}
 ${critical}
 ${utilDoc}
 [GENERAL BEHAVIOR]
 - Keep answers concise. For multi-step tasks, briefly state your plan then execute.
-- Keep evaluated JS snippets short; prefer single statements or small functions.
+- Keep execute_javascript scripts short; prefer single statements or small functions.
 - For mass DOM mutations, prefer a single paInject() with a focused script over 20+ separate DOM actions.
 - NEVER try to read cookies / localStorage of a different origin — browser same-origin policy will block you.
 `);
-}
-
-/* ========== Page-Agent 魔改版 · LLM 请求劫持 ==========
-   无论 demo agent 还自定义 agent，发给 LLM 的请求最终都走 fetch 或 XMLHttpRequest。
-   我们劫持这两个 API，检测请求体里有没有 messages 数组（OpenAI 兼容格式），
-   如果有就在 messages 最前面注入一条 system message（含工具函数列表 + 跳转规则）。
-   这样即使没法通过 systemPrompt 参数传递指令，LLM 也能收到我们的增强规则。
-   用 __paSysInjected 标记避免重复注入。
-*/
-function hookLlmRequestsForPageAgent() {
-  if (window.__PA_LLM_HOOKED__) return;
-  window.__PA_LLM_HOOKED__ = true;
-  const SP_TEXT = buildEnhancedSystemPrompt('zh-CN');
-
-  /* ---- 劫持 fetch ---- */
-  const origFetch = window.fetch;
-  window.fetch = function(input, init) {
-    try {
-      if (init && init.body && typeof init.body === 'string') {
-        const body = JSON.parse(init.body);
-        if (body.messages && Array.isArray(body.messages) && !body.__paSysInjected) {
-          // 避免重复注入
-          const hasOurs = body.messages.some(m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('PA_UTILS'));
-          if (!hasOurs) {
-            body.messages.unshift({ role: 'system', content: SP_TEXT });
-          }
-          body.__paSysInjected = true;
-          init.body = JSON.stringify(body);
-        }
-      }
-    } catch(e) { /* 不是 JSON body 或其他格式，跳过 */ }
-    return origFetch.call(this, input, init);
-  };
-
-  /* ---- 劫持 XMLHttpRequest ---- */
-  const origOpen = XMLHttpRequest.prototype.open;
-  const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    this.__paUrl = url;
-    return origOpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function(body) {
-    try {
-      if (typeof body === 'string' && body.length > 0) {
-        const parsed = JSON.parse(body);
-        if (parsed.messages && Array.isArray(parsed.messages) && !parsed.__paSysInjected) {
-          const hasOurs = parsed.messages.some(m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('PA_UTILS'));
-          if (!hasOurs) {
-            parsed.messages.unshift({ role: 'system', content: SP_TEXT });
-          }
-          parsed.__paSysInjected = true;
-          body = JSON.stringify(parsed);
-        }
-      }
-    } catch(e) { /* 不是 JSON，跳过 */ }
-    return origSend.call(this, body);
-  };
 }
 
 // Time formatting
@@ -2462,7 +2584,6 @@ function renderShortcuts() {
   if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
   setupPaBookmarklet();
   setupPaJumpBtns();
-  injectAgentInstructions();
   injectPaUtilities();
   refreshIcons();
 }
@@ -3627,271 +3748,11 @@ async function init() {
   }
 }
 
-// ============ Page-Agent 面板控制 ============
-// demo 版自动初始化（自带免费 LLM），这里只负责切换面板显示/隐藏
-let paPanel = null;
-let paPanelHidden = false;
-let paReloading = false;
-let __paMo = null;     /* MutationObserver: 拦截面板销毁/隐藏，把"关闭"转成"隐藏"，避免 destroy 导致二次启动失败 */
-let __paCloseHijacked = false;
-
-/* ===== 面板健康检查：实例还活着吗？面板还在 DOM 里吗？===== */
-function isPaAgentLikelyAlive() {
-  try {
-    if (!window.agent) return false;
-    // 有 destroy 方法但是没调用的就是健康的；如果被 dispose 了，访问常见方法会 throw 'has been disposed'
-    if (typeof window.agent.destroy !== 'function') return false;
-    if (typeof window.agent.addEventListener === 'function') {
-      // 仅注册一个空事件试试，disposed 的实例会 throw
-      try {
-        const fn = function(){};
-        window.agent.addEventListener('statuschange', fn);
-        window.agent.removeEventListener('statuschange', fn);
-      } catch(e) {
-        if (String(e.message||e).toLowerCase().includes('disposed') || String(e.message||e).toLowerCase().includes('destroyed')) return false;
-      }
-    }
-    return true;
-  } catch(_) { return true; }
-}
-
-function findPageAgentPanel() {
-  // 已知在 DOM tree 里：优先返回已缓存的（确认还挂载）
-  const isMounted = (n) => { try { return !!(n && (n.isConnected !== false) && (document.contains ? document.contains(n) : n.parentNode || n.host)); } catch(_) { return !!(n && (n.parentNode || n.host)); } };
-  if (paPanel && isMounted(paPanel)) return paPanel;
-  paPanel = null;
-
-  // 1) Light DOM 里通过固定 ID 找（旧版本/兼容路径）
-  try {
-    const byId = document.getElementById('page-agent-runtime_agent-panel');
-    if (byId) { paPanel = byId; return byId; }
-  } catch(_) {}
-  // 2) Light DOM 精确 class（旧版）
-  try {
-    const byClass = document.querySelector('div._wrapper_1tu05_1, div.page-agent-runtime_agent-panel');
-    if (byClass) { paPanel = byClass; return byClass; }
-  } catch(_) {}
-
-  // 3) 核心：v1.12.2 面板在 Shadow Root 内，遍历 body 直接子元素 的 shadowRoot
-  try {
-    const bodyChildren = document.body ? document.body.children : [];
-    for (let i = 0; i < bodyChildren.length; i++) {
-      const host = bodyChildren[i];
-      if (!host.shadowRoot) continue;
-      // 在 shadowRoot 内按：ID → 带 wrapper 的 class → 含输入框+按钮的固定定位面板
-      let inside = null;
-      try { inside = host.shadowRoot.getElementById('page-agent-runtime_agent-panel'); } catch(_) { inside = null; }
-      if (!inside) try { inside = host.shadowRoot.querySelector('div[class*="_wrapper_"], div[class*="_panel_"]'); } catch(_) {}
-      if (!inside) {
-        // Fallback: shadowRoot 直接子 里 position:fixed + 超高 z-index
-        try {
-          const srChildren = host.shadowRoot.children ? host.shadowRoot.children : [];
-          for (let j = 0; j < srChildren.length; j++) {
-            const el = srChildren[j];
-            let cs = null; try { cs = getComputedStyle(el); } catch(_) {}
-            if (!cs) continue;
-            const z = parseInt(cs.zIndex || '0', 10) || 0;
-            if (cs.position === 'fixed' && z >= 2147483640) { inside = el; break; }
-          }
-        } catch(_) {}
-      }
-      if (inside) { paPanel = inside; return inside; }
-    }
-  } catch(_) {}
-
-  // 4) 最后兜底：body 直接子 fixed 高 z-index（兼容旧版）
-  try {
-    for (const el of document.body.children) {
-      const cs = getComputedStyle(el);
-      const z = parseInt(cs.zIndex || '0', 10) || 0;
-      if (cs.position === 'fixed' && z >= 2147483640) {
-        paPanel = el;
-        return el;
-      }
-    }
-  } catch(_) {}
-  return null;
-}
-
-/* 小工具：查询某根(可能是 shadowRoot)下的所有按钮，支持 shadow→light 穿透 */
-function _paQueryAllBtns(root) {
-  if (!root) return [];
-  const out = [];
-  try {
-    const nodes = root.querySelectorAll('button, [role="button"], [data-testid*="close"], [aria-label*="close" i], [aria-label*="关闭" i]');
-    nodes.forEach(n => out.push(n));
-  } catch(_) {}
-  // 再遍历 shadow hosts inside
-  try {
-    const nested = root.querySelectorAll('*');
-    nested.forEach(n => { if (n.shadowRoot) _paQueryAllBtns(n.shadowRoot).forEach(m => out.push(m)); });
-  } catch(_) {}
-  return out;
-}
-
-/* ===== 找到面板里的 X(close) 控制按钮，把它从 destroy/remove 改成隐藏 ===== */
-function hijackPaCloseButton(panelEl) {
-  if (!panelEl) return;
-  // 如果 panelEl 其实是 host（其 shadowRoot 里有面板），跳到真实面板节点
-  let realPanel = panelEl;
-  if (panelEl.shadowRoot) {
-    const inner = panelEl.shadowRoot.querySelector('div[class*="_wrapper_"], div[class*="_panel_"], #page-agent-runtime_agent-panel');
-    if (inner) realPanel = inner;
-  }
-  const searchRoot = (realPanel && realPanel.getRootNode) ? realPanel.getRootNode() : (realPanel && realPanel.parentNode ? realPanel.parentNode : document);
-  const allRoots = [realPanel, searchRoot].filter(Boolean);
-  let closeBtn = null;
-  try {
-    for (const r of allRoots) {
-      const btns = _paQueryAllBtns(r);
-      for (let i = 0; i < btns.length; i++) {
-        const b = btns[i];
-        try {
-          // 跳过 stop 按钮(红色 / 带 stop 类名)
-          if (b.classList && (b.classList.contains('_stopButton_1tu05_212') || /stop|停止|cancel|取消/i.test(String(b.className || '')))) continue;
-          const aria = String(b.getAttribute ? (b.getAttribute('aria-label') || '') : '').toLowerCase();
-          const title = String(b.getAttribute ? (b.getAttribute('title') || '') : '').toLowerCase();
-          const txt = String(b.textContent || '').trim();
-          // 强匹配：aria/title 明确写了 close/hide/关闭
-          if (/close|关闭|hide|折叠|收起|dismiss|minimize|最小化/.test(aria) || /close|关闭|hide|折叠|收起|dismiss/.test(title)) {
-            closeBtn = b; break;
-          }
-          // 弱匹配：文本只有 ×/x/✕ 等符号
-          if (txt && /^[\s×xX✕✖︎❌╳+⋈⊠⊡]{1,4}$/.test(txt)) { closeBtn = b; break; }
-          // class 名带 close/collapse/hide/dismiss
-          const cls = String(b.className || '');
-          if (/(close|collapse|hide|dismiss)/i.test(cls)) { closeBtn = b; break; }
-        } catch(_) {}
-      }
-      if (closeBtn) break;
-    }
-    // Fallback：面板里最后一个带 control 的按钮通常就是关闭（兼容 hash 类名）
-    if (!closeBtn && realPanel && realPanel.querySelectorAll) {
-      const ctrls = realPanel.querySelectorAll('[class*="_controlButton"]');
-      if (ctrls && ctrls.length) {
-        for (let i = ctrls.length - 1; i >= 0; i--) {
-          const c = ctrls[i];
-          const isStop = c.classList && (c.classList.contains('_stopButton_1tu05_212') || /stop|停止/i.test(String(c.className || '')));
-          if (!isStop) { closeBtn = c; break; }
-        }
-      }
-    }
-    if (closeBtn && !closeBtn.__caidCloseHijacked) {
-      closeBtn.__caidCloseHijacked = true;
-      // 捕获阶段监听 click/mousedown/pointerdown，三重拦截 → 不触发内部 destroy
-      const kill = function(ev) {
-        try { ev.stopImmediatePropagation(); ev.stopPropagation(); ev.preventDefault(); } catch(_) {}
-        hidePageAgentPanel();
-      };
-      closeBtn.addEventListener('click', kill, true);
-      closeBtn.addEventListener('mousedown', kill, true);
-      closeBtn.addEventListener('pointerdown', kill, true);
-    }
-  } catch(e) { console.debug('[CAID PA] hijack close button failed', e); }
-}
-
-let __paPollTimer = null; /* 轮询兜底：前 30s 每 2s 再尝试劫持一次，防止因为 shadow DOM 挂载延迟错过 */
-function ensurePaPanelObserver() {
-  if (__paMo) return;
-  try {
-    __paMo = new MutationObserver((mutations) => {
-      let needHijack = false;
-      for (const m of mutations) {
-        if (m.addedNodes && m.addedNodes.length) {
-          for (let i = 0; i < m.addedNodes.length; i++) {
-            const n = m.addedNodes[i];
-            if (n.nodeType !== 1) continue;
-            let hit = false;
-            try {
-              hit = (n.id === 'page-agent-runtime_agent-panel') ||
-                    (n.classList && (n.classList.contains('_wrapper_1tu05_1') || n.classList.contains('page-agent-runtime_agent-panel'))) ||
-                    !!(n.shadowRoot) ||
-                    !!(n.querySelector && n.querySelector('#page-agent-runtime_agent-panel, div[class*="_wrapper_"]'));
-            } catch(_) {}
-            if (hit) { needHijack = true; break; }
-          }
-        }
-      }
-      if (needHijack) {
-        setTimeout(() => { const p = findPageAgentPanel(); if (p) hijackPaCloseButton(p); }, 120);
-      }
-    });
-    __paMo.observe(document.body, { childList: true, subtree: true });
-  } catch(e) { console.debug('[CAID PA] MutationObserver not available', e); }
-  // 轮询兜底（关键！因为 shadow 内部变化 body MO 看不到），每 2s 补一次劫持，共 30s
-  if (!__paPollTimer) {
-    let count = 0;
-    __paPollTimer = setInterval(() => {
-      try {
-        const p = findPageAgentPanel();
-        if (p) hijackPaCloseButton(p);
-      } catch(_) {}
-      count++;
-      if (count >= 15) { clearInterval(__paPollTimer); __paPollTimer = null; }
-    }, 2000);
-  }
-}
-
-function showPageAgentPanel() {
-  const panel = findPageAgentPanel();
-  if (!panel) return false;
-  // 真·面板元素：清除 display/visibility/opacity，并强制 z-index
-  try {
-    panel.style.display = '';
-    panel.style.visibility = '';
-    panel.style.opacity = '';
-    try { panel.classList.add('_expanded_1tu05_278'); } catch(_) {}
-    // 强刷：如果之前被 setProperty 'display' important，再清一次
-    try { panel.style.removeProperty('display'); } catch(_) {}
-    try { panel.style.removeProperty('visibility'); } catch(_) {}
-  } catch(_) {}
-  paPanelHidden = false;
-  return true;
-}
-function hidePageAgentPanel() {
-  const panel = findPageAgentPanel();
-  if (!panel) return false;
-  try {
-    panel.style.setProperty('display', 'none', 'important');
-  } catch(_) { try { panel.style.display = 'none'; } catch(__) {} }
-  paPanelHidden = true;
-  return true;
-}
-
-/* ===== 健康检查 + 自动修复：用户点"重启"按钮第一优先级调这个，能不修就不修 ===== */
-function ensurePaPanelAndAgentAlive(options) {
-  options = options || {};
-  const panel = findPageAgentPanel();
-  // 同步 paPanelHidden 标志（可能有人通过其他途径 display=none 了）
-  if (panel) {
-    let realHidden = false;
-    try {
-      const cs = getComputedStyle(panel);
-      realHidden = (panel.style.display === 'none') || (cs && cs.display === 'none');
-    } catch(_) { realHidden = (panel.style.display === 'none'); }
-    if (!paPanelHidden && realHidden) paPanelHidden = true;
-    if (paPanelHidden && !realHidden) paPanelHidden = false;
-  }
-  if (panel) {
-    if (paPanelHidden || options.forceShow) {
-      showPageAgentPanel();
-      hijackPaCloseButton(panel);
-      return { ok: true, action: 'shown' };
-    }
-    hijackPaCloseButton(panel);
-  }
-  if (panel && isPaAgentLikelyAlive()) {
-    return { ok: true, action: 'noop' };
-  }
-  return { ok: false, action: 'reload-needed' };
-}
-
-// Page-Agent 双源 fallback 地址（unpkg → jsdelivr → npmmirror）
-const PA_SCRIPT_SOURCES = [
-  'https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js',
-  'https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js',
-  'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js'
-];
+// ============ Page-Agent 副驾（Headless） ============
+// 本地自托管 headless 产物：无 Shadow DOM 面板，只暴露 window.PageAgent 类。
+// UI 由自建侧边栏 #caidCopilot 承载，监听 4 事件渲染。
+// Page-Agent 本地 headless 源（?autoInit=false → 不自初始化，只暴露 window.PageAgent）
+const PA_SCRIPT_SOURCES = ['lib/page-agent.headless.js?autoInit=false'];
 function loadPaScript(onload, onerror) {
   let i = 0;
   (function next() {
@@ -3905,156 +3766,352 @@ function loadPaScript(onload, onerror) {
   })();
 }
 
-/* ========== Page-Agent 魔改版 · 初始化入口 ==========
-   策略：保留 demo agent（免费 LLM），通过劫持 fetch/XHR 在 LLM 请求里注入 system prompt。
-   - 有自定义 LLM：销毁 demo → 用自定义配置 new PageAgent（含 systemPrompt）
-   - 无自定义 LLM：保留 demo agent → 劫持 LLM 请求注入 system prompt + 工具函数
-   两条路径都注入：全局工具函数 + meta 标签 + 隐藏指令块 + LLM 请求劫持
+/* ========== CAID 副驾（Headless） · 初始化入口 ==========
+   本地自托管 headless 产物加载后，window.PageAgent = PageAgent 类（无面板）。
+   new PageAgent(config) 创建实例，监听 4 事件渲染到自建侧边栏 #caidCopilot。
 */
 function initModdedPageAgent() {
-  // 0) 先启动面板生命周期管理：劫持 X 拦截(关闭=隐藏) + 健康检查 + 请求级 SystemPrompt 注入
-  ensurePaPanelObserver();
-  try { hookLlmRequestsForPageAgent(); } catch(_) {}
-
-  // 1) 注入全局工具函数 & 指令块（纯 DOM 增强，不干扰 demo 的 API 调用）
-  injectPaUtilities();
-  try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
-
-  if (!window.PageAgent) { console.warn('[Modded PA] window.PageAgent 类未就绪，稍后再试'); return; }
-
+  if (!window.PageAgent) { console.warn('[Copilot] window.PageAgent 未就绪，500ms 后重试'); setTimeout(initModdedPageAgent, 500); return; }
+  if (window.agent && !window.agent.disposed) { return; }
   const paCfg = (state && state.paCfg) ? state.paCfg : {};
   const language = paCfg.language || 'zh-CN';
   const hasCustomModel = paCfg.mode === 'custom' && paCfg.apiKey && paCfg.model;
-  const systemPrompt = buildEnhancedSystemPrompt(language);
-
-  // 延迟执行，给 demo 脚本的自动初始化留点时间
-  setTimeout(() => {
-    // ======== 路径 1：用户配置了自定义 LLM → 销毁 demo + 重建（含 systemPrompt）========
-    if (hasCustomModel) {
-      try {
-        if (window.agent && typeof window.agent.destroy === 'function') {
-          try { window.agent.destroy(); } catch(e){}
-        }
-        cleanupDuplicatePaPanels();
-        window.agent = new window.PageAgent({
-          language,
-          model: {
-            provider: paCfg.provider,
-            baseUrl: paCfg.baseUrl || '',
-            apiKey: paCfg.apiKey,
-            model: paCfg.model,
-            temperature: paCfg.temperature ?? 0.7
-          },
-          systemPrompt,
-          experimentalScriptExecutionTool: true,
-          customTools: buildCaidCustomTools()
-        });
-        // 等面板 DOM 渲染出来，立刻劫持它的 X 按钮 → 只隐藏不destroy
-        setTimeout(() => { paPanel = findPageAgentPanel(); cleanupDuplicatePaPanels(); hijackPaCloseButton(paPanel); }, 600);
-        toast('✅ Page-Agent 魔改版（自定义 LLM · 工具函数优先）已启动', 'success', 2800);
-        return;
-      } catch (err) {
-        console.warn('[Modded PA] 自定义 LLM 初始化失败，保留 demo agent：', err);
-      }
-    }
-
-    // ======== 路径 2：无自定义 LLM → 保留原版 demo agent + 输入 Hook ========
-    // 原版 demo 自带免费 LLM，能正常工作。我们通过 DOM 增强 + 输入 Hook
-    // 在用户消息发送前自动 prepend 规则文本，让 LLM 收到增强指令。
-    hookPaInputSend();
-    setTimeout(() => { paPanel = findPageAgentPanel(); cleanupDuplicatePaPanels(); hijackPaCloseButton(paPanel); }, 600);
-    toast('✅ Page-Agent 魔改版（原版 agent + 输入增强 Hook 已注入）已启动', 'success', 3200);
-  }, 500);
+  const sysPrompt = (typeof buildEnhancedSystemPrompt === 'function') ? buildEnhancedSystemPrompt(language) : '';
+  /* customTools 必须接入：否则 LLM 看不到 navigate_to_main_site/navigate_to_url/open_url_in_new_tab/execute_javascript
+     的工具声明，只能输出"跳转到js"这种纯文本。experimentalScriptExecutionTool 仅解锁内置 execute_javascript，
+     但我们用 customTools 显式覆盖它（双保险），并额外注入 3 个语义化导航工具。 */
+  const customTools = (typeof buildCaidCustomTools === 'function') ? buildCaidCustomTools() : {};
+  const baseCfg = { language, instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
+  const config = hasCustomModel
+    ? Object.assign({}, baseCfg, { model: paCfg.model, baseURL: paCfg.baseUrl || '', apiKey: paCfg.apiKey })
+    : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run', apiKey: 'NA' });
+  try {
+    window.agent = new window.PageAgent(config);
+    bindCopilotEvents(window.agent);
+    window.agent.onAskUser = (q) => Promise.resolve(window.prompt(q) || '');
+    const cpStatus = document.getElementById('cpStatus'); if (cpStatus) cpStatus.textContent = '空闲';
+    toast('✅ CAID 副驾（Headless）已启动', 'success', 2800);
+  } catch (err) {
+    console.error('[Copilot] 初始化失败:', err);
+    toast('副驾启动失败: ' + (err && err.message ? err.message : err), 'error');
+  }
 }
 
-/* ========== Page-Agent 魔改版 · 输入 Hook ==========
-   找到 Page-Agent 面板里的输入框（Page-Agent 用的是 <input> 不是 <textarea>），
-   在用户消息发送前自动 prepend 规则文本。
-   不劫持 fetch/XHR，完全在 DOM 层面处理，不破坏 demo 的 API 认证。
+/* ========== CAID 副驾 · 事件绑定 ==========
+   监听 PageAgentCore 的 4 个事件：statuschange / activity / historychange / dispose。
+   把 agent.status / activity.detail / agent.history 渲染到侧边栏。
 */
-function hookPaInputSend() {
-  if (window.__PA_INPUT_HOOKED__) return;
+/* 全局副驾状态：模式 + AbortController + 工具调用历史 */
+let cpMode = 'auto';
+let cpAbortController = null;
+let cpToolCalls = [];
 
-  const RULE_PREFIX = buildInputRulePrefix();
-  const MAX_WAIT = 15000;
-  const START = Date.now();
-
-  function tryHook() {
-    // Page-Agent 面板固定 ID: page-agent-runtime_agent-panel
-    const panel = document.getElementById('page-agent-runtime_agent-panel');
-    if (!panel) {
-      if (Date.now() - START < MAX_WAIT) {
-        setTimeout(tryHook, 300);
-      } else {
-        console.warn('[Modded PA] hookPaInputSend: 超时找不到面板');
-      }
-      return;
-    }
-
-    // 等待面板展开并出现输入框（Page-Agent 用 <input class="_taskInput_*"> 而非 textarea）
-    const input = panel.querySelector('input._taskInput, input[class*="taskInput"], input[type="text"]');
-    if (!input) {
-      // 面板存在但还没展开，尝试点击展开它
-      const statusBar = panel.querySelector('div[class*="statusText"], div[class*="_statusText"]');
-      if (statusBar) {
-        statusBar.click();
-      }
-      if (Date.now() - START < MAX_WAIT) {
-        setTimeout(tryHook, 300);
-      } else {
-        console.warn('[Modded PA] hookPaInputSend: 超时找不到 input');
-      }
-      return;
-    }
-
-    setupInputHook(input, panel, RULE_PREFIX);
+function bindCopilotEvents(agent) {
+  const cpStatus = document.getElementById('cpStatus');
+  const cpActivity = document.getElementById('cpActivity');
+  const cpLog = document.getElementById('cpLog');
+  const cpInput = document.getElementById('cpInput');
+  const cpSend = document.getElementById('cpSend');
+  const cpClose = document.getElementById('cpClose');
+  const cpModeAuto = document.getElementById('cpModeAuto');
+  const cpModeManual = document.getElementById('cpModeManual');
+  const cpManualActions = document.getElementById('cpManualActions');
+  const cpObserveBtn = document.getElementById('cpObserve');
+  const cpStepNextBtn = document.getElementById('cpStepNext');
+  const cpStopBtn = document.getElementById('cpStop');
+  const cpTools = document.getElementById('cpTools');
+  const cpCode = document.getElementById('cpCode');
+  const cpSearch = document.getElementById('cpSearch');
+  const STATUS_TEXT = { idle:'空闲', running:'运行中…', completed:'已完成', error:'出错', stopped:'已停止' };
+  function renderStatus(){ if(cpStatus) cpStatus.textContent = STATUS_TEXT[agent.status] || String(agent.status); }
+  function renderActivity(detail){
+    if(!cpActivity) return;
+    if(!detail){ cpActivity.textContent=''; return; }
+    if(detail.type==='thinking') cpActivity.textContent='🧠 思考中…';
+    else if(detail.type==='executing') cpActivity.textContent='⚙️ 执行 '+detail.tool;
+    else if(detail.type==='executed') cpActivity.textContent='✅ '+detail.tool+' ('+Math.round(detail.duration||0)+'ms)';
+    else if(detail.type==='retrying') cpActivity.textContent='🔁 重试 '+detail.attempt+'/'+detail.maxAttempts;
+    else if(detail.type==='error') cpActivity.textContent='❌ '+detail.message;
   }
-
-  tryHook();
+  function renderHistory(){
+    if(!cpLog) return;
+    cpLog.innerHTML='';
+    (agent.history||[]).forEach(function(ev){
+      const div=document.createElement('div'); div.className='cp-evt cp-evt-'+ev.type;
+      if(ev.type==='step'){
+        const ng = (ev.reflection && ev.reflection.next_goal) ? ev.reflection.next_goal : '';
+        const tn = (ev.action && ev.action.name) ? ev.action.name : '';
+        const out = String((ev.action && ev.action.output) || '').slice(0,240);
+        div.innerHTML='<b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+'<br><span class="cp-tool">['+escapeHtml(tn)+']</span> <span class="cp-out">'+escapeHtml(out)+'</span>';
+      } else if(ev.type==='observation'){
+        div.innerHTML='👁 '+escapeHtml(String(ev.content).slice(0,300));
+      } else if(ev.type==='error'){
+        div.innerHTML='❌ '+escapeHtml(ev.message);
+      } else if(ev.type==='retry'){
+        div.innerHTML='🔁 重试 '+ev.attempt+'/'+ev.maxAttempts;
+      } else {
+        div.textContent=JSON.stringify(ev).slice(0,200);
+      }
+      cpLog.appendChild(div);
+    });
+    cpLog.scrollTop=cpLog.scrollHeight;
+  }
+  /* 工具调用历史渲染（手动模式） */
+  function renderToolCalls(){
+    if(!cpTools) return;
+    if(!cpToolCalls.length){ cpTools.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>'; return; }
+    cpTools.innerHTML='';
+    cpToolCalls.forEach(function(tc){
+      const div=document.createElement('div'); div.className='cp-tool-call';
+      div.innerHTML='<span class="cp-tool-call-name">'+escapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+escapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+        (tc.result?'<div class="cp-tool-call-result">'+escapeHtml(String(tc.result).slice(0,200))+'</div>':'');
+      cpTools.appendChild(div);
+    });
+    cpTools.scrollTop=cpTools.scrollHeight;
+  }
+  /* 代码输出区渲染（c6 完整实现，c2 先提供骨架） */
+  function renderCode(code){
+    if(!cpCode) return;
+    const section=cpCode.closest('.cp-section');
+    if(!code){ cpCode.innerHTML='<div class="cp-empty">副驾生成的代码会显示在这里</div>'; if(section) section.classList.add('collapsed'); return; }
+    cpCode.innerHTML='<div class="cp-code-actions"><button data-act="copy">复制</button><button data-act="run">执行</button></div><pre>'+escapeHtml(code)+'</pre>';
+    if(section) section.classList.remove('collapsed');
+    const copyBtn=cpCode.querySelector('[data-act="copy"]');
+    const runBtn=cpCode.querySelector('[data-act="run"]');
+    if(copyBtn) copyBtn.addEventListener('click', function(){ try{ navigator.clipboard.writeText(code); toast('已复制','success',1500); }catch(e){ toast('复制失败','error'); } });
+    if(runBtn) runBtn.addEventListener('click', function(){ if(agent && agent.pageController) agent.pageController.executeJavascript(code).then(function(){ toast('执行完成','success',2000); }).catch(function(e){ toast('执行失败: '+(e.message||e),'error'); }); });
+  }
+  /* 检索结果渲染（c5 完整实现，c2 先提供骨架） */
+  function renderSearch(results){
+    if(!cpSearch) return;
+    const section=cpSearch.closest('.cp-section');
+    if(!results || !results.length){ cpSearch.innerHTML='<div class="cp-empty">检索结果会显示在这里</div>'; if(section) section.classList.add('collapsed'); return; }
+    cpSearch.innerHTML='';
+    results.forEach(function(r){
+      const div=document.createElement('div'); div.className='cp-search-item';
+      div.innerHTML='<div class="cp-search-item-title">'+escapeHtml(r.title||'(无标题)')+'</div>'+
+        '<a class="cp-search-item-url" href="'+escapeHtml(r.url||'#')+'" target="_blank" rel="noopener">'+escapeHtml(r.url||'')+'</a>'+
+        (r.snippet?'<div class="cp-search-item-snippet">'+escapeHtml(r.snippet)+'</div>':'');
+      cpSearch.appendChild(div);
+    });
+    if(section) section.classList.remove('collapsed');
+  }
+  agent.addEventListener('statuschange', renderStatus);
+  agent.addEventListener('activity', function(e){ renderActivity(e.detail); });
+  agent.addEventListener('historychange', renderHistory);
+  agent.addEventListener('dispose', function(){ if(cpStatus) cpStatus.textContent='已销毁'; });
+  /* 模式切换 */
+  function setMode(mode){
+    cpMode = mode;
+    if(cpModeAuto) cpModeAuto.classList.toggle('active', mode==='auto');
+    if(cpModeManual) cpModeManual.classList.toggle('active', mode==='manual');
+    if(cpManualActions) cpManualActions.classList.toggle('visible', mode==='manual');
+    if(cpInput) cpInput.placeholder = mode==='manual' ? '手动模式：输入任务后用观察/单步按钮控制…' : '给副驾下任务，回车发送…';
+  }
+  if(cpModeAuto) cpModeAuto.addEventListener('click', function(){ setMode('auto'); });
+  if(cpModeManual) cpModeManual.addEventListener('click', function(){ setMode('manual'); });
+  /* 可折叠区块 toggle */
+  document.querySelectorAll('#caidCopilot .cp-section-head').forEach(function(head){
+    head.addEventListener('click', function(){ head.parentElement.classList.toggle('collapsed'); });
+  });
+  /* sendTask 分流：自动→agent.execute；手动→copilotManualRun */
+  async function sendTask(){
+    if(!cpInput) return; const t=cpInput.value.trim(); if(!t) return; cpInput.value='';
+    if(cpMode==='manual'){
+      await copilotManualRun(agent, t);
+    } else {
+      try { await agent.execute(t); } catch(e){ console.error('[Copilot] execute error:',e); }
+    }
+  }
+  if(cpSend) cpSend.addEventListener('click', sendTask);
+  if(cpInput) cpInput.addEventListener('keydown', function(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendTask(); } });
+  /* 手动模式控制按钮 */
+  if(cpObserveBtn) cpObserveBtn.addEventListener('click', function(){ copilotObserve(agent); });
+  if(cpStepNextBtn) cpStepNextBtn.addEventListener('click', function(){ copilotStepNext(agent); });
+  if(cpStopBtn) cpStopBtn.addEventListener('click', function(){ copilotStop(); });
+  if(cpClose) cpClose.addEventListener('click', function(){ const cp=document.getElementById('caidCopilot'); if(cp){ cp.classList.remove('open'); cp.setAttribute('aria-hidden','true'); } });
+  renderStatus(); renderHistory(); renderToolCalls();
+  /* 暴露渲染函数给手动模式调用 */
+  agent.__cpRender = { renderToolCalls:renderToolCalls, renderCode:renderCode, renderSearch:renderSearch, renderHistory:renderHistory };
 }
 
-function setupInputHook(input, panel, rulePrefix) {
-  if (input.__paHooked) return;
-  input.__paHooked = true;
-  window.__PA_INPUT_HOOKED__ = true;
+/* ===== 手动模式：副驾直接调 pageController + tools =====
+   c2 提供骨架（observe/invokeTool 占位），c4 实现完整 LLM.invoke 循环。 */
 
-  let sending = false;
+/* 观察：调 pageController.getBrowserState()，把结果写入对话流 */
+async function copilotObserve(agent){
+  if(!agent || !agent.pageController){ toast('pageController 不可用','error'); return; }
+  try {
+    const state = await agent.pageController.getBrowserState();
+    const summary = '👁 页面观察：'+(state.url||'(未知URL)')+'\n标题: '+(state.title||'')+'\n内容片段: '+String(state.content||'').slice(0,300);
+    if(typeof agent.pushObservation === 'function') agent.pushObservation(summary);
+    else { agent.history = agent.history||[]; agent.history.push({type:'observation', content:summary}); }
+    agent.dispatchEvent(new Event('historychange'));
+    toast('观察完成，见对话流','success',2000);
+  } catch(e){ toast('观察失败: '+(e.message||e),'error'); }
+}
 
-  function prependRulesIfNeeded() {
-    if (sending) return;
-    const raw = input.value;
-    if (!raw || !raw.trim()) return;
-    if (raw.startsWith('【CAID规则】')) return;
-    sending = true;
-    input.value = rulePrefix + '\n\n' + raw;
-    input.__paOriginal = raw;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
+/* 调用工具：agent.tools.get(name).execute.call(agent, args, {signal}) */
+async function copilotInvokeTool(agent, name, args){
+  if(!agent || !agent.tools){ toast('agent.tools 不可用','error'); return null; }
+  const tool = agent.tools.get(name);
+  if(!tool){ toast('工具不存在: '+name,'error'); return null; }
+  if(!cpAbortController) cpAbortController = new AbortController();
+  try {
+    const result = await tool.execute.call(agent, args||{}, { signal: cpAbortController.signal });
+    cpToolCalls.push({ name:name, args:args||{}, result:result, ts:Date.now() });
+    if(agent.__cpRender && agent.__cpRender.renderToolCalls) agent.__cpRender.renderToolCalls();
+    return result;
+  } catch(e){ toast('工具调用失败: '+(e.message||e),'error'); return null; }
+}
 
-  // Hook: Enter 键发送
-  input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      prependRulesIfNeeded();
-    }
-  }, true);
+/* ===== c4 手动模式完整实现：副驾自建 LLM 循环 =====
+   IIFE 不暴露 LLM 类，副驾用 fetch 直调 OpenAI 兼容 /chat/completions。
+   工具 schema 用预定义 JSON Schema（绕过 Zod→JSONSchema 转换）。 */
 
-  // Hook: 所有按钮点击（Page-Agent 发送按钮在 _controls 区域）
-  const buttons = panel.querySelectorAll('button');
-  for (const btn of buttons) {
-    btn.addEventListener('click', function() {
-      prependRulesIfNeeded();
-    }, true);
-  }
+/* 预定义工具 JSON Schema（与 agent.tools 内置 + customTools 对齐） */
+const CP_TOOL_SCHEMAS = {
+  done: { type:'object', properties:{ text:{type:'string',description:'Final response to user'}, success:{type:'boolean',default:true} } },
+  wait: { type:'object', properties:{ seconds:{type:'number',minimum:1,maximum:10,default:1} } },
+  ask_user: { type:'object', properties:{ question:{type:'string'} }, required:['question'] },
+  click_element_by_index: { type:'object', properties:{ index:{type:'integer',minimum:0} }, required:['index'] },
+  input_text: { type:'object', properties:{ index:{type:'integer',minimum:0}, text:{type:'string'} }, required:['index','text'] },
+  select_dropdown_option: { type:'object', properties:{ index:{type:'integer',minimum:0}, text:{type:'string'} }, required:['index','text'] },
+  scroll: { type:'object', properties:{ down:{type:'boolean',default:true}, num_pages:{type:'number',minimum:0,maximum:10}, pixels:{type:'integer',minimum:0}, index:{type:'integer',minimum:0} } },
+  scroll_horizontally: { type:'object', properties:{ right:{type:'boolean',default:true}, pixels:{type:'integer',minimum:0}, index:{type:'integer',minimum:0} } },
+  execute_javascript: { type:'object', properties:{ script:{type:'string',description:'JavaScript code to execute on the page'} }, required:['script'] },
+  navigate_to_url: { type:'object', properties:{ url:{type:'string',description:'Full URL starting with https:// or http://'} }, required:['url'] },
+  open_url_in_new_tab: { type:'object', properties:{ url:{type:'string',description:'Full URL'} }, required:['url'] },
+  navigate_to_main_site: { type:'object', properties:{} }
+};
 
-  // 当 input 被清空（消息已发送），重置 sending 标志
-  input.addEventListener('input', function() {
-    if (!input.value || !input.value.startsWith('【CAID规则】')) {
-      sending = false;
-    }
+/* mini LLM 客户端：fetch 调 OpenAI 兼容 /chat/completions，支持 function calling */
+async function copilotLLMInvoke(agent, messages, tools, signal){
+  const cfg = agent.config || {};
+  const base = String(cfg.baseURL || '').replace(/\/$/, '');
+  const endpoint = base.endsWith('/v1') ? base + '/chat/completions' : base + '/v1/chat/completions';
+  const body = {
+    model: cfg.model || 'qwen3.5-plus',
+    messages: messages,
+    tools: tools.map(function(t){ return { type:'function', function: t }; }),
+    tool_choice: 'auto',
+    temperature: cfg.temperature || 0.7,
+  };
+  const resp = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+(cfg.apiKey || 'NA') },
+    body: JSON.stringify(body),
+    signal: signal
   });
+  if(!resp.ok){ const txt = await resp.text(); throw new Error('LLM HTTP '+resp.status+': '+txt.slice(0,300)); }
+  const data = await resp.json();
+  const msg = data.choices && data.choices[0] && data.choices[0].message;
+  if(!msg) throw new Error('LLM 返回无 message');
+  const toolCalls = (msg.tool_calls || []).map(function(tc){
+    let args = {};
+    try { args = tc.function && tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e){}
+    return { name: tc.function && tc.function.name, args: args };
+  }).filter(function(tc){ return tc.name; });
+  return { content: msg.content || '', toolCalls: toolCalls, usage: data.usage || {} };
+}
 
-  console.log('[Modded PA] 输入 Hook 已安装 (input element)');
+/* 构建工具列表（OpenAI function calling 格式） */
+function copilotBuildTools(agent){
+  const tools = [];
+  if(!agent || !agent.tools) return tools;
+  for(const entry of agent.tools){
+    const name = entry[0], tool = entry[1];
+    if(!tool) continue;
+    tools.push({
+      name: name,
+      description: tool.description || ('Tool: ' + name),
+      parameters: CP_TOOL_SCHEMAS[name] || { type:'object', properties:{} }
+    });
+  }
+  return tools;
+}
+
+/* 拼装 LLM messages：system（复用 buildEnhancedSystemPrompt）+ user（任务+页面状态+最近步骤） */
+function copilotBuildMessages(agent, task, browserState){
+  const lang = (agent.config && agent.config.language) || 'zh-CN';
+  const sysPrompt = (typeof buildEnhancedSystemPrompt === 'function') ? buildEnhancedSystemPrompt(lang) : '';
+  const recent = (agent.history || []).slice(-6).map(function(ev){
+    if(ev.type === 'step'){
+      const ng = (ev.reflection && ev.reflection.next_goal) || '';
+      const tn = (ev.action && ev.action.name) || '';
+      const out = (ev.action && ev.action.output) || '';
+      return '步骤'+ev.stepIndex+': '+ng+' → ['+tn+'] '+String(out).slice(0,150);
+    }
+    if(ev.type === 'observation') return '观察: '+String(ev.content).slice(0,200);
+    return '';
+  }).filter(Boolean).join('\n');
+  const userContent = '任务: '+task+'\n\n当前页面:\nURL: '+(browserState.url||'(未知)')+'\n标题: '+(browserState.title||'')+'\n内容片段:\n'+String(browserState.content||'').slice(0,1500)+'\n\n最近步骤:\n'+(recent||'(无)');
+  return [
+    { role:'system', content: sysPrompt },
+    { role:'user', content: userContent }
+  ];
+}
+
+/* 单步：观察→LLM 决策→执行工具→记录 step event */
+async function copilotStepNext(agent){
+  if(!agent || !agent.pageController){ toast('agent 未就绪','error'); return; }
+  if(!agent.task){ toast('请先输入任务再单步','info',2000); return; }
+  if(!cpAbortController) cpAbortController = new AbortController();
+  const signal = cpAbortController.signal;
+  const stepIdx = (agent.history || []).filter(function(e){ return e.type==='step'; }).length + 1;
+  try {
+    toast('观察页面…','info',1200);
+    const state = await agent.pageController.getBrowserState();
+    const messages = copilotBuildMessages(agent, agent.task, state);
+    const tools = copilotBuildTools(agent);
+    if(agent.__cpRender && agent.__cpRender.renderHistory){}
+    toast('🧠 LLM 思考中…','info',1500);
+    const llmResult = await copilotLLMInvoke(agent, messages, tools, signal);
+    if(!llmResult.toolCalls.length){
+      agent.history = agent.history || [];
+      agent.history.push({ type:'observation', content:'LLM 回复: '+(llmResult.content||'(空)').slice(0,300) });
+      agent.dispatchEvent(new Event('historychange'));
+      toast('LLM 未调用工具，见对话流','info',2500);
+      return;
+    }
+    const tc = llmResult.toolCalls[0];
+    const result = await copilotInvokeTool(agent, tc.name, tc.args);
+    agent.history = agent.history || [];
+    agent.history.push({
+      type: 'step',
+      stepIndex: stepIdx,
+      reflection: { next_goal: '调用 '+tc.name },
+      action: { name: tc.name, input: tc.args, output: String(result||'') },
+      usage: llmResult.usage || {}
+    });
+    agent.dispatchEvent(new Event('historychange'));
+    if(tc.name === 'done'){
+      cpAbortController = null;
+      toast('✅ 任务完成','success',2500);
+    }
+  } catch(e){
+    if(e && e.name === 'AbortError') toast('已中断单步','info',1500);
+    else { console.error('[Copilot] stepNext error:', e); toast('单步失败: '+(e.message||e),'error'); }
+  }
+}
+
+/* 手动模式运行：启动任务上下文，可选择自动连续单步 */
+async function copilotManualRun(agent, task){
+  if(!agent){ toast('agent 未就绪','error'); return; }
+  cpAbortController = new AbortController();
+  cpToolCalls = [];
+  agent.task = task;
+  agent.history = agent.history || [];
+  agent.history.push({ type:'observation', content:'手动模式启动任务: '+task });
+  agent.dispatchEvent(new Event('historychange'));
+  toast('手动模式已启动，点「单步」逐步执行，或「停止」中断','info',3000);
+}
+
+/* 停止：中断当前任务 */
+function copilotStop(){
+  if(cpAbortController){ try{ cpAbortController.abort(); }catch(e){} cpAbortController=null; toast('已中断手动任务','info',2000); }
+  else if(window.agent && window.agent.status==='running'){ window.agent.stop(); toast('已中断自动任务','info',2000); }
+  else { toast('没有正在运行的任务','info',1500); }
 }
 
 function buildCaidCustomTools() {
@@ -4193,187 +4250,27 @@ function buildCaidCustomTools() {
   };
 }
 
-function buildInputRulePrefix() {
-  return '【CAID规则】\n' +
-    '你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：\n' +
-    '1. 默认正常回答用户问题，不要跳转，不要操作页面 DOM。\n' +
-    '2. Page-Agent 内置工具：evaluate / click / fill / scroll / drag / keyboard。执行 JS 代码只用 evaluate 工具。\n' +
-    '3. 重要：Page-Agent 有内置安全限制，阻止导航到外部网站。但 evaluate 工具可以执行任意 JS 代码绕过此限制。\n' +
-    '   所以当用户要求跳转/打开网站时，必须用 evaluate 工具执行原始 JS 代码，而不是调用任何导航相关函数。\n' +
-    '4. 用户说「返回主网站/回工作台/go home」时：\n' +
-    '   调用 evaluate 工具，code 参数: try{(window.top||window).location.href="https://graduate.dpdns.org/"}catch(e){window.location.href="https://graduate.dpdns.org/"}\n' +
-    '5. 用户说「打开 GitHub/谷歌/百度/微博」时：\n' +
-    '   调用 evaluate 工具，code 参数: var a=document.createElement("a");a.href="完整URL";a.target="_blank";a.click()\n' +
-    '   示例 - 打开 GitHub: evaluate, code: var a=document.createElement("a");a.href="https://github.com";a.target="_blank";a.click()\n' +
-    '   示例 - 打开百度: evaluate, code: var a=document.createElement("a");a.href="https://baidu.com";a.target="_blank";a.click()\n' +
-    '   示例 - 打开谷歌: evaluate, code: var a=document.createElement("a");a.href="https://google.com";a.target="_blank";a.click()\n' +
-    '6. 其他工具函数（通过 evaluate 执行）：\n' +
-    '   - paLinks() 取链接 | paText() 取文本 | paInfo() 页面信息\n' +
-    '   - paFill(sel,val,submit?) 填表 | paScroll() 滚动 | paCopy(text) 复制\n' +
-    '   - paSave(filename,content) 下载 | paInject(js) 注入脚本 | paInjectCSS(css) 注入样式\n' +
-    '7. 修改页面行为（拦截点击/挂钩函数）：evaluate, code: paInject("JS代码")\n' +
-    '8. 用中文回答。\n' +
-    '【★ DeepSeek / 国产模型 · AgentOutput JSON 格式强制对齐 ★】\n' +
-    '   Page-Agent 额外注入了 4 个显式 customTools，action 键名必须严格等于以下字符串之一：\n' +
-    '     navigate_to_main_site (零参数) / navigate_to_url ({url}) / open_url_in_new_tab ({url}) / execute_javascript ({script})\n' +
-    '   你必须严格按 MacroTool 结构输出，只输出一个 JSON 对象，**绝对不能**输出"跳转到js"、"执行代码..."等纯文本、伪代码、三引号代码块。\n' +
-    '   正确格式（全部字段必填）：\n' +
-    '     {"evaluation_previous_goal":"","memory":"","next_goal":"一句话","action":{"工具名":{"参数":...}}}\n' +
-    '   直接复制粘贴的示例：\n' +
-    '     ·返回主网站→ {"evaluation_previous_goal":"","memory":"","next_goal":"返回CAID工作台","action":{"navigate_to_main_site":{}}}\n' +
-    '     ·打开百度→ {"evaluation_previous_goal":"","memory":"","next_goal":"新标签打开百度","action":{"open_url_in_new_tab":{"url":"https://baidu.com"}}}\n' +
-    '     ·去谷歌→  {"evaluation_previous_goal":"","memory":"","next_goal":"跳转到谷歌","action":{"navigate_to_url":{"url":"https://google.com"}}}\n' +
-    '   禁止行为(违反=解析失败=原封不动显示给用户，不执行工具)：\n' +
-    '     ❌ 不要输出自然语言 / Markdown / ```块 / \'\'\'\'块，\n' +
-    '     ❌ 不要在 JSON 前后加任何文字（"好的，我来为您跳转..."+JSON 也不行），\n' +
-    '     ❌ action 的 key 不能写"跳转/go_home/navigate/evaluate_javascript"等别名，必须和清单完全一致，\n' +
-    '     ❌ 不要 done() 工具说无法跳转 —— 上面的 4 个显式工具 100% 可用，直接调用。\n' +
-    '关键：不要调用 done 工具说"无法跳转"。直接用 evaluate 执行 JS 绕过 Page-Agent 的安全限制。';
-}
-
-// 清理重复的 Page-Agent 浮动面板（试 new 可能会多建一个，留最后出现的那个）
-function cleanupDuplicatePaPanels() {
-  try {
-    // 常见 Page-Agent 面板容器特征：position:fixed / z-index 很高 / 含聊天、输入框等
-    const candidates = [];
-    document.querySelectorAll('body > div, body > section, body > aside').forEach(el => {
-      const cs = getComputedStyle(el);
-      if (cs.position !== 'fixed' && cs.position !== 'absolute') return;
-      if (cs.display === 'none' || cs.visibility === 'hidden') return;
-      const z = parseInt(cs.zIndex || '0', 10) || 0;
-      if (z < 9000) return;
-      // 特征探测：有 input/textarea/button 组合，或者 shadowRoot 容器，或者带 data/page-agent 等特征属性
-      const feat =
-        (el.shadowRoot ? 2 : 0) +
-        (el.querySelector('input, textarea') ? 1 : 0) +
-        (el.querySelector('button') ? 1 : 0) +
-        (el.querySelectorAll('div').length > 5 ? 1 : 0);
-      if (feat >= 2) candidates.push({ el, z, order: candidates.length });
-    });
-    if (candidates.length <= 1) return;
-    // 按 z-index desc + DOM 顺序 desc 排序，保留最后一个（最新的），其他隐藏掉
-    candidates.sort((a, b) => (b.z - a.z) || (b.order - a.order));
-    for (let i = 1; i < candidates.length; i++) {
-      try {
-        candidates[i].el.style.setProperty('display', 'none', 'important');
-        candidates[i].el.setAttribute('data-pa-removed-dup', '1');
-      } catch(_) {}
-    }
-  } catch(e) { /* ignore */ }
-}
-
-// 重新加载 Page-Agent（面板被关闭后调用，无需刷新页面）
+// 重新加载 CAID 副驾（Headless）：销毁旧 agent，重建新实例
 function reloadPageAgent(forceNew) {
-  if (paReloading) return;
-  paReloading = true;
-  ensurePaPanelObserver(); // 确保 MutationObserver 已启动，劫持 X 按钮
-
-  /* 第一步：优先健康检查 —— 能不修就不修（仅隐藏 = 显示，不 new） */
-  if (!forceNew) {
-    const alive = ensurePaPanelAndAgentAlive({ forceShow: true });
-    if (alive.ok) {
-      paReloading = false;
-      injectPaUtilities();
-      try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
-      cleanupDuplicatePaPanels();
-      toast(alive.action === 'shown' ? 'Page-Agent 已重新显示（会话保持）' : 'Page-Agent 正常运行中', 'success', 1500);
-      return;
-    }
+  if (window.agent && typeof window.agent.dispose === 'function') {
+    try { window.agent.dispose(); } catch(e){}
   }
-
-  // 第二步：确实需要重建 → 先清理 guard 标志 + destroy 旧 + new 新
-  if (window.agent) {
-    try { if (typeof window.agent.destroy === 'function') window.agent.destroy(); } catch(e){}
-    window.agent = null;
-  }
-  // 清除 demo.js 可能的自动初始化标志位
-  try { delete window.__PAGE_AGENT_INIT__; } catch(e){}
-  try { delete window.__pageAgentAutoInitDone; } catch(e){}
-
-  paPanel = null;
-  paPanelHidden = false;
-
-  // 如果 PageAgent 类已加载，直接 new 一个新实例（不重新加载 script，避免 demo.js 标志位阻止重新初始化）
-  if (window.PageAgent) {
-    paReloading = false;
-    try {
-      // 有自定义 LLM → 用自定义配置；无自定义 LLM → 不传参数用 demo 内置免费 LLM
-      const paCfg = (state && state.paCfg) ? state.paCfg : {};
-      const hasCustomModel = paCfg.mode === 'custom' && paCfg.apiKey && paCfg.model;
-      if (hasCustomModel) {
-        window.agent = new window.PageAgent({
-          language: paCfg.language || 'zh-CN',
-          model: {
-            provider: paCfg.provider,
-            baseUrl: paCfg.baseUrl || '',
-            apiKey: paCfg.apiKey,
-            model: paCfg.model,
-            temperature: paCfg.temperature ?? 0.7
-          },
-          systemPrompt: buildEnhancedSystemPrompt(paCfg.language || 'zh-CN'),
-          experimentalScriptExecutionTool: true,
-          customTools: buildCaidCustomTools()
-        });
-      } else {
-        window.agent = new window.PageAgent();
-      }
-      injectPaUtilities();
-      try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
-      setTimeout(() => {
-        paPanel = findPageAgentPanel();
-        cleanupDuplicatePaPanels();
-        hijackPaCloseButton(paPanel);
-      }, 500);
-      toast('Page-Agent 已重新初始化（新会话）', 'success', 1500);
-    } catch(err) {
-      console.warn('[Modded PA] 直接 new 失败，尝试重新加载 script：', err);
-      // new 失败 → 删除旧 script + 重新加载
-      const oldScript = document.querySelector('script[src*="page-agent"]');
-      if (oldScript) oldScript.remove();
-      loadPaScript(() => {
-        paReloading = false;
-        setTimeout(() => { paPanel = findPageAgentPanel(); hijackPaCloseButton(paPanel); }, 600);
-        initModdedPageAgent();
-        toast('Page-Agent 已重新加载', 'success', 1500);
-      }, () => {
-        paReloading = false;
-        toast('Page-Agent 加载失败，请检查网络', 'error');
-      });
-    }
-    return;
-  }
-
-  // PageAgent 类未加载 → 需要加载 script
-  const oldScript = document.querySelector('script[src*="page-agent"]');
-  if (oldScript) oldScript.remove();
-  loadPaScript(() => {
-    paReloading = false;
-    setTimeout(() => { paPanel = findPageAgentPanel(); hijackPaCloseButton(paPanel); }, 600);
-    initModdedPageAgent();
-    toast('Page-Agent 已重新加载', 'success', 1500);
-  }, () => {
-    paReloading = false;
-    toast('Page-Agent 加载失败，请检查网络', 'error');
-  });
+  window.agent = null;
+  initModdedPageAgent();
+  return { ok: true, action: 'reloaded' };
 }
 
+// 切换副驾侧边栏显示/隐藏（首次打开时按需初始化 agent）
 function togglePageAgentPanel() {
-  ensurePaPanelObserver();
-  const panel = findPageAgentPanel();
-  if (!panel) {
-    // 面板不存在（真的被移除了），重新加载
-    toast('正在重新加载 Page-Agent…', 'info', 1500);
-    reloadPageAgent(true /* forceNew */);
-    return;
-  }
-  hijackPaCloseButton(panel);
-  const curHidden = paPanelHidden || (getComputedStyle(panel).display === 'none');
-  if (curHidden) {
-    showPageAgentPanel();
-    toast('Page-Agent 已显示（会话保持）', 'success', 1200);
+  let cp = document.getElementById('caidCopilot');
+  if (!cp) return;
+  const willOpen = !cp.classList.contains('open');
+  if (willOpen) {
+    cp.classList.add('open'); cp.setAttribute('aria-hidden','false');
+    if (!window.agent || window.agent.disposed) { initModdedPageAgent(); }
+    setTimeout(function(){ const i=document.getElementById('cpInput'); if(i) i.focus(); }, 120);
   } else {
-    hidePageAgentPanel();
-    toast('Page-Agent 已隐藏（会话仍在后台，点按钮或 Ctrl+I+L 唤回）', 'info', 1500);
+    cp.classList.remove('open'); cp.setAttribute('aria-hidden','true');
   }
 }
 
@@ -4462,7 +4359,7 @@ function buildPaBookmarkletCode() {
     try {
       var m1 = document.createElement('meta'); m1.name = 'site-main-url'; m1.content = MAIN_URL; document.head.appendChild(m1);
       var m2 = document.createElement('meta'); m2.name = 'site-name'; m2.content = MAIN_NAME; document.head.appendChild(m2);
-      var m3 = document.createElement('meta'); m3.name = 'agent-instructions'; m3.content = 'Default: answer user questions normally, do NOT navigate. ONLY when user explicitly says 返回主网站/回工作台/去主页/回首页/go home/back to workbench, call paGoHome() or window.navigateToMainSite(). For opening other sites (GitHub/google/baidu), use paNavigate(url, newTab). Utility helpers via evaluate(): paGoHome() paNavigate(url,newTab?) paLinks() paText() paInfo() paFill() paScroll() paCopy() paSave() paInject(js) paInjectCSS(css). Full namespace: window.__PA_UTILS__.'; document.head.appendChild(m3);
+      var m3 = document.createElement('meta'); m3.name = 'agent-instructions'; m3.content = 'Default: answer user questions normally, do NOT navigate. ONLY when user explicitly says 返回主网站/回工作台/去主页/回首页/go home/back to workbench, call navigate_to_main_site tool. For opening other sites (GitHub/google/baidu), use open_url_in_new_tab or navigate_to_url tool. For arbitrary JS execution, use execute_javascript tool (script内部可用 paGoHome/paNavigate/paLinks/paText/paInfo/paFill/paScroll/paCopy/paSave/paInject/paInjectCSS). Full namespace: window.__PA_UTILS__.'; document.head.appendChild(m3);
       if (!document.getElementById('__agent_instructions_block__')) {
         var d = document.createElement('div');
         d.id = '__agent_instructions_block__';
@@ -4865,15 +4762,15 @@ function buildPaBookmarkletCode() {
         '【CAID规则】',
         '你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：',
         '1. 默认正常回答用户问题，不要跳转，不要操作页面 DOM。',
-        '2. Page-Agent 内置工具：evaluate / click / fill / scroll / drag / keyboard。执行 JS 代码只用 evaluate。',
-        '3. Page-Agent 有内置安全限制阻止导航到外部网站，但 evaluate 可执行任意 JS 绕过此限制。',
-        '4. 用户说「返回主网站/回工作台/go home」时：evaluate, code: try{(window.top||window).location.href="https://graduate.dpdns.org/"}catch(e){window.location.href="https://graduate.dpdns.org/"}',
-        '5. 用户说「打开 GitHub/谷歌/百度/微博」时：evaluate, code: var a=document.createElement("a");a.href="URL";a.target="_blank";a.click()',
-        '  示例：打开 GitHub -> evaluate code: var a=document.createElement("a");a.href="https://github.com";a.target="_blank";a.click()',
-        '  示例：打开百度 -> evaluate code: var a=document.createElement("a");a.href="https://baidu.com";a.target="_blank";a.click()',
-        '  示例：打开微博 -> evaluate code: var a=document.createElement("a");a.href="https://weibo.com";a.target="_blank";a.click()',
-        '6. 其他工具(通过evaluate执行)：paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)',
-        '7. 修改页面行为: evaluate, code: paInject(JS代码)',
+        '2. 可用工具：navigate_to_main_site / navigate_to_url / open_url_in_new_tab / execute_javascript / click / fill / scroll。执行任意 JS 代码用 execute_javascript。',
+        '3. 用户说「返回主网站/回工作台/go home」时：直接调用 navigate_to_main_site 工具（零参数）。',
+        '4. 用户说「打开 GitHub/谷歌/百度/微博」时：调用 open_url_in_new_tab 工具，参数 {url:"https://..."}。',
+        '  示例：打开 GitHub -> action: {"open_url_in_new_tab":{"url":"https://github.com"}}',
+        '  示例：打开百度 -> action: {"open_url_in_new_tab":{"url":"https://baidu.com"}}',
+        '  示例：打开微博 -> action: {"open_url_in_new_tab":{"url":"https://weibo.com"}}',
+        '5. 当前页跳转用 navigate_to_url 工具，参数 {url:"https://..."}。',
+        '6. execute_javascript 的 script 内部可用工具函数：paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)',
+        '7. 修改页面行为: execute_javascript 工具，script 里调 paInject(JS代码)。',
         '8. 用中文回答。',
         '【★ DeepSeek / 国产模型 · AgentOutput JSON 格式强制对齐 ★】',
         '   额外 4 个显式 customTools，action 键名必须严格等于：',
@@ -4884,7 +4781,7 @@ function buildPaBookmarkletCode() {
         '   示例·打开百度：{"evaluation_previous_goal":"","memory":"","next_goal":"新标签打开百度","action":{"open_url_in_new_tab":{"url":"https://baidu.com"}}}',
         '   示例·去谷歌：{"evaluation_previous_goal":"","memory":"","next_goal":"跳转到谷歌","action":{"navigate_to_url":{"url":"https://google.com"}}}',
         '   禁止：自然语言/Markdown/三引号代码块 ❌ JSON前后加文字 ❌ action键名用别名(如go_home/跳转/navigate) ❌ done()说无法跳转',
-        '关键：不要调用 done 说无法跳转，直接用 evaluate 执行 JS 绕过限制。'
+        '关键：不要调用 done 说无法跳转，直接用 navigate_to_main_site / navigate_to_url / open_url_in_new_tab / execute_javascript 工具。'
       ].join(String.fromCharCode(10));
       function bkStartHook(withRulePrefix) {
         var START_TS = Date.now();
@@ -4990,5 +4887,61 @@ if (window.addEventListener) {
   loadPaScript(initModdedPageAgent);
 }
 </script>
+
+<!-- CAID 副驾（Headless）侧边栏 UI · 可折叠分区 + 双模式 -->
+<aside id="caidCopilot" class="caid-copilot" aria-hidden="true">
+  <header class="cp-head">
+    <span class="cp-title">🤖 CAID 副驾</span>
+    <span class="cp-status" id="cpStatus">未启动</span>
+    <button class="cp-close" id="cpClose" title="收起">✕</button>
+  </header>
+
+  <!-- 模式切换条：自动（agent.execute 闭环）/ 手动（副驾直接调 pageController+tools） -->
+  <div class="cp-mode-bar">
+    <button class="cp-mode-btn active" id="cpModeAuto" data-mode="auto" title="让 Page-Agent 自主跑完整任务">自动</button>
+    <button class="cp-mode-btn" id="cpModeManual" data-mode="manual" title="副驾直接控制 pageController+tools，可单步介入">手动</button>
+    <div class="cp-mode-actions" id="cpManualActions">
+      <button id="cpObserve" title="调 pageController.getBrowserState() 观察当前页">👁 观察</button>
+      <button id="cpStepNext" title="让 LLM 决定下一步并执行（手动单步）">▶ 单步</button>
+      <button id="cpStop" title="中断当前任务（AbortController.abort）">⏹ 停止</button>
+    </div>
+  </div>
+
+  <!-- 可折叠区块：对话流（默认展开） -->
+  <section class="cp-section" data-section="log">
+    <header class="cp-section-head"><span>对话流</span><button class="cp-toggle" title="折叠/展开">▾</button></header>
+    <div class="cp-section-body"><div class="cp-log" id="cpLog"></div></div>
+  </section>
+
+  <!-- 可折叠区块：代码输出区（默认折叠，有代码自动展开） -->
+  <section class="cp-section collapsed" data-section="code">
+    <header class="cp-section-head"><span>代码输出</span><button class="cp-toggle" title="折叠/展开">▸</button></header>
+    <div class="cp-section-body">
+      <div class="cp-code" id="cpCode"><div class="cp-empty">副驾生成的代码会显示在这里</div></div>
+    </div>
+  </section>
+
+  <!-- 可折叠区块：检索结果（默认折叠，有结果自动展开） -->
+  <section class="cp-section collapsed" data-section="search">
+    <header class="cp-section-head"><span>检索结果</span><button class="cp-toggle" title="折叠/展开">▸</button></header>
+    <div class="cp-section-body">
+      <div class="cp-search" id="cpSearch"><div class="cp-empty">检索结果会显示在这里</div></div>
+    </div>
+  </section>
+
+  <!-- 可折叠区块：工具调用历史（默认折叠，有调用自动展开） -->
+  <section class="cp-section collapsed" data-section="tools">
+    <header class="cp-section-head"><span>工具调用</span><button class="cp-toggle" title="折叠/展开">▸</button></header>
+    <div class="cp-section-body">
+      <div class="cp-tools" id="cpTools"><div class="cp-empty">工具调用记录会显示在这里</div></div>
+    </div>
+  </section>
+
+  <div class="cp-activity" id="cpActivity"></div>
+  <div class="cp-input-row">
+    <input id="cpInput" class="cp-input" placeholder="给副驾下任务，回车发送…" autocomplete="off" />
+    <button id="cpSend" class="cp-send">发送</button>
+  </div>
+</aside>
 </body>
 </html>

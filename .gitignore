@@ -1,0 +1,9 @@
+# Dependencies
+vendor/
+node_modules/
+
+# Temp / debug files
+_*.ps1
+debug.html
+debug_block.js
+*.log
