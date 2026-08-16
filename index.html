@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="lib/zod3.umd.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -4214,20 +4215,61 @@ function buildCaidCustomTools() {
      不再递归走 objectProcessor → Object.keys(shape)，所以鸭子类型不会崩。
      我们优先尝试用 Page-Agent IIFE 里的真 Zod（挂 window.PageAgent / 内部闭包），失败时自己写 _zod.toJSONSchema()。 */
   function mkObj(fields, toJSONSchemaOverride) {
-    /* 尝试真 Zod：Page-Agent IIFE 可能未来会在某个版本暴露 zod 命名空间，这里兜底尝试 */
+    /* 优先用本地自托管 lib/zod3.umd.js 挂的真 Zod v3（UMD invoker 写死 window.Zod.z + window.z 别名）
+       Zod v3 vs v4 的 z.object/z.string API 完全兼容，且 z.object 返回的 schema 自带 _zod.run/_parseSync/parse，
+       能过 Page-Agent 内部 normalizeDef/shape.validate 里的 `schema._zod.run` 访问。 */
     try {
-      const z = (window.PageAgent && window.PageAgent.zod) || window.z || null;
+      const z = (window.Zod && window.Zod.z) || window.z || (window.PageAgent && window.PageAgent.zod) || null;
       if (z && z.object && z.string) {
         const schemaFields = {};
         for (const k in fields) {
           const f = fields[k];
-          if (f === 'string') schemaFields[k] = z.string();
-          else if (f === 'string:url') schemaFields[k] = z.string();
+          if (f === 'string' || f === 'string:url') schemaFields[k] = z.string();
         }
-        return z.object(schemaFields);
+        var realSchema = z.object(schemaFields);
+        /* Zod v3 schema 的原型属性是 ._def，而 Page-Agent (Zod v4) toJSONSchema 访问的是 ._zod。
+           手动把 _zod 做一个代理，把 def / run / parse / _parseSync / safeParse / toJSONSchema 都桥过去，
+           避免 Zod v4 走 `e._zod.processJSONSchema` 时找不到属性。 */
+        if (!realSchema._zod) {
+          var def = realSchema._def;
+          realSchema._zod = {
+            def: def,
+            version: { major: 3 },
+            get typeName() { return def && def.typeName; },
+            toJSONSchema: function(){
+              // 优先调用 zod3 自带的 toJSONSchema（如果全局有），否则手搓一个
+              try {
+                var props = {};
+                var req = [];
+                for (var k in (realSchema.shape || {})) {
+                  props[k] = { type: 'string' };
+                  req.push(k);
+                }
+                if (Object.keys(props).length === 0) return { type: 'object', properties: {}, additionalProperties: false };
+                return { type: 'object', properties: props, required: req, additionalProperties: false };
+              } catch (_) { return { type: 'object', properties: {}, additionalProperties: false }; }
+            },
+            traits: new Set(['$ZodType']),
+            run: function(ctx) {
+              try { return realSchema.parse(ctx && ctx.parsedInput !== undefined ? ctx.parsedInput : ctx && ctx.data); }
+              catch(e) { return { status: 'invalid' }; }
+            },
+            _parseSync: function(opts) {
+              var r = realSchema.safeParse(opts && opts.data);
+              return r.success ? { status: 'valid', value: r.data } : { status: 'invalid' };
+            },
+            parse: function(v){ return realSchema.parse(v); },
+            safeParse: function(v){ return realSchema.safeParse(v); },
+            processJSONSchema: function(){ /* Zod v4 会尝试调这个；返回 undefined 走 default objectProcessor，没关系 */ }
+          };
+        }
+        return realSchema;
       }
     } catch (_) {}
-    /* fallback: 手工构造带 _zod.toJSONSchema() 的鸭子类型 */
+    /* fallback: 手工构造鸭子类型。
+       Zod v4 的 parse() 流程会访问 shape 元素的 `_zod.run / _zod.parse / _zod._parseSync`。
+       不管有没有走到，我们都补一个"宽松校验"的实现：只要类型是 string/object 就 valid，不严格约束。
+       同时 `_zod.toJSONSchema()` 逃生口返回 JSONSchema，过 zodToOpenAITool 转换。 */
     const properties = {};
     const required = [];
     const shape = {};
@@ -4235,43 +4277,89 @@ function buildCaidCustomTools() {
       const typeHint = fields[k]; // "string" / "string:url"
       properties[k] = { type: 'string' };
       required.push(k);
-      shape[k] = {
-        _zod: {
-          def: { type: 'string' },
-          version: { major: 4 },
+      shape[k] = (function(){
+        var validStatus = { status: 'valid', value: null };
+        var _zodProto = {
+          def: { typeName: 'ZodString', type: 'string' },
+          version: { major: 3 },
           toJSONSchema: function(){ return { type: 'string' }; },
           traits: new Set(['$ZodType']),
-        }
-      };
+          run: function(ctx) {
+            return { status: 'valid', value: ctx && ctx.parsedInput !== undefined ? ctx.parsedInput : ctx };
+          },
+          _parseSync: function(opts) {
+            var data = opts && opts.data; return { status: 'valid', value: data };
+          },
+          parse: function(v) { return v; },
+          safeParse: function(v) { return { success: true, data: v }; },
+        };
+        return {
+          _def: _zodProto.def,  // Zod v3 习惯访问 _def (非 _zod.def)，双重兼容
+          _zod: _zodProto,
+          parse: function(v){ return v; },
+          safeParse: function(v){ return { success: true, data: v }; },
+          parseAsync: function(v){ return Promise.resolve(v); },
+          optional: function(){ return this; },
+          nullable: function(){ return this; },
+          describe: function(){ return this; },
+        };
+      })();
     }
+    var catchall = (function(){
+      var _zodProto = {
+        def: { typeName: 'ZodNever', type: 'never' },
+        version: { major: 3 },
+        toJSONSchema: function(){ return { not: {} }; },
+        traits: new Set(['$ZodType']),
+        run: function(){ return { status: 'invalid' }; },
+        _parseSync: function(opts){ return { status: 'aborted' }; },
+        parse: function(){ throw new Error('ZodNever'); },
+        safeParse: function(){ return { success: false, error: { issues:[] } }; },
+      };
+      return {
+        _def: _zodProto.def,
+        _zod: _zodProto,
+        parse: _zodProto.parse,
+        safeParse: _zodProto.safeParse,
+        optional: function(){ return this; },
+        describe: function(){ return this; },
+      };
+    })();
     const _toJSONSchemaOverride = toJSONSchemaOverride || function(){
       if (Object.keys(properties).length === 0) return { type: 'object', properties: {}, additionalProperties: false };
       return { type: 'object', properties: properties, required: required, additionalProperties: false };
     };
-    return {
-      _zod: {
-        def: { type: 'object', shape: shape, catchall: {
-          _zod: {
-            def: { type: 'never' },
-            version: { major: 4 },
-            toJSONSchema: function(){ return { not: {} }; },
-            traits: new Set(['$ZodType']),
-          }
-        } },
-        version: { major: 4 },
-        toJSONSchema: _toJSONSchemaOverride,
-        traits: new Set(['$ZodType']),
+    // 顶层 object 鸭子类型：补 _zod.run（normalizeShape/validate 可能用）、_parseSync、parse
+    var objectProto = {
+      def: { typeName: 'ZodObject', type: 'object', shape: shape, catchall: catchall, unknownKeys: 'strip' },
+      version: { major: 3 },
+      toJSONSchema: _toJSONSchemaOverride,
+      traits: new Set(['$ZodType']),
+      run: function(ctx){
+        var data = (ctx && ctx.parsedInput !== undefined) ? ctx.parsedInput : (ctx && ctx.data);
+        return { status: 'valid', value: data || {} };
       },
-      shape: shape,
+      _parseSync: function(opts){
+        var data = opts && opts.data; return { status: 'valid', value: data || {} };
+      },
+      parse: function(v){ return v || {}; },
       safeParse: function(v){
-        const data = v || {};
-        for (const k in fields) {
+        var data = v || {};
+        for (var k in fields) {
           if (typeof data[k] !== 'string' && typeof data[k] !== 'undefined') {
             return { success: false, error: { issues: [{ code: 'invalid_type', expected: 'string', path: [k] }] } };
           }
         }
         return { success: true, data: data };
       },
+    };
+    return {
+      _def: objectProto.def,  // Zod v3 兼容：顶层 _def 字段
+      _zod: objectProto,
+      shape: shape,
+      safeParse: objectProto.safeParse,
+      parse: objectProto.parse,
+      parseAsync: function(v){ return Promise.resolve(objectProto.parse(v)); },
       describe: function(){ return this; },
       optional: function(){ return this; },
       nullable: function(){ return this; },
