@@ -13,6 +13,7 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://unpkg.com/zod@4/browser"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/styles/github-dark.min.css">
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/highlight.min.js"></script>
 <style>
@@ -4117,74 +4118,63 @@ function copilotStop(){
 function buildCaidCustomTools() {
   const MAIN_URL = (typeof MAIN_SITE_URL !== 'undefined') ? MAIN_SITE_URL :
                     (window.__MAIN_SITE_URL__ || 'https://graduate.dpdns.org/');
-  /* Page-Agent IIFE 源码里 function tool(e){return e}，所以这里直接写对象字面量即可，不需要 helper
-     execute 里的 this 会被绑定到 PageAgentCore 实例，可以访问 this.pageController */
+  /* Zod v4 已通过 <script src="https://unpkg.com/zod@4/browser"> 挂到 window.z 上。
+     如果 CDN 加载失败，fallback 到鸭子类型（zodToOpenAITool 调 z.toJSONSchema 失败时会在 agent.execute 内部被 catch，
+     但鸭子类型对 safeParse 仍然有效，不会造成崩溃）。 */
+  function mkObj(fields) {
+    try {
+      const z = window.z || (window.PageAgent && window.PageAgent.zod) || null;
+      if (z && z.object && z.string) {
+        const schemaFields = {};
+        for (const k in fields) {
+          const f = fields[k];
+          if (f === 'string') schemaFields[k] = z.string();
+          else if (f === 'string:req') schemaFields[k] = z.string();
+          else if (f === 'string:url') schemaFields[k] = z.string();
+          else if (f === 'empty') {} // z.object({}) 不写 field
+        }
+        return z.object(schemaFields);
+      }
+    } catch (_) {}
+    /* fallback: 鸭子类型（不带 shape 里的假属性，避免 z.toJSONSchema → Object.keys(null) 崩溃）
+       因为没有真实 Zod，Page-Agent 内部调 z.toJSONSchema 时会直接在 agent.execute 的 try/catch 里被 catch，
+       而我们自定义 execute 函数内部做自己的参数校验即可 */
+    return {
+      _zod: { def: { type: 'object' }, version: { major: 4 } },
+      shape: fields, // 真实 value 随便填，不会真的去 Object.keys 遍历 shape
+      safeParse: function(v){ return { success: true, data: v || {} }; },
+      describe: function(){ return this; }
+    };
+  }
   return {
-    /* 1) 强制覆盖/注入 execute_javascript，绕过 experimentalScriptExecutionTool 开关
-          与内置实现一致，调用 pageController.executeJavascript(script, signal) */
+    /* 1) 强制覆盖/注入 execute_javascript，绕过 experimentalScriptExecutionTool 开关 */
     execute_javascript: {
       description:
         'Execute arbitrary JavaScript code on the current page. Supports async/await syntax. ' +
         'An AbortSignal named `signal` is available in scope for long-running tasks or fetches. ' +
         'This is the most powerful tool — use it when no other tool fits. ' +
         'Examples: navigate: window.location.href = "URL"; open tab: var a=document.createElement("a");a.href="URL";a.target="_blank";document.body.appendChild(a);a.click();',
-      /* 手写一个 Zod-lite schema（用 window.zod 里的构造器；如果 Page-Agent IIFE 没暴露 zod，就靠 customTools 里的安全解析）
-         实际 Page-Agent 会用 LLM 客户端里的 zodToOpenAITool 转换 + AgentOutput MacroTool action union 校验
-         用 Page-Agent 内置 Zod 兼容写法最好：我们把 zod 对象暴露出来先看看能不能取到 */
-      inputSchema: (function(){
-        try {
-          const z = window.zod_v4 || (window.PageAgent && window.PageAgent.zod) || null;
-          if (z && z.object && z.string) return z.object({ script: z.string() });
-        } catch(_) {}
-        /* Zod 不可用时，返回一个 object-literal Schema：Page-Agent 的 safeParse 会在 agent 内部做
-           这里直接返回一个 {_legacy: true} 结构；但我们需要让 zodToOpenAITool 能正常转换，
-           所以构造一个"鸭子类型"的 ZodObject：带 shape 和 safeParse。 */
-        return {
-          _zod: { def: { type: 'object' }, parse: (v) => ({ value: v, issues: [] }), version: { major: 4 } },
-          shape: { script: { _zod: { def: { type: 'string' } } } },
-          safeParse: function(v){
-            if (v && typeof v.script === 'string') return { success: true, data: { script: v.script } };
-            return { success: false, error: { issues: [{ code: 'invalid_type', expected: 'object {script:string}' }] } };
-          },
-          describe: function(){ return this; }
-        };
-      })(),
+      inputSchema: mkObj({ script: 'string' }),
       execute: async function(input, ctx){
         const signal = ctx && ctx.signal;
         if (!this || !this.pageController || typeof this.pageController.executeJavascript !== 'function') {
-          /* pageController 不可用，降级为直接 eval */
-          const result = (0, eval)(String(input.script));
+          const result = (0, eval)(String(input && input.script));
           return (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
         }
-        const r = await this.pageController.executeJavascript(String(input.script), signal);
+        const r = await this.pageController.executeJavascript(String(input && input.script), signal);
         signal && signal.throwIfAborted && signal.throwIfAborted();
         return (r && r.message) || String((r && r.result) ?? '');
       }
     },
 
-    /* 2) navigate_to_url — 当前页跳转到任意 URL，LLM 工具描述非常明确，不会不懂 */
+    /* 2) navigate_to_url — 当前页跳转到任意 URL */
     navigate_to_url: {
       description:
         'Navigate the current browser page to a given URL (replaces current page). ' +
         'Use this whenever the user says "打开 X 网页/去 X 网站/访问 X/jump to X/go to X".',
-      inputSchema: (function(){
-        try {
-          const z = window.zod_v4 || (window.PageAgent && window.PageAgent.zod) || null;
-          if (z && z.object && z.string && z.url) return z.object({ url: z.string().describe('A full URL starting with https:// or http://') });
-          if (z && z.object && z.string) return z.object({ url: z.string() });
-        } catch(_) {}
-        return {
-          _zod: { def: { type: 'object' } },
-          shape: { url: { _zod: { def: { type: 'string' } } } },
-          safeParse: function(v){
-            if (v && typeof v.url === 'string') return { success: true, data: { url: v.url } };
-            return { success: false, error: { issues: [{ code: 'invalid_type' }] } };
-          },
-          describe: function(){ return this; }
-        };
-      })(),
+      inputSchema: mkObj({ url: 'string' }),
       execute: async function(input){
-        const url = String(input.url || '').trim();
+        const url = String(input && input.url || '').trim();
         if (!url) throw new Error('navigate_to_url: url is required');
         try { (window.top || window).location.href = url; }
         catch(e) { window.location.href = url; }
@@ -4192,28 +4182,14 @@ function buildCaidCustomTools() {
       }
     },
 
-    /* 3) open_url_in_new_tab — 新标签页打开任意 URL，给 LLM 一个显式工具 */
+    /* 3) open_url_in_new_tab — 新标签页打开任意 URL */
     open_url_in_new_tab: {
       description:
         'Open a URL in a new browser tab (does not leave the current page). ' +
         'Use this whenever the user says "在新标签打开 X / 新窗口打开 X / open X in new tab".',
-      inputSchema: (function(){
-        try {
-          const z = window.zod_v4 || (window.PageAgent && window.PageAgent.zod) || null;
-          if (z && z.object && z.string) return z.object({ url: z.string() });
-        } catch(_) {}
-        return {
-          _zod: { def: { type: 'object' } },
-          shape: { url: { _zod: { def: { type: 'string' } } } },
-          safeParse: function(v){
-            if (v && typeof v.url === 'string') return { success: true, data: { url: v.url } };
-            return { success: false, error: { issues: [{ code: 'invalid_type' }] } };
-          },
-          describe: function(){ return this; }
-        };
-      })(),
+      inputSchema: mkObj({ url: 'string' }),
       execute: async function(input){
-        const url = String(input.url || '').trim();
+        const url = String(input && input.url || '').trim();
         if (!url) throw new Error('open_url_in_new_tab: url is required');
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
@@ -4222,25 +4198,14 @@ function buildCaidCustomTools() {
       }
     },
 
-    /* 4) navigate_to_main_site — 一键回 CAID 主工作台，LLM 看描述就懂，传零参数不会调用错 */
+    /* 4) navigate_to_main_site — 一键回 CAID 主工作台 */
     navigate_to_main_site: {
       description:
         'Immediately navigate back to the CAID main workbench (home / main site). ' +
         'Call this tool when the user says: ' +
         '"返回主网站", "回工作台", "回首页", "去主页", "返回主工作台", "go home", "back to main site", or any similar phrase. ' +
         'Takes NO parameters — just call it directly.',
-      inputSchema: (function(){
-        try {
-          const z = window.zod_v4 || (window.PageAgent && window.PageAgent.zod) || null;
-          if (z && z.object) return z.object({});
-        } catch(_) {}
-        return {
-          _zod: { def: { type: 'object' } },
-          shape: {},
-          safeParse: function(){ return { success: true, data: {} }; },
-          describe: function(){ return this; }
-        };
-      })(),
+      inputSchema: mkObj({}),
       execute: async function(){
         try { (window.top || window).location.href = MAIN_URL; }
         catch(e) { window.location.href = MAIN_URL; }
