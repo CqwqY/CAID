@@ -4337,6 +4337,9 @@ async function copilotStepNext(agent){
       return;
     }
     const tc = llmResult.toolCalls[0];
+    /* CAID fix: LLM 工具名别名映射（DeepSeek 等常记错名，如 script→execute_javascript） */
+    const _caidAliases = {script:'execute_javascript',js:'execute_javascript',javascript:'execute_javascript',run_code:'execute_javascript',click:'click_element_by_index',type:'input_text',fill:'auto_fill_form',open:'open_url_in_new_tab',goto:'navigate_to_url',search:'search_web',extract:'extract_page_data',code:'output_code'};
+    if(_caidAliases[tc.name]){ console.warn('[CAID-alias] LLM tool "'+tc.name+'" → "'+_caidAliases[tc.name]+'"'); tc.name = _caidAliases[tc.name]; }
     const result = await copilotInvokeTool(agent, tc.name, tc.args);
     agent.history = agent.history || [];
     agent.history.push({
