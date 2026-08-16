@@ -1334,6 +1334,16 @@ a:hover { text-decoration: underline; }
 .cp-evt-retry { border-left-color: var(--warn); }
 .cp-evt .cp-tool { color: var(--accent-2); font-family: monospace; }
 .cp-evt .cp-out { color: var(--muted); font-family: monospace; font-size: 11px; }
+.cp-evt .cp-more { color: var(--accent); cursor: pointer; user-select: none; }
+.cp-evt .cp-out-full { background: var(--bg); border: 1px solid var(--rule); padding: 6px; border-radius: var(--radius-sm); font-size: 11px; color: var(--ink); white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow: auto; }
+.cp-evt details summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.cp-evt details summary::-webkit-details-marker { display: none; }
+.cp-evt details summary::before { content: '▸ '; color: var(--muted); font-size: 10px; }
+.cp-evt details[open] summary::before { content: '▾ '; }
+.cp-evt-user, .cp-evt-assistant { background: transparent; border: 0; padding: 2px 4px; }
+.cp-bubble { max-width: 92%; padding: 8px 10px; border-radius: 12px; line-height: 1.55; word-break: break-word; white-space: pre-wrap; font-size: 13px; }
+.cp-bubble-user { margin-left: auto; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+.cp-bubble-assistant { background: var(--bg2); color: var(--ink); border: 1px solid var(--rule); border-bottom-left-radius: 3px; }
 .cp-activity {
   padding: 8px 12px;
   font-size: 12px; color: var(--muted);
@@ -3869,19 +3879,48 @@ function bindCopilotEvents(agent) {
     if(!cpLog) return;
     cpLog.innerHTML='';
     (agent.history||[]).forEach(function(ev){
-      const div=document.createElement('div'); div.className='cp-evt cp-evt-'+ev.type;
-      if(ev.type==='step'){
+      const div=document.createElement('div');
+      if(ev.type==='user'){
+        div.className='cp-evt cp-evt-user';
+        div.innerHTML='<div class="cp-bubble cp-bubble-user">'+escapeHtml(String(ev.content||'')).replace(/\n/g,'<br>')+'</div>';
+      } else if(ev.type==='assistant'){
+        div.className='cp-evt cp-evt-assistant';
+        div.innerHTML='<div class="cp-bubble cp-bubble-assistant">'+escapeHtml(String(ev.content||'')).replace(/\n/g,'<br>')+'</div>';
+      } else if(ev.type==='step'){
+        div.className='cp-evt cp-evt-step';
         const ng = (ev.reflection && ev.reflection.next_goal) ? ev.reflection.next_goal : '';
         const tn = (ev.action && ev.action.name) ? ev.action.name : '';
-        const out = String((ev.action && ev.action.output) || '').slice(0,240);
-        div.innerHTML='<b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+'<br><span class="cp-tool">['+escapeHtml(tn)+']</span> <span class="cp-out">'+escapeHtml(out)+'</span>';
+        const out = String((ev.action && ev.action.output) || '');
+        // done 工具：真正的用户回复在 action.input.text / action.input.success（长文本，不截断）
+        if(tn === 'done'){
+          const doneText = String((ev.action && ev.action.input && ev.action.input.text) || '(无文本)');
+          const doneSuccess = ev.action && ev.action.input && ev.action.input.success;
+          div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small></summary>'
+            + '<div class="cp-bubble cp-bubble-assistant">'+escapeHtml(doneText).replace(/\n/g,'<br>')+'</div></details>';
+        } else {
+          const outShort = out.slice(0,240);
+          const outFull  = out.length > 240 ? out : '';
+          div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">['+escapeHtml(tn)+']</span></summary>'
+            + '<div class="cp-out">'+escapeHtml(outShort)+(outFull?' <span class="cp-more" title="点击展开全文">…点击展开</span>':'')+'</div>'
+            + (outFull?('<pre class="cp-out-full" style="display:none">'+escapeHtml(outFull)+'</pre>'):'')
+            + '</details>';
+          if(outFull){
+            const more=div.querySelector('.cp-more'); if(more){
+              more.addEventListener('click', function(){ const p=div.querySelector('.cp-out-full'); if(p){ p.style.display=(p.style.display==='none')?'block':'none'; more.textContent=(p.style.display==='none')?'…点击展开':'收起'; }});
+            }
+          }
+        }
       } else if(ev.type==='observation'){
+        div.className='cp-evt cp-evt-observation';
         div.innerHTML='👁 '+escapeHtml(String(ev.content).slice(0,300));
       } else if(ev.type==='error'){
+        div.className='cp-evt cp-evt-error';
         div.innerHTML='❌ '+escapeHtml(ev.message);
       } else if(ev.type==='retry'){
+        div.className='cp-evt cp-evt-retry';
         div.innerHTML='🔁 重试 '+ev.attempt+'/'+ev.maxAttempts;
       } else {
+        div.className='cp-evt';
         div.textContent=JSON.stringify(ev).slice(0,200);
       }
       cpLog.appendChild(div);
@@ -3949,10 +3988,25 @@ function bindCopilotEvents(agent) {
   /* sendTask 分流：自动→agent.execute；手动→copilotManualRun */
   async function sendTask(){
     if(!cpInput) return; const t=cpInput.value.trim(); if(!t) return; cpInput.value='';
+    // 把用户输入 push 进 history，渲染成对话气泡
+    agent.history = agent.history || [];
+    agent.history.push({ type: 'user', content: t });
+    agent.dispatchEvent(new Event('historychange'));
     if(cpMode==='manual'){
       await copilotManualRun(agent, t);
     } else {
-      try { await agent.execute(t); } catch(e){ console.error('[Copilot] execute error:',e); }
+      try {
+        const result = await agent.execute(t);
+        // agent.execute 的返回值是 {success, data, history}，data 就是 done 工具的 action.input.text
+        if(result && typeof result.data !== 'undefined'){
+          agent.history.push({ type: 'assistant', content: String(result.data) });
+          agent.dispatchEvent(new Event('historychange'));
+        }
+      } catch(e){
+        console.error('[Copilot] execute error:',e);
+        agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) });
+        agent.dispatchEvent(new Event('historychange'));
+      }
     }
   }
   if(cpSend) cpSend.addEventListener('click', sendTask);
@@ -4119,6 +4173,11 @@ async function copilotStepNext(agent){
     agent.dispatchEvent(new Event('historychange'));
     if(tc.name === 'done'){
       cpAbortController = null;
+      const doneText = String(tc.args && (tc.args.text || tc.args.output) || '');
+      if(doneText){
+        agent.history.push({ type:'assistant', content: doneText });
+        agent.dispatchEvent(new Event('historychange'));
+      }
       toast('✅ 任务完成','success',2500);
     }
   } catch(e){
