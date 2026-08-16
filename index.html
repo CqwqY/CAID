@@ -4952,7 +4952,7 @@ const BK_CSS_STR = JSON.stringify(`
 `);
 
 const BK_HTML_STR = JSON.stringify(`
-<aside class="caid-copilot open" aria-hidden="false">
+<aside id="caidCopilot" class="caid-copilot open" aria-hidden="false">
   <header class="cp-head">
     <span class="cp-title">🤖 CAID 副驾</span>
     <span class="cp-status" id="cpStatus">未启动</span>
@@ -4960,17 +4960,17 @@ const BK_HTML_STR = JSON.stringify(`
   </header>
   <div class="cp-api-info" id="cpApiInfo"></div>
   <div class="cp-mode-bar">
-    <button class="cp-mode-btn active" id="cpModeAuto" data-mode="auto">自动</button>
-    <button class="cp-mode-btn" id="cpModeManual" data-mode="manual">手动</button>
+    <button class="cp-mode-btn active" id="cpModeAuto" data-mode="auto" title="让 Page-Agent 自主跑完整任务">自动</button>
+    <button class="cp-mode-btn" id="cpModeManual" data-mode="manual" title="副驾直接控制 pageController+tools，可单步介入">手动</button>
     <div class="cp-mode-actions" id="cpManualActions">
-      <button id="cpObserve">👁 观察</button>
-      <button id="cpStepNext">▶ 单步</button>
-      <button id="cpStop">⏹ 停止</button>
+      <button id="cpObserve" title="调 pageController.getBrowserState() 观察当前页">👁 观察</button>
+      <button id="cpStepNext" title="让 LLM 决定下一步并执行（手动单步）">▶ 单步</button>
+      <button id="cpStop" title="中断当前任务（AbortController.abort）">⏹ 停止</button>
     </div>
   </div>
   <div class="cp-activity" id="cpActivity"></div>
   <div class="cp-log" id="cpLog"></div>
-  <div class="cp-section">
+  <div class="cp-section collapsed">
     <div class="cp-section-head">工具调用</div>
     <div class="cp-tools" id="cpTools"><div class="cp-empty">工具调用记录会显示在这里</div></div>
   </div>
@@ -5286,9 +5286,9 @@ function buildPaBookmarkletCode() {
       var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;
       if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}
     }catch(_e){}
-    return {_zod:{def:{type:'object'}},shape:shape||{},safeParse:function(v){return{success:true,data:(v&&typeof v==='object')?v:{}};},describe:function(){return this;};};
+    return {_zod:{def:{type:'object'}},shape:shape||{},safeParse:function(v){return{success:true,data:(v&&typeof v==='object')?v:{}};},describe:function(){return this;}};
   }
-  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}return{_zod:{def:{type:'string'}},safeParse:function(v){return{success:true,data:String(v==null?'':v)};},describe:function(){return this;};};}
+  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}return{_zod:{def:{type:'string'}},safeParse:function(v){return{success:true,data:String(v==null?'':v)};},describe:function(){return this;}};}
   /* customTools（与主站 buildCaidCustomTools 一致） */
   var BK_CT = {
     navigate_to_main_site: {
@@ -5355,6 +5355,103 @@ function buildPaBookmarkletCode() {
   var cpToolCalls = [];
   var cpMode = 'auto';
   var cpAbortController = null;
+  /* ===== 手动模式完整实现（与主站同构） ===== */
+  var CP_TOOL_SCHEMAS = {
+    done:{type:'object',properties:{text:{type:'string',description:'Final response to user'},success:{type:'boolean',default:true}}},
+    wait:{type:'object',properties:{seconds:{type:'number',minimum:1,maximum:10,default:1}}},
+    ask_user:{type:'object',properties:{question:{type:'string'}},required:['question']},
+    click_element_by_index:{type:'object',properties:{index:{type:'integer',minimum:0}},required:['index']},
+    input_text:{type:'object',properties:{index:{type:'integer',minimum:0},text:{type:'string'}},required:['index','text']},
+    select_dropdown_option:{type:'object',properties:{index:{type:'integer',minimum:0},text:{type:'string'}},required:['index','text']},
+    scroll:{type:'object',properties:{down:{type:'boolean',default:true},num_pages:{type:'number',minimum:0,maximum:10},pixels:{type:'integer',minimum:0},index:{type:'integer',minimum:0}}},
+    scroll_horizontally:{type:'object',properties:{right:{type:'boolean',default:true},pixels:{type:'integer',minimum:0},index:{type:'integer',minimum:0}}},
+    execute_javascript:{type:'object',properties:{script:{type:'string',description:'JavaScript code to execute on the page'}},required:['script']},
+    navigate_to_url:{type:'object',properties:{url:{type:'string',description:'Full URL starting with https://'}},required:['url']},
+    open_url_in_new_tab:{type:'object',properties:{url:{type:'string',description:'Full URL'}},required:['url']},
+    navigate_to_main_site:{type:'object',properties:{}},
+    search_web:{type:'object',properties:{query:{type:'string',description:'Search query text'}},required:['query']},
+    search_code:{type:'object',properties:{query:{type:'string',description:'Code search query'}},required:['query']},
+    output_code:{type:'object',properties:{code:{type:'string'},language:{type:'string'},description:{type:'string'}},required:['code']},
+    auto_fill_form:{type:'object',properties:{field_values:{type:'string'},submit:{type:'string'},form_selector:{type:'string'}},required:['field_values']},
+    extract_page_data:{type:'object',properties:{type:{type:'string',enum:['table','links','text','images','meta','all']},selector:{type:'string'}}}
+  };
+  function cpToast(txt,cls,dur){try{showNote(txt);}catch(e){}}
+  async function cpObserveFn(agent){
+    if(!agent||!agent.pageController){cpToast('pageController 不可用');return;}
+    try{
+      var state=await agent.pageController.getBrowserState();
+      var summary='👁 页面观察：'+(state.url||'(未知URL)')+'\\n标题: '+(state.title||'')+'\\n内容片段: '+String(state.content||'').slice(0,300);
+      agent.history=agent.history||[];agent.history.push({type:'observation',content:summary});
+      agent.dispatchEvent(new Event('historychange'));cpToast('观察完成');
+    }catch(e){cpToast('观察失败: '+(e.message||e));}
+  }
+  async function cpInvokeToolFn(agent,name,args){
+    if(!agent||!agent.tools){cpToast('agent.tools 不可用');return null;}
+    var tool=agent.tools.get(name);if(!tool){cpToast('工具不存在: '+name);return null;}
+    if(!cpAbortController)cpAbortController=new AbortController();
+    try{
+      var result=await tool.execute.call(agent,args||{},{signal:cpAbortController.signal});
+      cpToolCalls.push({name:name,args:args||{},result:result,ts:Date.now()});
+      var t=document.getElementById('cpTools');if(t){
+        if(!cpToolCalls.length){t.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>';}else{t.innerHTML='';
+        cpToolCalls.forEach(function(tc){var d=document.createElement('div');d.className='cp-tool-call';
+        d.innerHTML='<span class="cp-tool-call-name">'+cpEscapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+cpEscapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+          (tc.result?'<div class="cp-tool-call-result">'+cpEscapeHtml(String(tc.result).slice(0,200))+'</div>':'');t.appendChild(d);});
+        t.scrollTop=t.scrollHeight;}
+      }
+      return result;
+    }catch(e){cpToast('工具调用失败: '+(e.message||e));return null;}
+  }
+  async function cpLLMInvokeFn(agent,messages,tools,signal){
+    var cfg=agent.config||{};var base=String(cfg.baseURL||'').replace(/\\/$/,'');
+    var endpoint=base.endsWith('/v1')?base+'/chat/completions':base+'/v1/chat/completions';
+    var body={model:cfg.model||'qwen3.5-plus',messages:messages,tools:tools.map(function(t){return{type:'function',function:t};}),tool_choice:'auto',temperature:cfg.temperature||0.7};
+    var resp=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(cfg.apiKey||'NA')},body:JSON.stringify(body),signal:signal});
+    if(!resp.ok){var txt=await resp.text();throw new Error('LLM HTTP '+resp.status+': '+txt.slice(0,300));}
+    var data=await resp.json();var msg=data.choices&&data.choices[0]&&data.choices[0].message;if(!msg)throw new Error('LLM 返回无 message');
+    var toolCalls=(msg.tool_calls||[]).map(function(tc){var args={};try{args=tc.function&&tc.function.arguments?JSON.parse(tc.function.arguments):{};}catch(e){}return{name:tc.function&&tc.function.name,args:args};}).filter(function(tc){return tc.name;});
+    return{content:msg.content||'',toolCalls:toolCalls,usage:data.usage||{}};
+  }
+  function cpBuildToolsFn(agent){var tools=[];if(!agent||!agent.tools)return tools;
+    var iter=agent.tools.entries?agent.tools.entries():agent.tools;
+    if(Array.isArray(iter)){for(var i=0;i<iter.length;i++){var name=iter[i][0],tool=iter[i][1];if(!tool)continue;
+    tools.push({name:name,description:tool.description||('Tool: '+name),parameters:CP_TOOL_SCHEMAS[name]||{type:'object',properties:{}}});}}
+    else if(typeof iter.next==='function'){try{var r;while(!(r=iter.next()).done){var nm=r.value[0],tl=r.value[1];if(!tl)continue;tools.push({name:nm,description:tl.description||('Tool: '+nm),parameters:CP_TOOL_SCHEMAS[nm]||{type:'object',properties:{}}});}}catch(e){}}
+    return tools;
+  }
+  function cpBuildMessagesFn(agent,task,browserState){
+    var sysPrompt=ENH_SP||'';var recent=(agent.history||[]).slice(-6).map(function(ev){
+      if(ev.type==='step'){var ng=(ev.reflection&&ev.reflection.next_goal)||'';var tn=(ev.action&&ev.action.name)||'';var out=(ev.action&&ev.action.output)||'';return'步骤'+ev.stepIndex+': '+ng+' → ['+tn+'] '+String(out).slice(0,150);}
+      if(ev.type==='observation')return'观察: '+String(ev.content).slice(0,200);return'';}).filter(Boolean).join('\\n');
+    var userContent='任务: '+task+'\\n\\n当前页面:\\nURL: '+(browserState.url||'(未知)')+'\\n标题: '+(browserState.title||'')+'\\n内容片段:\\n'+String(browserState.content||'').slice(0,1500)+'\\n\\n最近步骤:\\n'+(recent||'(无)');
+    return[{role:'system',content:sysPrompt},{role:'user',content:userContent}];
+  }
+  async function cpStepNextFn(agent){
+    if(!agent||!agent.pageController){cpToast('agent 未就绪');return;}
+    if(!agent.task){cpToast('请先输入任务再单步');return;}
+    if(!cpAbortController)cpAbortController=new AbortController();
+    var signal=cpAbortController.signal;
+    var stepIdx=(agent.history||[]).filter(function(e){return e.type==='step';}).length+1;
+    try{
+      cpToast('观察页面…');var state=await agent.pageController.getBrowserState();
+      var messages=cpBuildMessagesFn(agent,agent.task,state);var tools=cpBuildToolsFn(agent);
+      cpToast('🧠 LLM 思考中…');var llmResult=await cpLLMInvokeFn(agent,messages,tools,signal);
+      if(!llmResult.toolCalls.length){
+        agent.history=agent.history||[];agent.history.push({type:'observation',content:'LLM 回复: '+(llmResult.content||'(空)').slice(0,300)});
+        agent.dispatchEvent(new Event('historychange'));cpToast('LLM 未调用工具，见对话流');return;}
+      var tc=llmResult.toolCalls[0];var result=await cpInvokeToolFn(agent,tc.name,tc.args);
+      agent.history=agent.history||[];agent.history.push({type:'step',stepIndex:stepIdx,reflection:{next_goal:'调用 '+tc.name},action:{name:tc.name,input:tc.args,output:String(result||'')},usage:llmResult.usage||{}});
+      agent.dispatchEvent(new Event('historychange'));
+      if(tc.name==='done'){cpAbortController=null;var doneText=String(tc.args&&(tc.args.text||tc.args.output)||'');
+        if(doneText){agent.history.push({type:'assistant',content:doneText});agent.dispatchEvent(new Event('historychange'));}
+        cpToast('✅ 任务完成');}
+    }catch(e){if(e&&e.name==='AbortError')cpToast('已中断单步');else{console.error('[BK cpStepNext]',e);cpToast('单步失败: '+(e.message||e));}}
+  }
+  function cpStopFn(){
+    if(cpAbortController){try{cpAbortController.abort();}catch(e){}cpAbortController=null;cpToast('已中断手动任务');}
+    else if(window.agent&&window.agent.status==='running'){window.agent.stop();cpToast('已中断自动任务');}
+    else{cpToast('没有正在运行的任务');}
+  }
   function cpEscapeHtml(s){return String(s||'').replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[c];});}
   /* 渲染链路：bindEvents */
   function bindCpEvents(agent){
@@ -5371,14 +5468,20 @@ function buildPaBookmarkletCode() {
     var cpTools=document.getElementById('cpTools');
     var cpCode=document.getElementById('cpCode');
     var cpSearch=document.getElementById('cpSearch');
+    var cpObserve=document.getElementById('cpObserve');
+    var cpStepNext=document.getElementById('cpStepNext');
+    var cpStopBtn=document.getElementById('cpStop');
     var STATUS_TEXT={idle:'空闲',running:'运行中…',completed:'已完成',error:'出错',stopped:'已停止'};
     function renderApiInfo(){
       if(!cpApiInfo)return;
       var cfg=agent.config||{};
+      var apiKey=String(cfg.apiKey||'').trim();
+      var hasKey=apiKey&&apiKey!=='NA'&&apiKey!=='null'&&apiKey!=='undefined';
       var isCustom=cfg.model&&cfg.model!=='qwen3.5-plus';
       var model=cfg.model||'未知';
       var badge='';
-      if(isCustom)badge='<span class="cp-api-badge custom">自定义</span>';
+      if(isCustom&&hasKey)badge='<span class="cp-api-badge custom">自定义</span>';
+      else if(!hasKey)badge='<span class="cp-api-badge nokey">无 API Key</span>';
       else badge='<span class="cp-api-badge free">免费代理</span>';
       var totalPrompt=0,totalCompletion=0,totalTotal=0;
       (agent.history||[]).forEach(function(ev){
@@ -5519,7 +5622,9 @@ function buildPaBookmarkletCode() {
     if(cpSend)cpSend.addEventListener('click',sendTask);
     if(cpInput)cpInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendTask();}});
     if(cpClose)cpClose.addEventListener('click',function(){var cp=document.getElementById('caidCopilot');if(cp){cp.classList.remove('open');cp.setAttribute('aria-hidden','true');}});
-    if(cpObserve)cpObserve.addEventListener('click',async function(){try{var s=await agent.pageController.getBrowserState();agent.history.push({type:'observation',content:'URL: '+s.url+'\\nTitle: '+(s.title||'')+'\\n'+String(s.content||'').slice(0,600)});agent.dispatchEvent(new Event('historychange'));}catch(e){showNote('观察失败:'+e.message);}});
+    if(cpObserve)cpObserve.addEventListener('click',function(){cpObserveFn(agent);});
+    if(cpStepNext)cpStepNext.addEventListener('click',function(){cpStepNextFn(agent);});
+    if(cpStopBtn)cpStopBtn.addEventListener('click',function(){cpStopFn();});
     renderStatus();renderHistory();renderToolCalls();renderActivity(null);renderApiInfo();
   }
   /* 脚本源：优先主站 headless（保证 core 与主站一致），失败 fallback 到 CDN */
@@ -5574,7 +5679,7 @@ function buildPaBookmarkletCode() {
   }
   tryLoad();
 })();
-  `.trim().replace(/[\r\n\t]+\s*/g, ' ');
+  `.trim();
   return 'javascript:' + encodeURIComponent(code);
 }
 
