@@ -2051,7 +2051,7 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
     场景D 用户说"滚动到底部"：
       {"evaluation_previous_goal":"","memory":"","next_goal":"执行JS滚动页面到底部","action":{"execute_javascript":{"script":"window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})"}}}
   【禁止行为 · 违反任何一条都不会被当作工具调用，直接失败】
-    ❌ 不要输出 '''JS代码块''' 或 ```js ```
+    ❌ 不要输出 \`\`\`JS代码块\`\`\` 或 \`\`\`js \`\`\`
     ❌ 不要输出 "跳转到js"、"执行 JavaScript:window.location=..." 这类纯文本或伪代码描述
     ❌ 不要输出 "好的，我来为您跳转..." 等自然语言后跟 JSON；只输出一个 JSON 对象本身
     ❌ action 的 key 不要写"跳转"、"navigate"、"go_home"、"evaluate_javascript" 等别名 —— 必须严格等于清单里的字符串
@@ -3599,10 +3599,36 @@ async function init() {
 let paPanel = null;
 let paPanelHidden = false;
 let paReloading = false;
+let __paMo = null;     /* MutationObserver: 拦截面板销毁/隐藏，把"关闭"转成"隐藏"，避免 destroy 导致二次启动失败 */
+let __paCloseHijacked = false;
+
+/* ===== 面板健康检查：实例还活着吗？面板还在 DOM 里吗？===== */
+function isPaAgentLikelyAlive() {
+  try {
+    if (!window.agent) return false;
+    // 有 destroy 方法但是没调用的就是健康的；如果被 dispose 了，访问常见方法会 throw 'has been disposed'
+    if (typeof window.agent.destroy !== 'function') return false;
+    if (typeof window.agent.addEventListener === 'function') {
+      // 仅注册一个空事件试试，disposed 的实例会 throw
+      try {
+        const fn = function(){};
+        window.agent.addEventListener('statuschange', fn);
+        window.agent.removeEventListener('statuschange', fn);
+      } catch(e) {
+        if (String(e.message||e).toLowerCase().includes('disposed') || String(e.message||e).toLowerCase().includes('destroyed')) return false;
+      }
+    }
+    return true;
+  } catch(_) { return true; }
+}
 
 function findPageAgentPanel() {
   if (paPanel && document.contains(paPanel)) return paPanel;
   paPanel = null;
+  // 先按 demo.js 精确 class 找（强信号）
+  const byClass = document.querySelector('div._wrapper_1tu05_1');
+  if (byClass) { paPanel = byClass; return byClass; }
+  // 再按 z-index 兜底（兼容未来版本类名打乱）
   for (const el of document.body.children) {
     const cs = getComputedStyle(el);
     const z = parseInt(cs.zIndex) || 0;
@@ -3612,6 +3638,113 @@ function findPageAgentPanel() {
     }
   }
   return null;
+}
+
+/* ===== 找到面板里的 X(close) 控制按钮，把它从 destroy/remove 改成隐藏 ===== */
+function hijackPaCloseButton(panelEl) {
+  if (!panelEl) return;
+  try {
+    // demo.js v1.12.2: _controlButton_1tu05_193
+    const btns = panelEl.querySelectorAll('button, [role="button"]');
+    let closeBtn = null;
+    const stopCandidates = [];
+    for (let i = 0; i < btns.length; i++) {
+      const b = btns[i];
+      // 跳过 stop 按钮（红色）
+      if (b.classList.contains('_stopButton_1tu05_212')) { stopCandidates.push(b); continue; }
+      const html = (b.outerHTML || '') + '|' + (b.textContent || '').trim();
+      const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+      // X 按钮特征：aria-label 含 close / 文本长度 ≤2 / 内容只有 ×,x,✕,关闭,close
+      if (/close|关闭|hide|折叠|收起/.test(aria) || /^[\s×xX✕✖︎❌╳+]{0,3}$/.test((b.textContent||'').trim()) || /(close|collapse|hide|dismiss)/i.test(b.className || '')) {
+        closeBtn = b;
+        break;
+      }
+    }
+    if (!closeBtn) {
+      // Fallback: 最后一个 _controlButton 通常就是关闭
+      const ctrls = panelEl.querySelectorAll('._controlButton_1tu05_193');
+      if (ctrls && ctrls.length) {
+        for (let i = ctrls.length - 1; i >= 0; i--) {
+          if (!ctrls[i].classList.contains('_stopButton_1tu05_212')) { closeBtn = ctrls[i]; break; }
+        }
+      }
+    }
+    if (closeBtn && !closeBtn.__caidCloseHijacked) {
+      closeBtn.__caidCloseHijacked = true;
+      // 捕获阶段拦截 click → stopPropagation，不触发内部 destroy/remove，只隐藏面板
+      closeBtn.addEventListener('click', function(ev) {
+        try { ev.stopImmediatePropagation(); ev.stopPropagation(); ev.preventDefault(); } catch(_) {}
+        hidePageAgentPanel();
+      }, true);
+    }
+  } catch(e) { console.debug('[CAID PA] hijack close button failed', e); }
+}
+
+function showPageAgentPanel() {
+  const panel = findPageAgentPanel();
+  if (panel) {
+    panel.style.display = '';
+    panel.style.visibility = '';
+    panel.style.opacity = '';
+    // 若有 wrapper class，尝试同时切展开 class
+    try { panel.classList.add('_expanded_1tu05_278'); } catch(_) {}
+    paPanelHidden = false;
+  }
+}
+function hidePageAgentPanel() {
+  const panel = findPageAgentPanel();
+  if (panel) {
+    panel.style.display = 'none';
+    paPanelHidden = true;
+  }
+}
+
+/* ===== MutationObserver：检测面板是否被移除/隐藏，用健康检查兜底重建 ===== */
+function ensurePaPanelObserver() {
+  if (__paMo) return;
+  try {
+    __paMo = new MutationObserver((mutations) => {
+      let needHijack = false;
+      for (const m of mutations) {
+        // 节点新增：有新面板 → 劫持关闭按钮
+        if (m.addedNodes && m.addedNodes.length) {
+          for (let i = 0; i < m.addedNodes.length; i++) {
+            const n = m.addedNodes[i];
+            if (n.nodeType !== 1) continue;
+            if ((n.classList && (n.classList.contains('_wrapper_1tu05_1') || n.classList.contains('page-agent-runtime_agent-panel'))) || n.querySelector && n.querySelector('._wrapper_1tu05_1')) {
+              needHijack = true;
+            }
+          }
+        }
+      }
+      if (needHijack) {
+        setTimeout(() => { const p = findPageAgentPanel(); if (p) hijackPaCloseButton(p); }, 80);
+      }
+    });
+    __paMo.observe(document.body, { childList: true, subtree: true });
+  } catch(e) { console.debug('[CAID PA] MutationObserver not available', e); }
+}
+
+/* ===== 健康检查 + 自动修复：用户点"重启"按钮第一优先级调这个，能不修就不修 ===== */
+function ensurePaPanelAndAgentAlive(options) {
+  options = options || {};
+  // 1) 面板还活着(在DOM里)但被隐藏了 → 直接显示，不重建
+  const panel = findPageAgentPanel();
+  if (panel && (!paPanelHidden && getComputedStyle(panel).display === 'none')) paPanelHidden = true;
+  if (panel) {
+    if (paPanelHidden || options.forceShow) {
+      showPageAgentPanel();
+      hijackPaCloseButton(panel);
+      return { ok: true, action: 'shown' };
+    }
+    hijackPaCloseButton(panel);
+  }
+  // 2) agent 引用还在，且面板还在，健康检查通过 → 什么都不做
+  if (panel && isPaAgentLikelyAlive()) {
+    return { ok: true, action: 'noop' };
+  }
+  // 3) 其他情况：需要重建（面板被 remove 了 / agent disposed）
+  return { ok: false, action: 'reload-needed' };
 }
 
 // Page-Agent 双源 fallback 地址（unpkg → jsdelivr → npmmirror）
@@ -3640,6 +3773,10 @@ function loadPaScript(onload, onerror) {
    两条路径都注入：全局工具函数 + meta 标签 + 隐藏指令块 + LLM 请求劫持
 */
 function initModdedPageAgent() {
+  // 0) 先启动面板生命周期管理：劫持 X 拦截(关闭=隐藏) + 健康检查 + 请求级 SystemPrompt 注入
+  ensurePaPanelObserver();
+  try { hookLlmRequestsForPageAgent(); } catch(_) {}
+
   // 1) 注入全局工具函数 & 指令块（纯 DOM 增强，不干扰 demo 的 API 调用）
   injectPaUtilities();
   try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
@@ -3673,6 +3810,8 @@ function initModdedPageAgent() {
           experimentalScriptExecutionTool: true,
           customTools: buildCaidCustomTools()
         });
+        // 等面板 DOM 渲染出来，立刻劫持它的 X 按钮 → 只隐藏不destroy
+        setTimeout(() => { paPanel = findPageAgentPanel(); cleanupDuplicatePaPanels(); hijackPaCloseButton(paPanel); }, 600);
         toast('✅ Page-Agent 魔改版（自定义 LLM · 工具函数优先）已启动', 'success', 2800);
         return;
       } catch (err) {
@@ -3684,6 +3823,7 @@ function initModdedPageAgent() {
     // 原版 demo 自带免费 LLM，能正常工作。我们通过 DOM 增强 + 输入 Hook
     // 在用户消息发送前自动 prepend 规则文本，让 LLM 收到增强指令。
     hookPaInputSend();
+    setTimeout(() => { paPanel = findPageAgentPanel(); cleanupDuplicatePaPanels(); hijackPaCloseButton(paPanel); }, 600);
     toast('✅ Page-Agent 魔改版（原版 agent + 输入增强 Hook 已注入）已启动', 'success', 3200);
   }, 500);
 }
@@ -3984,11 +4124,25 @@ function cleanupDuplicatePaPanels() {
 }
 
 // 重新加载 Page-Agent（面板被关闭后调用，无需刷新页面）
-function reloadPageAgent() {
+function reloadPageAgent(forceNew) {
   if (paReloading) return;
   paReloading = true;
+  ensurePaPanelObserver(); // 确保 MutationObserver 已启动，劫持 X 按钮
 
-  // 先销毁现有 agent + 清除引用（demo.js 有内部标志位防重复初始化，不清除 window.agent 重新加载 script 也不会重建面板）
+  /* 第一步：优先健康检查 —— 能不修就不修（仅隐藏 = 显示，不 new） */
+  if (!forceNew) {
+    const alive = ensurePaPanelAndAgentAlive({ forceShow: true });
+    if (alive.ok) {
+      paReloading = false;
+      injectPaUtilities();
+      try { if (typeof injectAgentInstructions === 'function') injectAgentInstructions(); } catch(_) {}
+      cleanupDuplicatePaPanels();
+      toast(alive.action === 'shown' ? 'Page-Agent 已重新显示（会话保持）' : 'Page-Agent 正常运行中', 'success', 1500);
+      return;
+    }
+  }
+
+  // 第二步：确实需要重建 → 先清理 guard 标志 + destroy 旧 + new 新
   if (window.agent) {
     try { if (typeof window.agent.destroy === 'function') window.agent.destroy(); } catch(e){}
     window.agent = null;
@@ -4029,8 +4183,9 @@ function reloadPageAgent() {
       setTimeout(() => {
         paPanel = findPageAgentPanel();
         cleanupDuplicatePaPanels();
+        hijackPaCloseButton(paPanel);
       }, 500);
-      toast('Page-Agent 已重新加载', 'success', 1500);
+      toast('Page-Agent 已重新初始化（新会话）', 'success', 1500);
     } catch(err) {
       console.warn('[Modded PA] 直接 new 失败，尝试重新加载 script：', err);
       // new 失败 → 删除旧 script + 重新加载
@@ -4038,7 +4193,7 @@ function reloadPageAgent() {
       if (oldScript) oldScript.remove();
       loadPaScript(() => {
         paReloading = false;
-        setTimeout(() => { paPanel = findPageAgentPanel(); }, 500);
+        setTimeout(() => { paPanel = findPageAgentPanel(); hijackPaCloseButton(paPanel); }, 600);
         initModdedPageAgent();
         toast('Page-Agent 已重新加载', 'success', 1500);
       }, () => {
@@ -4054,7 +4209,7 @@ function reloadPageAgent() {
   if (oldScript) oldScript.remove();
   loadPaScript(() => {
     paReloading = false;
-    setTimeout(() => { paPanel = findPageAgentPanel(); }, 500);
+    setTimeout(() => { paPanel = findPageAgentPanel(); hijackPaCloseButton(paPanel); }, 600);
     initModdedPageAgent();
     toast('Page-Agent 已重新加载', 'success', 1500);
   }, () => {
@@ -4064,20 +4219,22 @@ function reloadPageAgent() {
 }
 
 function togglePageAgentPanel() {
+  ensurePaPanelObserver();
   const panel = findPageAgentPanel();
   if (!panel) {
-    // 面板不存在（被关闭或移除），重新加载
+    // 面板不存在（真的被移除了），重新加载
     toast('正在重新加载 Page-Agent…', 'info', 1500);
-    reloadPageAgent();
+    reloadPageAgent(true /* forceNew */);
     return;
   }
-  paPanelHidden = !paPanelHidden;
-  if (paPanelHidden) {
-    panel.style.display = 'none';
-    toast('Page-Agent 已隐藏', 'info', 1200);
+  hijackPaCloseButton(panel);
+  const curHidden = paPanelHidden || (getComputedStyle(panel).display === 'none');
+  if (curHidden) {
+    showPageAgentPanel();
+    toast('Page-Agent 已显示（会话保持）', 'success', 1200);
   } else {
-    panel.style.display = '';
-    toast('Page-Agent 已显示', 'success', 1200);
+    hidePageAgentPanel();
+    toast('Page-Agent 已隐藏（会话仍在后台，点按钮或 Ctrl+I+L 唤回）', 'info', 1500);
   }
 }
 
@@ -4359,6 +4516,63 @@ function buildPaBookmarkletCode() {
     'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js'
   ];
   var si = 0;
+  /* ========== Bookmarklet 生命周期修复(关面板=隐藏不destroy, 再拖胶囊=显示) ========== */
+  var BK_PANEL_CLS = '_wrapper_1tu05_1';
+  function bkFindPanel() {
+    try {
+      var p = document.querySelector('div.' + BK_PANEL_CLS);
+      if (p) return p;
+      var nodes = (document.body ? document.body.children : []);
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i], st = window.getComputedStyle(el), z = parseInt(st.zIndex || '0', 10) || 0;
+        if (st.position === 'fixed' && z >= 2147483640) return el;
+      }
+    } catch(_) {}
+    return null;
+  }
+  function bkShowIfHidden() {
+    var p = bkFindPanel();
+    if (p) {
+      var cs = window.getComputedStyle(p);
+      if ((p.style.display === 'none') || (cs.display === 'none')) {
+        p.style.display = '';
+        try { p.classList.add('_expanded_1tu05_278'); } catch(_) {}
+        bkHijackClose();
+        showNote('Page-Agent 面板已重新显示（会话保持，无需新建）');
+        return true;
+      }
+      bkHijackClose();
+      showNote('Page-Agent 面板已在前台');
+      return true; /* 面板在 DOM 里且可见 */
+    }
+    return false; /* 需要新建 */
+  }
+  function bkHijackClose() {
+    try {
+      var p = bkFindPanel(); if (!p) return;
+      var btns = p.querySelectorAll ? p.querySelectorAll('button, [role="button"]') : [];
+      var cb = null, ctrls = p.querySelectorAll ? p.querySelectorAll('._controlButton_1tu05_193') : [];
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (b.classList && b.classList.contains('_stopButton_1tu05_212')) continue;
+        var aria = String(b.getAttribute ? (b.getAttribute('aria-label') || '') : '').toLowerCase();
+        var txt = String(b.textContent || '').trim();
+        if (/close|hide|dismiss|关闭|收起|折叠/.test(aria) || /^[\s×xX✕✖︎❌╳+]{0,3}$/.test(txt) || /close|collapse|hide|dismiss/i.test(String(b.className || ''))) { cb = b; break; }
+      }
+      if (!cb && ctrls.length) { for (var j = ctrls.length-1; j >= 0; j--) { if (!ctrls[j].classList.contains('_stopButton_1tu05_212')) { cb = ctrls[j]; break; } } }
+      if (cb && !cb.__caidCloseHijacked) {
+        cb.__caidCloseHijacked = true;
+        cb.addEventListener('click', function(ev) {
+          try { ev.stopImmediatePropagation(); ev.stopPropagation(); ev.preventDefault(); } catch(_) {}
+          var pp = bkFindPanel(); if (pp) pp.style.display = 'none';
+        }, true);
+      }
+    } catch(_) {}
+  }
+  /* 如果 Page-Agent 脚本已经加载过(再拖一次)，优先显示隐藏面板，不重复加载 script */
+  if (window.PageAgent) {
+    if (bkShowIfHidden()) { return; }
+  }
   function tryLoad() {
     if (si >= sources.length) { showNote('Page-Agent 脚本加载失败，请检查网络'); return; }
     var s = document.createElement('script');
@@ -4366,6 +4580,8 @@ function buildPaBookmarkletCode() {
     s.src = sources[si];
     s.onerror = function() { si++; tryLoad(); };
     s.onload = function() {
+      // 第一优先级：如果面板已存在(隐藏或可见) → 直接显示，不新建
+      if (bkShowIfHidden()) { return; }
       showNote('Page-Agent 魔改版（CAID）已启动');
       /* ===== Bookmarklet: customTools（4个显式工具硬注入，强制解锁execute_javascript+语义化导航）===== */
       /* Page-Agent 源码里 function tool(e){return e}，直接写对象字面量即可；zod 不可用时手写 duck-typed schema 带 safeParse+shape */
@@ -4479,6 +4695,7 @@ function buildPaBookmarkletCode() {
               experimentalScriptExecutionTool: true,
               customTools: BK_CT
             });
+            setTimeout(function(){ cleanupDupPanels(); bkHijackClose(); }, 700);
             bkStartHook(false); /* 自定义 LLM 已有 systemPrompt，不需要 prepend，但仍要 UI 注入 */
           } catch(err) {
             console.warn('[Modded PA Bookmarklet] custom LLM failed, fallback to demo:', err);
