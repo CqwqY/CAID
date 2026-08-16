@@ -2248,7 +2248,7 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
   /* === [CAID 显式工具清单 & AgentOutput JSON 强制格式对齐] —— LLM 提示词文本（注意下面两个变量是反引号字符串，不是 JS 注释，别加 /* 开头！）=== */
   const agentOutFmtZh = `
   【CAID 显式工具清单 · DeepSeek / 国产模型 必读】
-  Page-Agent 已在 tools 里额外注入了 7 个显式工具（customTools），你必须优先使用它们，
+  Page-Agent 已在 tools 里额外注入了 9 个显式工具（customTools），你必须优先使用它们，
   而不是在回答里输出"跳转到js"、"跳转到JavaScript"、"我会执行代码"等纯文本/伪代码。
   下面的工具列表 = Page-Agent 当前真正拥有并可调用的全部工具（action.key 必须从这里选，一个字母都不能错）：
     1. navigate_to_main_site     — 返回主网站(零参数)，action 键: navigate_to_main_site
@@ -2258,8 +2258,10 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
     5. search_web                 — 搜索网页(维基百科+搜索引擎)，action 键: search_web，参数: { "query": "搜索词" }
     6. search_code                — 搜索代码(GitHub)，action 键: search_code，参数: { "query": "搜索词" }
     7. output_code                — 输出代码到代码区(用户可复制/执行)，action 键: output_code，参数: { "code": "代码", "language": "javascript", "description": "说明" }
-    8. Page-Agent 内置工具: click / fill / scroll / drag / keyboard
-    9. Page-Agent 内置宏: done / evaluate —— 注意 evaluate 本质上就是 execute_javascript，功能等价，优先用显式名
+    8. auto_fill_form             — 自动填写表单(登录/注册/搜索)，action 键: auto_fill_form，参数: { "field_values": "{\"用户名\":\"admin\"}", "submit": "true", "form_selector": "" }
+    9. extract_page_data          — 提取页面数据(表格/链接/文本/图片)，action 键: extract_page_data，参数: { "type": "table", "selector": "" }
+    10. Page-Agent 内置工具: click / fill / scroll / drag / keyboard
+    11. Page-Agent 内置宏: done / evaluate —— 注意 evaluate 本质上就是 execute_javascript，功能等价，优先用显式名
   你必须严格按照 Page-Agent MacroTool 要求的 JSON 结构输出，不要夹杂任何自然语言/Markdown/伪代码/三引号代码块。
   正确 JSON 结构（4 个字段全部必填，缺少任何一个字段都会导致 Parse 失败 → 你说的话会被原封不动显示给用户而不会执行工具）：
     {
@@ -2288,7 +2290,7 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
   【格式对齐结束 · 以上是强制要求】`;
   const agentOutFmtEn = `
   === CAID EXPLICIT TOOL LIST & AgentOutput JSON FORMAT (MANDATORY for DeepSeek / non-OpenAI models) ===
-  Page-Agent has injected 7 explicit customTools. You MUST use them instead of writing "navigate to js" in plain text.
+  Page-Agent has injected 9 explicit customTools. You MUST use them instead of writing "navigate to js" in plain text.
   COMPLETE ACTION KEYS YOU CAN CALL (any string outside this list → parse failure → shown raw to user):
     1. navigate_to_main_site     — go back to CAID workbench, no args. action key: navigate_to_main_site
     2. navigate_to_url            — navigate current tab. action key: navigate_to_url, args: { "url": "https://..." }
@@ -2297,8 +2299,10 @@ Reminder: If the user did NOT explicitly say "return to main site" / "open some 
     5. search_web                 — search web (Wikipedia + search engines). action key: search_web, args: { "query": "text" }
     6. search_code                — search code on GitHub. action key: search_code, args: { "query": "text" }
     7. output_code                — display code in copilot panel (user can copy/run). action key: output_code, args: { "code": "string", "language": "javascript", "description": "string" }
-    8. (built-in) click / fill / scroll / drag / keyboard
-    9. (built-in macros) done / evaluate — evaluate is alias of execute_javascript, prefer explicit names.
+    8. auto_fill_form             — auto-fill form fields & submit. action key: auto_fill_form, args: { "field_values": "{\"username\":\"admin\"}", "submit": "true", "form_selector": "" }
+    9. extract_page_data          — extract structured data (table/links/text/images). action key: extract_page_data, args: { "type": "table", "selector": "" }
+    10. (built-in) click / fill / scroll / drag / keyboard
+    11. (built-in macros) done / evaluate — evaluate is alias of execute_javascript, prefer explicit names.
   You MUST output a single JSON object matching the MacroTool schema. NO natural language, NO markdown, NO code blocks.
   Correct structure (all fields required; omitting any → raw text output to user instead of tool invocation):
     {
@@ -4103,7 +4107,9 @@ const CP_TOOL_SCHEMAS = {
   navigate_to_main_site: { type:'object', properties:{} },
   search_web: { type:'object', properties:{ query:{type:'string',description:'Search query text'} }, required:['query'] },
   search_code: { type:'object', properties:{ query:{type:'string',description:'Code search query (GitHub)'} }, required:['query'] },
-  output_code: { type:'object', properties:{ code:{type:'string',description:'Code content to display'}, language:{type:'string',description:'Programming language (javascript/python/html/css)'}, description:{type:'string',description:'Brief description of the code'} }, required:['code'] }
+  output_code: { type:'object', properties:{ code:{type:'string',description:'Code content to display'}, language:{type:'string',description:'Programming language (javascript/python/html/css)'}, description:{type:'string',description:'Brief description of the code'} }, required:['code'] },
+  auto_fill_form: { type:'object', properties:{ field_values:{type:'string',description:'JSON string mapping field names to values, e.g. {"username":"admin","password":"123"}'}, submit:{type:'string',description:'Set to "true" to submit the form after filling'}, form_selector:{type:'string',description:'Optional CSS selector for the form element'} }, required:['field_values'] },
+  extract_page_data: { type:'object', properties:{ type:{type:'string',enum:['table','links','text','images','meta','all'],description:'Type of data to extract'}, selector:{type:'string',description:'Optional CSS selector to limit extraction scope'} } }
 };
 
 /* mini LLM 客户端：fetch 调 OpenAI 兼容 /chat/completions，支持 function calling */
@@ -4587,6 +4593,130 @@ function buildCaidCustomTools() {
           this.__cpRender.renderCode(code, lang, desc);
         }
         return '✅ 代码已输出到代码区' + (lang ? ' (' + lang + ')' : '') + '。用户可复制或点击执行。';
+      }
+    },
+
+    /* 8) auto_fill_form — 自动填写表单（登录/注册/搜索等） */
+    auto_fill_form: {
+      description:
+        'Automatically fill form fields and optionally submit. Pass field_values as a JSON string mapping field names/selectors to values. ' +
+        'Use this when the user says "自动填写", "帮我登录", "填表", "auto login", "fill form", "submit form". ' +
+        'Example: field_values=\'{"用户名":"admin","密码":"123456"}\', submit=true',
+      inputSchema: mkObj({ field_values: 'string', submit: 'string', form_selector: 'string' }),
+      execute: async function(input){
+        var raw = String(input && input.field_values || '{}');
+        var fields;
+        try { fields = JSON.parse(raw); } catch(e) { throw new Error('auto_fill_form: field_values 必须是合法 JSON: ' + e.message); }
+        var doSubmit = String(input && input.submit || '').toLowerCase() === 'true';
+        var formSel = String(input && input.form_selector || '').trim();
+        var filled = 0, failed = [];
+        for (var key in fields) {
+          var val = String(fields[key]);
+          var el = null;
+          /* 尝试 CSS 选择器 → 关键词匹配 placeholder/name/id/type */
+          try { el = document.querySelector(key); } catch(e) {}
+          if (!el) {
+            var inputs = document.querySelectorAll('input, textarea, select');
+            for (var i = 0; i < inputs.length; i++) {
+              var inp = inputs[i];
+              var ph = inp.placeholder || '', nm = inp.name || '', id = inp.id || '', tp = inp.type || '';
+              if (ph.indexOf(key) >= 0 || nm.indexOf(key) >= 0 || id.indexOf(key) >= 0 ||
+                  (tp === 'email' && key.toLowerCase().indexOf('邮') >= 0) ||
+                  (tp === 'password' && (key.toLowerCase().indexOf('密') >= 0 || key.toLowerCase().indexOf('pass') >= 0)) ||
+                  (tp === 'search' && key.toLowerCase().indexOf('搜') >= 0)) {
+                el = inp; break;
+              }
+            }
+          }
+          if (el) {
+            try {
+              var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+              if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+              if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val);
+              else el.value = val;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              filled++;
+            } catch(e) { failed.push(key + ': ' + e.message); }
+          } else { failed.push(key + ': 未找到匹配的输入框'); }
+        }
+        var resultMsg = '填写了 ' + filled + ' 个字段';
+        if (failed.length) resultMsg += '，失败: ' + failed.join('; ');
+        if (doSubmit) {
+          var form = formSel ? document.querySelector(formSel) : null;
+          if (!form) {
+            var firstInput = document.querySelector('input, textarea');
+            if (firstInput && firstInput.form) form = firstInput.form;
+          }
+          if (form) {
+            try { form.submit(); resultMsg += '，已提交表单'; }
+            catch(e) {
+              try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); resultMsg += '，已触发 submit 事件'; }
+              catch(e2) { resultMsg += '，提交失败: ' + e2.message; }
+            }
+          } else {
+            var submitBtn = document.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+            if (submitBtn) { submitBtn.click(); resultMsg += '，已点击提交按钮'; }
+            else resultMsg += '，未找到提交按钮';
+          }
+        }
+        return '✅ ' + resultMsg;
+      }
+    },
+
+    /* 9) extract_page_data — 从页面提取结构化数据 */
+    extract_page_data: {
+      description:
+        'Extract structured data from the current page. Supports: "table" (HTML tables), "links" (all links), "text" (page text), "images" (image URLs), "meta" (page metadata). ' +
+        'Use this when the user says "提取数据", "抓取页面", "获取表格", "extract data", "scrape page", "get links". ' +
+        'Pass type and optional selector (CSS) to limit scope.',
+      inputSchema: mkObj({ type: 'string', selector: 'string' }),
+      execute: async function(input){
+        var type = String(input && input.type || 'all').toLowerCase().trim();
+        var sel = String(input && input.selector || '').trim();
+        var scope = sel ? null : document;
+        try { if (sel) scope = document.querySelector(sel); } catch(e) {}
+        if (!scope) scope = document;
+        var data = {};
+        if (type === 'table' || type === 'all') {
+          var tables = scope.querySelectorAll('table');
+          data.tables = [];
+          tables.forEach(function(t){
+            var rows = [];
+            t.querySelectorAll('tr').forEach(function(tr){
+              var cells = [];
+              tr.querySelectorAll('th, td').forEach(function(td){ cells.push(td.innerText.trim()); });
+              if (cells.length) rows.push(cells);
+            });
+            if (rows.length) data.tables.push(rows);
+          });
+        }
+        if (type === 'links' || type === 'all') {
+          data.links = [];
+          scope.querySelectorAll('a[href]').forEach(function(a){
+            data.links.push({ text: a.innerText.trim().slice(0, 100), href: a.href });
+          });
+        }
+        if (type === 'text' || type === 'all') {
+          data.text = scope.body ? scope.body.innerText.slice(0, 5000) : '';
+        }
+        if (type === 'images' || type === 'all') {
+          data.images = [];
+          scope.querySelectorAll('img[src]').forEach(function(img){
+            data.images.push({ src: img.src, alt: img.alt || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
+          });
+        }
+        if (type === 'meta' || type === 'all') {
+          data.meta = { title: document.title, url: location.href, description: '', keywords: '' };
+          var desc = document.querySelector('meta[name="description"]');
+          if (desc) data.meta.description = desc.content || '';
+          var kw = document.querySelector('meta[name="keywords"]');
+          if (kw) data.meta.keywords = kw.content || '';
+        }
+        var json = JSON.stringify(data, null, 2);
+        /* 如果数据量大，截断 */
+        if (json.length > 8000) json = json.slice(0, 8000) + '\n... (截断，共 ' + json.length + ' 字符)';
+        return '📋 页面数据提取 (' + type + '):\n' + json;
       }
     }
   };
