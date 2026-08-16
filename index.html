@@ -4894,8 +4894,103 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => { _pressedKeys.delete(e.code); });
 window.addEventListener('blur', () => _pressedKeys.clear());
 
+// ============ Bookmarklet 注入：副驾 CSS/HTML/初始化 JS 字符串常量 ============
+// （精简版，直接嵌入 javascript: URI。与 index.html 主站 UI 保持相同视觉体系、相同 customTools、相同 done→assistant 转换）
+const BK_CSS_STR = JSON.stringify(`
+.caid-copilot{position:fixed;top:0;right:0;width:380px;height:100vh;max-height:100vh;background:#1e1e2e;color:#cdd6f4;z-index:2147483646;box-shadow:-8px 0 24px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column;font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;border-left:1px solid #313244;font-family:inherit;}
+.caid-copilot.open{transform:translateX(0);}
+.caid-copilot *{box-sizing:border-box;}
+.cp-head{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid #313244;background:#181825;}
+.cp-title{font-weight:600;flex:0 0 auto;color:#cdd6f4;}
+.cp-status{flex:1;text-align:right;font-size:12px;color:#7f849c;}
+.cp-close{flex:0 0 auto;width:28px;height:28px;border-radius:6px;color:#7f849c;font-size:14px;line-height:1;border:0;background:transparent;cursor:pointer;}
+.cp-close:hover{background:#313244;color:#cdd6f4;}
+.cp-api-info{padding:4px 12px;font-size:11px;color:#7f849c;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.6;}
+.cp-api-info .cp-api-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;}
+.cp-api-info .cp-api-badge.free{background:rgba(99,102,241,.12);color:#818cf8;}
+.cp-api-info .cp-api-badge.custom{background:rgba(34,197,94,.12);color:#4ade80;}
+.cp-api-info .cp-api-badge.nokey{background:rgba(248,81,73,.12);color:#f87171;}
+.cp-token-total{margin-left:auto;font-size:10px;color:#7f849c;white-space:nowrap;}
+.cp-mode-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #313244;background:#181825;}
+.cp-mode-btn{padding:4px 10px;border:0;border-radius:6px;background:#313244;color:#bac2de;font-size:11px;cursor:pointer;}
+.cp-mode-btn.active{background:#89b4fa;color:#1e1e2e;font-weight:600;}
+.cp-mode-actions{margin-left:auto;display:none;gap:4px;}
+.cp-mode-actions.visible{display:flex;}
+.cp-mode-actions button{padding:2px 8px;border:0;border-radius:4px;background:#45475a;color:#bac2de;font-size:11px;cursor:pointer;}
+.cp-activity{padding:4px 12px;font-size:11px;color:#bac2de;background:#181825;border-bottom:1px solid #313244;min-height:18px;}
+.cp-log{flex:1;overflow-y:auto;padding:8px;font-size:12px;line-height:1.5;}
+.cp-evt{margin-bottom:6px;padding:6px 8px;border-radius:6px;}
+.cp-evt-user{display:flex;justify-content:flex-end;background:transparent;}
+.cp-bubble{display:inline-block;padding:6px 10px;border-radius:10px;max-width:100%;word-wrap:break-word;white-space:pre-wrap;}
+.cp-bubble-user{background:#89b4fa;color:#1e1e2e;border-bottom-right-radius:2px;}
+.cp-bubble-assistant{background:#313244;color:#cdd6f4;border-bottom-left-radius:2px;}
+.cp-evt-assistant{background:transparent;}
+.cp-evt-step{background:#181825;border:1px solid #313244;}
+.cp-evt-step summary{cursor:pointer;user-select:none;color:#bac2de;font-size:11px;}
+.cp-evt-step summary b{color:#f9e2af;}
+.cp-evt-step .cp-tool{display:inline-block;padding:1px 5px;border-radius:3px;background:#585b70;color:#f5c2e7;font-size:10px;margin-left:4px;}
+.cp-step-usage{display:inline-block;margin-left:6px;font-size:10px;color:#7f849c;background:#313244;padding:1px 5px;border-radius:3px;}
+.cp-evt-observation{background:rgba(137,180,250,.08);color:#89b4fa;border:1px solid rgba(137,180,250,.2);}
+.cp-evt-error{background:rgba(248,81,73,.1);color:#f38ba8;border:1px solid rgba(248,81,73,.2);}
+.cp-evt-retry{background:rgba(250,179,135,.1);color:#fab387;}
+.cp-section{border-top:1px solid #313244;}
+.cp-section-head{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;cursor:pointer;background:#181825;user-select:none;font-size:11px;color:#7f849c;}
+.cp-section.collapsed .cp-section-head::after{content:'▸';}
+.cp-section-head::after{content:'▾';}
+.cp-section.collapsed > *:not(.cp-section-head){display:none;}
+.cp-tools,.cp-code,.cp-search{padding:6px 8px;max-height:200px;overflow-y:auto;font-size:11px;}
+.cp-tool-call{padding:4px 6px;margin-bottom:4px;background:#181825;border-radius:4px;border:1px solid #313244;}
+.cp-tool-call-name{color:#a6e3a1;font-weight:600;}
+.cp-tool-call-args{color:#7f849c;margin-left:4px;}
+.cp-tool-call-result{color:#cdd6f4;margin-top:2px;}
+.cp-empty{color:#585b70;font-style:italic;padding:4px;}
+.cp-input-bar{padding:8px 12px;border-top:1px solid #313244;background:#181825;display:flex;gap:6px;}
+.cp-input-bar textarea{flex:1;min-height:32px;max-height:120px;resize:vertical;background:#1e1e2e;color:#cdd6f4;border:1px solid #313244;border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;}
+.cp-input-bar textarea:focus{outline:none;border-color:#89b4fa;}
+.cp-input-bar button{padding:4px 14px;border:0;border-radius:6px;background:#89b4fa;color:#1e1e2e;font-weight:600;font-size:12px;cursor:pointer;}
+.cp-input-bar button:active{transform:translateY(1px);}
+`);
+
+const BK_HTML_STR = JSON.stringify(`
+<aside class="caid-copilot open" aria-hidden="false">
+  <header class="cp-head">
+    <span class="cp-title">🤖 CAID 副驾</span>
+    <span class="cp-status" id="cpStatus">未启动</span>
+    <button class="cp-close" id="cpClose" title="收起">✕</button>
+  </header>
+  <div class="cp-api-info" id="cpApiInfo"></div>
+  <div class="cp-mode-bar">
+    <button class="cp-mode-btn active" id="cpModeAuto" data-mode="auto">自动</button>
+    <button class="cp-mode-btn" id="cpModeManual" data-mode="manual">手动</button>
+    <div class="cp-mode-actions" id="cpManualActions">
+      <button id="cpObserve">👁 观察</button>
+      <button id="cpStepNext">▶ 单步</button>
+      <button id="cpStop">⏹ 停止</button>
+    </div>
+  </div>
+  <div class="cp-activity" id="cpActivity"></div>
+  <div class="cp-log" id="cpLog"></div>
+  <div class="cp-section">
+    <div class="cp-section-head">工具调用</div>
+    <div class="cp-tools" id="cpTools"><div class="cp-empty">工具调用记录会显示在这里</div></div>
+  </div>
+  <div class="cp-section collapsed">
+    <div class="cp-section-head">代码输出</div>
+    <div class="cp-code" id="cpCode"><div class="cp-empty">AI 执行的代码会显示在这里</div></div>
+  </div>
+  <div class="cp-section collapsed">
+    <div class="cp-section-head">检索结果</div>
+    <div class="cp-search" id="cpSearch"><div class="cp-empty">检索结果会显示在这里</div></div>
+  </div>
+  <div class="cp-input-bar">
+    <textarea id="cpInput" placeholder="给副驾下任务，回车发送… (Shift+Enter换行)"></textarea>
+    <button id="cpSend">发送</button>
+  </div>
+</aside>
+`);
+
 // ============ Page-Agent Bookmarklet 生成 ============
-// 作用：生成可拖到书签栏的 <a href="javascript:...">，在任意网页点击即可注入 page-agent demo 脚本
+// 作用：生成可拖到书签栏的 <a href="javascript:...">，在任意网页点击即可注入"CAID 副驾"（与主站同套 UI/工具/渲染链路）
 function setupPaBookmarklet() {
   const btn = document.getElementById('paBookmarklet');
   if (!btn) return;
@@ -5148,318 +5243,322 @@ function buildPaBookmarkletCode() {
     } catch(e) {}
   }
   var LLMCFG = ${llmCfgJson};
-  var existing = document.querySelector('script[src*="page-agent"]');
-  if (existing) existing.remove();
-  var oldRoot = document.getElementById('__page_agent_el__');
-  if (oldRoot) oldRoot.remove();
-  var sources = [
-    'https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js',
-    'https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js',
-    'https://registry.npmmirror.com/page-agent/1.12.2/files/dist/iife/page-agent.demo.js'
-  ];
-  var si = 0;
-  /* ========== Bookmarklet 生命周期修复(关面板=隐藏不destroy, 再拖胶囊=显示) ========== */
-  function bkIsMounted(n){ try{return !!(n && (n.isConnected !== false) && (document.contains ? document.contains(n) : n.parentNode || n.host));}catch(_){return !!(n && (n.parentNode || n.host));} }
-  function bkShadowQueryAll(root, sel){
-    var out=[];
-    if(!root) return out;
-    try{ var nl=root.querySelectorAll(sel); if(nl) nl.forEach(function(n){ out.push(n); }); }catch(_){}
+  var BK_CSS = ${BK_CSS_STR};
+  var BK_HTML = ${BK_HTML_STR};
+  /* 如果已注入过，显示已存在的副驾，不新建 */
+  var __exist = document.getElementById('caidCopilot');
+  if (__exist) {
+    __exist.classList.add('open');
+    try { __exist.setAttribute('aria-hidden','false'); } catch(_) {}
+    showNote('CAID 副驾已启动（会话保持）');
+    return;
+  }
+  /* 清除旧版 demo 残留 */
+  try {
+    var __s = document.querySelector('script[src*="page-agent"]');
+    if (__s) try { __s.remove(); } catch(_) {}
+    var __r = document.getElementById('__page_agent_el__');
+    if (__r) try { __r.remove(); } catch(_) {}
+    var __p = document.getElementById('page-agent-runtime_agent-panel');
+    if (__p) try { __p.remove(); } catch(_) {}
+  } catch(_) {}
+  /* 注入 CSS */
+  (function(){
+    var st = document.createElement('style');
+    st.id = '__caid_copilot_css__';
+    st.textContent = BK_CSS;
+    (document.head || document.documentElement).appendChild(st);
+  })();
+  /* 注入 HTML 侧边栏 */
+  (function(){
+    var wrap = document.createElement('div');
+    wrap.id = '__caid_cp_wrap__';
+    wrap.innerHTML = BK_HTML;
+    (document.body || document.documentElement).appendChild(wrap.firstElementChild || wrap);
+  })();
+  /* 折叠区切换 */
+  document.querySelectorAll('#caidCopilot .cp-section-head').forEach(function(h){
+    h.addEventListener('click', function(){ h.parentElement.classList.toggle('collapsed'); });
+  });
+  /* Zod 兼容：不可用时 duck-typed schema */
+  function _bkZodObj(shape, desc){
     try{
-      var all=root.querySelectorAll('*');
-      all.forEach(function(n){ if(n.shadowRoot){ bkShadowQueryAll(n.shadowRoot, sel).forEach(function(m){ out.push(m); }); } });
-    }catch(_){}
-    return out;
+      var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;
+      if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}
+    }catch(_e){}
+    return {_zod:{def:{type:'object'}},shape:shape||{},safeParse:function(v){return{success:true,data:(v&&typeof v==='object')?v:{}};},describe:function(){return this;};};
   }
-  function bkFindPanel() {
-    try {
-      var byId = document.getElementById('page-agent-runtime_agent-panel');
-      if (byId) return byId;
-      try {
-        var byCls = document.querySelector('div._wrapper_1tu05_1, div.page-agent-runtime_agent-panel');
-        if (byCls) return byCls;
-      } catch(_) {}
-      /* 核心：v1.12.2 面板在 Shadow DOM 内，遍历 body 子元素 shadowRoot */
-      var bodyChildren = document.body ? document.body.children : [];
-      for (var i = 0; i < bodyChildren.length; i++) {
-        var host = bodyChildren[i];
-        if (!host.shadowRoot) continue;
-        var inside = null;
-        try { inside = host.shadowRoot.getElementById('page-agent-runtime_agent-panel'); } catch(_) { inside = null; }
-        if (!inside) try { inside = host.shadowRoot.querySelector('div[class*="_wrapper_"], div[class*="_panel_"]'); } catch(_) {}
-        if (!inside) {
-          try {
-            var srCh = host.shadowRoot.children ? host.shadowRoot.children : [];
-            for (var j = 0; j < srCh.length; j++) {
-              var el = srCh[j], cs = null;
-              try { cs = window.getComputedStyle(el); } catch(_) {}
-              if (!cs) continue;
-              var z = parseInt(cs.zIndex || '0', 10) || 0;
-              if (cs.position === 'fixed' && z >= 2147483640) { inside = el; break; }
+  function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}return{_zod:{def:{type:'string'}},safeParse:function(v){return{success:true,data:String(v==null?'':v)};},describe:function(){return this;};};}
+  /* customTools（与主站 buildCaidCustomTools 一致） */
+  var BK_CT = {
+    navigate_to_main_site: {
+      description: 'Navigate back to CAID main workbench. Call this when user says: 返回主网站 / 回工作台 / 回首页 / go home / back to main site. NO parameters.',
+      inputSchema: _bkZodObj({}),
+      execute: async function(){
+        var mu=(window.__MAIN_SITE_URL__||MAIN_URL);
+        try{(window.top||window).location.href=mu;}catch(e){window.location.href=mu;}
+        return 'Navigating back to main site: '+mu;
+      }
+    },
+    navigate_to_url: {
+      description: 'Navigate current page (same tab) to a URL. Use when user says "访问 X / 去 X 网站 / 当前页跳转 X".',
+      inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
+      execute: async function(input){
+        var u=String(input.url||'').trim();if(!u)throw new Error('url required');
+        if(!/^[a-zA-Z][a-zA-Z0-9+\\-.]*:\\/\\//.test(u))u='https://'+u;
+        try{(window.top||window).location.href=u;}catch(e){window.location.href=u;}
+        return 'Navigating to: '+u;
+      }
+    },
+    open_url_in_new_tab: {
+      description: 'Open URL in new tab (keep current page). Use for "新标签打开 X".',
+      inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
+      execute: async function(input){
+        var u=String(input.url||'').trim();if(!u)throw new Error('url required');
+        if(!/^[a-zA-Z][a-zA-Z0-9+\\-.]*:\\/\\//.test(u))u='https://'+u;
+        var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();
+        return 'Opened new tab: '+u;
+      }
+    },
+    execute_javascript: {
+      description: 'Run arbitrary JS on page. Async/await supported. Available helpers: paGoHome/paNavigate/paLinks/paText/paInfo/paFill/paScroll/paCopy/paSave/paInject/paInjectCSS.',
+      inputSchema: _bkZodObj({ script: _bkZodStr(true) }),
+      execute: async function(input, ctx){
+        var sig=ctx&&ctx.signal;
+        var __util=window.__PA_UTILS__||{};
+        var paGoHome=__util.navigateToMainSite.bind(__util);
+        var paNavigate=__util.navigateTo.bind(__util);
+        var paLinks=__util.extractAllLinks.bind(__util);
+        var paText=__util.extractPageText.bind(__util);
+        var paInfo=__util.getPageInfo.bind(__util);
+        var paFill=__util.fillForm.bind(__util);
+        var paScroll=__util.scrollTo.bind(__util);
+        var paCopy=__util.copyToClipboard.bind(__util);
+        var paSave=__util.downloadAsFile.bind(__util);
+        var paInject=function(s){var t=document.createElement('script');t.textContent=String(s||'');(document.head||document.documentElement).appendChild(t);};
+        var paInjectCSS=function(c){var t=document.createElement('style');t.textContent=String(c||'');(document.head||document.documentElement).appendChild(t);};
+        var code=String(input.script||'');
+        try{
+          if(sig&&sig.throwIfAborted)sig.throwIfAborted();
+          if(window.PageAgent&&window.PageAgent.prototype&&window.PageAgent.prototype.pageController){
+            var res=window.PageAgent.prototype.pageController.executeJavascript(code,sig);
+            if(res&&typeof res.then==='function')res=await res;
+            return String(res==null?'':res);
+          }
+        }catch(_){}
+        var res=(0,eval)(code);
+        if(res&&typeof res.then==='function')res=await res;
+        return String(res==null?'':res);
+      }
+    }
+  };
+  var cpToolCalls = [];
+  var cpMode = 'auto';
+  var cpAbortController = null;
+  function cpEscapeHtml(s){return String(s||'').replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[c];});}
+  /* 渲染链路：bindEvents */
+  function bindCpEvents(agent){
+    var cpStatus=document.getElementById('cpStatus');
+    var cpActivity=document.getElementById('cpActivity');
+    var cpApiInfo=document.getElementById('cpApiInfo');
+    var cpLog=document.getElementById('cpLog');
+    var cpInput=document.getElementById('cpInput');
+    var cpSend=document.getElementById('cpSend');
+    var cpClose=document.getElementById('cpClose');
+    var cpModeAuto=document.getElementById('cpModeAuto');
+    var cpModeManual=document.getElementById('cpModeManual');
+    var cpManualActions=document.getElementById('cpManualActions');
+    var cpTools=document.getElementById('cpTools');
+    var cpCode=document.getElementById('cpCode');
+    var cpSearch=document.getElementById('cpSearch');
+    var STATUS_TEXT={idle:'空闲',running:'运行中…',completed:'已完成',error:'出错',stopped:'已停止'};
+    function renderApiInfo(){
+      if(!cpApiInfo)return;
+      var cfg=agent.config||{};
+      var isCustom=cfg.model&&cfg.model!=='qwen3.5-plus';
+      var model=cfg.model||'未知';
+      var badge='';
+      if(isCustom)badge='<span class="cp-api-badge custom">自定义</span>';
+      else badge='<span class="cp-api-badge free">免费代理</span>';
+      var totalPrompt=0,totalCompletion=0,totalTotal=0;
+      (agent.history||[]).forEach(function(ev){
+        if(ev.usage){totalPrompt+=ev.usage.prompt_tokens||0;totalCompletion+=ev.usage.completion_tokens||0;totalTotal+=ev.usage.total_tokens||0;}
+      });
+      var tokHtml='';
+      if(totalTotal>0)tokHtml='<span class="cp-token-total">Token: '+totalTotal+' (↑'+totalPrompt+' ↓'+totalCompletion+')</span>';
+      cpApiInfo.innerHTML=badge+'<span>'+cpEscapeHtml(model)+'</span>'+tokHtml;
+    }
+    function renderStatus(){if(cpStatus)cpStatus.textContent=STATUS_TEXT[agent.status]||String(agent.status);renderApiInfo();}
+    function renderActivity(detail){
+      if(!cpActivity)return;
+      if(!detail){cpActivity.textContent='';return;}
+      if(detail.type==='thinking')cpActivity.textContent='🧠 思考中…';
+      else if(detail.type==='executing')cpActivity.textContent='⚙️ 执行 '+detail.tool;
+      else if(detail.type==='executed')cpActivity.textContent='✅ '+detail.tool+' ('+Math.round(detail.duration||0)+'ms)';
+      else if(detail.type==='retrying')cpActivity.textContent='🔁 重试 '+detail.attempt+'/'+detail.maxAttempts;
+      else if(detail.type==='error')cpActivity.textContent='❌ '+detail.message;
+    }
+    function renderToolCalls(){
+      if(!cpTools)return;
+      if(!cpToolCalls.length){cpTools.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>';return;}
+      cpTools.innerHTML='';
+      cpToolCalls.forEach(function(tc){
+        var div=document.createElement('div');div.className='cp-tool-call';
+        div.innerHTML='<span class="cp-tool-call-name">'+cpEscapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+cpEscapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+          (tc.result?'<div class="cp-tool-call-result">'+cpEscapeHtml(String(tc.result).slice(0,200))+'</div>':'');
+        cpTools.appendChild(div);
+      });
+      cpTools.scrollTop=cpTools.scrollHeight;
+    }
+    function renderCode(code){
+      if(!cpCode)return;
+      var sec=cpCode.closest('.cp-section');
+      if(!code){cpCode.innerHTML='<div class="cp-empty">AI 执行的代码会显示在这里</div>';if(sec)sec.classList.add('collapsed');return;}
+      cpCode.textContent=String(code);
+      if(sec)sec.classList.remove('collapsed');
+    }
+    function renderHistory(){
+      if(!cpLog)return;
+      cpLog.innerHTML='';
+      (agent.history||[]).forEach(function(ev){
+        var div=document.createElement('div');
+        if(ev.type==='user'){
+          div.className='cp-evt cp-evt-user';
+          div.innerHTML='<div class="cp-bubble cp-bubble-user">'+cpEscapeHtml(String(ev.content||'')).replace(/\\n/g,'<br>')+'</div>';
+        }else if(ev.type==='assistant'){
+          div.className='cp-evt cp-evt-assistant';
+          div.innerHTML='<div class="cp-bubble cp-bubble-assistant">'+cpEscapeHtml(String(ev.content||'')).replace(/\\n/g,'<br>')+'</div>';
+        }else if(ev.type==='step'){
+          div.className='cp-evt cp-evt-step';
+          var ng=ev.reflection&&ev.reflection.next_goal?ev.reflection.next_goal:'';
+          var tn=ev.action&&ev.action.name?ev.action.name:'';
+          var out=String(ev.action&&ev.action.output||'');
+          var usageHtml='';
+          if(ev.usage&&ev.usage.total_tokens){
+            usageHtml='<span class="cp-step-usage" title="prompt:'+ev.usage.prompt_tokens+' completion:'+ev.usage.completion_tokens+'">'+ev.usage.total_tokens+' tok</span>';
+          }
+          if(tn==='done'){
+            var doneText=String(ev.action&&ev.action.input&&ev.action.input.text||'(无文本)');
+            var doneSuccess=ev.action&&ev.action.input&&ev.action.input.success;
+            div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+cpEscapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small>'+usageHtml+'</summary>'
+              +'<div class="cp-bubble cp-bubble-assistant">'+cpEscapeHtml(doneText).replace(/\\n/g,'<br>')+'</div></details>';
+          }else{
+            var outShort=out.slice(0,240);
+            var outFull=out.length>240?out:'';
+            div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+cpEscapeHtml(ng)+' <span class="cp-tool">['+cpEscapeHtml(tn)+']</span>'+usageHtml+'</summary>'
+              +'<div class="cp-out">'+cpEscapeHtml(outShort)+(outFull?' <span class="cp-more">…点击展开</span>':'')+'</div>'
+              +(outFull?'<pre class="cp-out-full" style="display:none">'+cpEscapeHtml(outFull)+'</pre>':'')
+              +'</details>';
+            if(outFull){
+              var more=div.querySelector('.cp-more');if(more){
+                more.addEventListener('click',function(){var p=div.querySelector('.cp-out-full');if(p){p.style.display=(p.style.display==='none')?'block':'none';more.textContent=(p.style.display==='none')?'…点击展开':'收起';}});
+              }
             }
-          } catch(_) {}
+          }
+        }else if(ev.type==='observation'){
+          div.className='cp-evt cp-evt-observation';
+          div.innerHTML='👁 '+cpEscapeHtml(String(ev.content).slice(0,300));
+        }else if(ev.type==='error'){
+          div.className='cp-evt cp-evt-error';
+          div.innerHTML='❌ '+cpEscapeHtml(ev.message);
+        }else if(ev.type==='retry'){
+          div.className='cp-evt cp-evt-retry';
+          div.innerHTML='🔁 重试 '+ev.attempt+'/'+ev.maxAttempts;
+        }else{
+          div.className='cp-evt';div.textContent=JSON.stringify(ev).slice(0,200);
         }
-        if (inside) return inside;
-      }
-      /* 兜底：body 子 fixed ≥ 2147483640 */
-      var nodes = (document.body ? document.body.children : []);
-      for (var k = 0; k < nodes.length; k++) {
-        var el2 = nodes[k], st = window.getComputedStyle(el2), z2 = parseInt(st.zIndex || '0', 10) || 0;
-        if (st.position === 'fixed' && z2 >= 2147483640) return el2;
-      }
-    } catch(_) {}
-    return null;
-  }
-  function bkShowIfHidden() {
-    var p = bkFindPanel();
-    if (p) {
-      var cs = null; try { cs = window.getComputedStyle(p); } catch(_) {}
-      var hidden = (p.style.display === 'none') || (cs && cs.display === 'none');
-      if (hidden) {
-        try { p.style.removeProperty('display'); } catch(_) {}
-        try { p.style.display = ''; } catch(_) {}
-        try { p.classList.add('_expanded_1tu05_278'); } catch(_) {}
-        bkHijackClose();
-        showNote('Page-Agent 面板已重新显示（会话保持，无需新建）');
-        return true;
-      }
-      bkHijackClose();
-      showNote('Page-Agent 面板已在前台');
+        cpLog.appendChild(div);
+      });
+      cpLog.scrollTop=cpLog.scrollHeight;
+    }
+    function preprocessDoneToAssistant(){
+      if(!agent.history||!Array.isArray(agent.history))return false;
+      var hist=agent.history;var lastStep=null;
+      for(var i=hist.length-1;i>=0;i--){if(hist[i]&&hist[i].type==='step'){lastStep=hist[i];break;}}
+      if(!lastStep||!lastStep.action||lastStep.action.name!=='done')return false;
+      var input=lastStep.action.input;if(!input||typeof input!=='object')return false;
+      var doneText=String(input.text||'');if(!doneText)return false;
+      for(var j=0;j<hist.length;j++){var h=hist[j];if(h&&h.type==='assistant'&&String(h.content||'')===doneText)return false;}
+      agent.history=hist.concat([{type:'assistant',content:doneText}]);
       return true;
     }
-    return false;
+    function onHistoryChangeSafe(){
+      var mc=typeof queueMicrotask==='function'?queueMicrotask:function(f){setTimeout(f,0);};
+      mc(function(){
+        var pushed=preprocessDoneToAssistant();
+        renderHistory();renderApiInfo();
+        if(pushed)setTimeout(function(){renderHistory();renderApiInfo();},0);
+      });
+    }
+    agent.addEventListener('statuschange',renderStatus);
+    agent.addEventListener('activity',function(e){renderActivity(e.detail);});
+    agent.addEventListener('historychange',onHistoryChangeSafe);
+    agent.addEventListener('dispose',function(){if(cpStatus)cpStatus.textContent='已销毁';});
+    function setMode(mode){
+      cpMode=mode;
+      if(cpModeAuto)cpModeAuto.classList.toggle('active',mode==='auto');
+      if(cpModeManual)cpModeManual.classList.toggle('active',mode==='manual');
+      if(cpManualActions)cpManualActions.classList.toggle('visible',mode==='manual');
+    }
+    if(cpModeAuto)cpModeAuto.addEventListener('click',function(){setMode('auto');});
+    if(cpModeManual)cpModeManual.addEventListener('click',function(){setMode('manual');});
+    async function sendTask(){
+      if(!cpInput)return;var t=cpInput.value.trim();if(!t)return;cpInput.value='';
+      agent.history=agent.history||[];
+      agent.history.push({type:'user',content:t});
+      agent.dispatchEvent(new Event('historychange'));
+      if(cpMode==='auto'){
+        try{await agent.execute(t);}
+        catch(e){agent.history.push({type:'error',message:String(e&&e.message?e.message:e)});agent.dispatchEvent(new Event('historychange'));}
+      }else{
+        agent.task=t;
+        agent.history.push({type:'observation',content:'手动模式：已记录任务，请用单步按钮推进'});
+        agent.dispatchEvent(new Event('historychange'));
+      }
+    }
+    if(cpSend)cpSend.addEventListener('click',sendTask);
+    if(cpInput)cpInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendTask();}});
+    if(cpClose)cpClose.addEventListener('click',function(){var cp=document.getElementById('caidCopilot');if(cp){cp.classList.remove('open');cp.setAttribute('aria-hidden','true');}});
+    if(cpObserve)cpObserve.addEventListener('click',async function(){try{var s=await agent.pageController.getBrowserState();agent.history.push({type:'observation',content:'URL: '+s.url+'\\nTitle: '+(s.title||'')+'\\n'+String(s.content||'').slice(0,600)});agent.dispatchEvent(new Event('historychange'));}catch(e){showNote('观察失败:'+e.message);}});
+    renderStatus();renderHistory();renderToolCalls();renderActivity(null);renderApiInfo();
   }
-  function bkHijackClose() {
-    try {
-      var p = bkFindPanel(); if (!p) return;
-      var realPanel = p;
-      if (p.shadowRoot) {
-        try {
-          var inner = p.shadowRoot.querySelector('div[class*="_wrapper_"], div[class*="_panel_"], #page-agent-runtime_agent-panel');
-          if (inner) realPanel = inner;
-        } catch(_) {}
-      }
-      var searchRoot = (realPanel && realPanel.getRootNode) ? realPanel.getRootNode() : (realPanel && realPanel.parentNode ? realPanel.parentNode : document);
-      var roots = [realPanel, searchRoot].filter(Boolean);
-      var cb = null;
-      for (var r = 0; r < roots.length; r++) {
-        var btns = bkShadowQueryAll(roots[r], 'button, [role="button"], [aria-label*="close" i], [aria-label*="关闭" i], [aria-label*="hide" i], [data-testid*="close"]');
-        for (var i = 0; i < btns.length; i++) {
-          var b = btns[i];
-          try {
-            if (b.classList && (b.classList.contains('_stopButton_1tu05_212') || /stop|停止|cancel|取消/i.test(String(b.className || '')))) continue;
-            var aria = String(b.getAttribute ? (b.getAttribute('aria-label') || '') : '').toLowerCase();
-            var title = String(b.getAttribute ? (b.getAttribute('title') || '') : '').toLowerCase();
-            var txt = String(b.textContent || '').trim();
-            if (/close|关闭|hide|折叠|收起|dismiss|minimize|最小化/.test(aria) || /close|关闭|hide|折叠|收起|dismiss/.test(title)) { cb = b; break; }
-            if (txt && /^[\s×xX✕✖︎❌╳+⋈⊠⊡]{1,4}$/.test(txt)) { cb = b; break; }
-            if (/(close|collapse|hide|dismiss)/i.test(String(b.className || ''))) { cb = b; break; }
-          } catch(_) {}
-        }
-        if (cb) break;
-      }
-      if (!cb && realPanel && realPanel.querySelectorAll) {
-        try {
-          var ctrls = realPanel.querySelectorAll('[class*="_controlButton"]');
-          if (ctrls && ctrls.length) {
-            for (var j = ctrls.length - 1; j >= 0; j--) {
-              if (!(ctrls[j].classList && (ctrls[j].classList.contains('_stopButton_1tu05_212') || /stop|停止/i.test(String(ctrls[j].className || ''))))) { cb = ctrls[j]; break; }
-            }
-          }
-        } catch(_) {}
-      }
-      if (cb && !cb.__caidCloseHijacked) {
-        cb.__caidCloseHijacked = true;
-        var kill = function(ev) {
-          try { ev.stopImmediatePropagation(); ev.stopPropagation(); ev.preventDefault(); } catch(_) {}
-          var pp = bkFindPanel();
-          if (pp) {
-            try { pp.style.setProperty('display', 'none', 'important'); } catch(_) { try { pp.style.display = 'none'; } catch(__) {} }
-          }
-        };
-        cb.addEventListener('click', kill, true);
-        cb.addEventListener('mousedown', kill, true);
-        cb.addEventListener('pointerdown', kill, true);
-      }
-    } catch(_) {}
+  /* 脚本源：优先主站 headless（保证 core 与主站一致），失败 fallback 到 CDN */
+  var sources=[];
+  if(MAIN_URL){
+    if(MAIN_URL.slice(-1)!=='/')MAIN_URL=MAIN_URL+'/';
+    sources.push(MAIN_URL+'lib/page-agent.headless.js?autoInit=false');
   }
-  /* BK 轮询兜底：前 30s 每 2s 再补一次劫持 */
-  var __bkPollT = null;
-  function bkStartPoll() {
-    if (__bkPollT) return;
-    var cnt = 0;
-    __bkPollT = setInterval(function() {
-      try { var p = bkFindPanel(); if (p) bkHijackClose(); } catch(_) {}
-      cnt++;
-      if (cnt >= 15) { clearInterval(__bkPollT); __bkPollT = null; }
-    }, 2000);
-  }
-  /* 如果 Page-Agent 脚本已经加载过(再拖一次)，优先显示隐藏面板，不重复加载 script */
-  if (window.PageAgent) {
-    bkStartPoll();
-    if (bkShowIfHidden()) { return; }
-  }
-  function tryLoad() {
-    if (si >= sources.length) { showNote('Page-Agent 脚本加载失败，请检查网络'); return; }
-    var s = document.createElement('script');
-    s.crossOrigin = 'anonymous';
-    s.src = sources[si];
-    s.onerror = function() { si++; tryLoad(); };
-    s.onload = function() {
-      bkStartPoll(); /* BK 启动轮询兜底劫持 */
-      // 第一优先级：如果面板已存在(隐藏或可见) → 直接显示，不新建
-      if (bkShowIfHidden()) { return; }
-      showNote('Page-Agent 魔改版（CAID）已启动');
-      /* ===== Bookmarklet: customTools（4个显式工具硬注入，强制解锁execute_javascript+语义化导航）===== */
-      /* Page-Agent 源码里 function tool(e){return e}，直接写对象字面量即可；zod 不可用时手写 duck-typed schema 带 safeParse+shape */
-      function _bkZodObj(shape, desc){
-        try{
-          var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;
-          if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}
-        }catch(_e){}
-        return {_zod:{def:{type:'object'}},shape:shape||{},safeParse:function(v){return{success:true,data:(v&&typeof v==='object')?v:{}}};},describe:function(){return this;};};
+  sources.push('https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js');
+  sources.push('https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js');
+  var si=0;
+  function tryLoad(){
+    if(si>=sources.length){showNote('CAID 副驾核心脚本加载失败，请检查网络 / CSP');return;}
+    var s=document.createElement('script');
+    s.crossOrigin='anonymous';
+    s.src=sources[si];
+    s.onerror=function(){si++;tryLoad();};
+    s.onload=function(){
+      showNote('CAID 副驾已启动（魔改版）');
+      var paCfg_={language:${JSON.stringify(lang)},instructions:{system:ENH_SP||''},experimentalScriptExecutionTool:true,enableMask:true,customTools:BK_CT};
+      if(LLMCFG){
+        paCfg_.model=LLMCFG.model;
+        paCfg_.baseURL=LLMCFG.baseUrl||'';
+        paCfg_.apiKey=LLMCFG.apiKey;
+      }else{
+        paCfg_.model='qwen3.5-plus';
+        paCfg_.baseURL='https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
+        paCfg_.apiKey='NA';
       }
-      function _bkZodStr(req){try{var z=window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}return{_zod:{def:{type:'string'}},safeParse:function(v){return{success:true,data:String(v==null?'':v)};};},describe:function(){return this;};};}
-      var BK_CT = {
-        execute_javascript: {
-          description: 'Execute arbitrary JavaScript code on the current page. Supports async/await. signal is available in scope. This is the most powerful fallback tool. Examples: window.location.href="URL"; or var a=document.createElement("a");a.href="URL";a.target="_blank";a.click();',
-          inputSchema: _bkZodObj({ script: _bkZodStr(true) }),
-          execute: async function(input, ctx){
-            var sig=ctx&&ctx.signal;
-            if(this&&this.pageController&&typeof this.pageController.executeJavascript==='function'){
-              var r=await this.pageController.executeJavascript(String(input.script),sig);
-              if(sig&&sig.throwIfAborted)sig.throwIfAborted();
-              return(r&&r.message)||String((r&&r.result)??'');
-            }
-            var res=(0,eval)(String(input.script));
-            return(res&&typeof res.then==='function')?(await res):String(res??'');
-          }
-        },
-        navigate_to_url: {
-          description: 'Navigate current page to a URL. Use when user says "打开 X 网页 / 访问 X / 去 X 网站 / go to X".',
-          inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
-          execute: async function(input){
-            var u=String(input.url||'').trim();if(!u)throw new Error('navigate_to_url: url required');
-            try{(window.top||window).location.href=u;}catch(e){window.location.href=u;}
-            return 'Navigating to: '+u;
-          }
-        },
-        open_url_in_new_tab: {
-          description: 'Open a URL in a new tab (keep current page). Use when user says "新标签打开 X / open X in new tab".',
-          inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
-          execute: async function(input){
-            var u=String(input.url||'').trim();if(!u)throw new Error('open_url_in_new_tab: url required');
-            var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();
-            return 'Opened new tab: '+u;
-          }
-        },
-        navigate_to_main_site: {
-          description: 'Navigate back to CAID main workbench. Call this when user says: 返回主网站 / 回工作台 / 回首页 / go home / back to main site. Takes NO parameters — just call it directly.',
-          inputSchema: _bkZodObj({}),
-          execute: async function(){
-            var mu=(window.__MAIN_SITE_URL__||MAIN_URL);
-            try{(window.top||window).location.href=mu;}catch(e){window.location.href=mu;}
-            return 'Navigating back to CAID main site: '+mu;
-          }
-        }
-      };
-      /* ===== Bookmarklet 共享：输入 Hook ===== */
-      var BK_MAX_WAIT = 15000;
-      var BK_RULE = [
-        '【CAID规则】',
-        '你是 CAID 工作台魔改版 Agent。在回答用户前请遵守以下规则：',
-        '1. 默认正常回答用户问题，不要跳转，不要操作页面 DOM。',
-        '2. 可用工具：navigate_to_main_site / navigate_to_url / open_url_in_new_tab / execute_javascript / click / fill / scroll。执行任意 JS 代码用 execute_javascript。',
-        '3. 用户说「返回主网站/回工作台/go home」时：直接调用 navigate_to_main_site 工具（零参数）。',
-        '4. 用户说「打开 GitHub/谷歌/百度/微博」时：调用 open_url_in_new_tab 工具，参数 {url:"https://..."}。',
-        '  示例：打开 GitHub -> action: {"open_url_in_new_tab":{"url":"https://github.com"}}',
-        '  示例：打开百度 -> action: {"open_url_in_new_tab":{"url":"https://baidu.com"}}',
-        '  示例：打开微博 -> action: {"open_url_in_new_tab":{"url":"https://weibo.com"}}',
-        '5. 当前页跳转用 navigate_to_url 工具，参数 {url:"https://..."}。',
-        '6. execute_javascript 的 script 内部可用工具函数：paLinks() | paText() | paInfo() | paFill() | paScroll() | paCopy() | paSave() | paInject(js) | paInjectCSS(css)',
-        '7. 修改页面行为: execute_javascript 工具，script 里调 paInject(JS代码)。',
-        '8. 用中文回答。',
-        '【★ DeepSeek / 国产模型 · AgentOutput JSON 格式强制对齐 ★】',
-        '   额外 4 个显式 customTools，action 键名必须严格等于：',
-        '   navigate_to_main_site(零参数) / navigate_to_url({url}) / open_url_in_new_tab({url}) / execute_javascript({script})',
-        '   只输出一个 JSON 对象，绝对不能输出 "跳转到js"、伪代码、代码块等纯文本。',
-        '   正确格式(全部字段必填)：{"evaluation_previous_goal":"","memory":"","next_goal":"一句话","action":{"工具名":{"参数":...}}}',
-        '   示例·返回主网站：{"evaluation_previous_goal":"","memory":"","next_goal":"返回CAID工作台","action":{"navigate_to_main_site":{}}}',
-        '   示例·打开百度：{"evaluation_previous_goal":"","memory":"","next_goal":"新标签打开百度","action":{"open_url_in_new_tab":{"url":"https://baidu.com"}}}',
-        '   示例·去谷歌：{"evaluation_previous_goal":"","memory":"","next_goal":"跳转到谷歌","action":{"navigate_to_url":{"url":"https://google.com"}}}',
-        '   禁止：自然语言/Markdown/三引号代码块 ❌ JSON前后加文字 ❌ action键名用别名(如go_home/跳转/navigate) ❌ done()说无法跳转',
-        '关键：不要调用 done 说无法跳转，直接用 navigate_to_main_site / navigate_to_url / open_url_in_new_tab / execute_javascript 工具。'
-      ].join(String.fromCharCode(10));
-      function bkStartHook(withRulePrefix) {
-        var START_TS = Date.now();
-        function tryHookInput() {
-          var panel = document.getElementById('page-agent-runtime_agent-panel');
-          if (!panel) { if (Date.now() - START_TS < BK_MAX_WAIT) { setTimeout(tryHookInput, 300); } return; }
-          var input = panel.querySelector('input._taskInput, input[class*="taskInput"], input[type="text"]');
-          if (!input) {
-            var sb = panel.querySelector('div[class*="statusText"], div[class*="_statusText"]');
-            if (sb) sb.click();
-            if (Date.now() - START_TS < BK_MAX_WAIT) { setTimeout(tryHookInput, 300); } return;
-          }
-          if (input.__paHooked) return;
-          input.__paHooked = true;
-          window.__PA_INPUT_HOOKED__ = true;
-          if (!withRulePrefix) return;
-          var sending = false;
-          function prepend() {
-            if (sending) return;
-            var raw = input.value;
-            if (!raw || !raw.trim()) return;
-            if (raw.indexOf('【CAID规则】') === 0) return;
-            sending = true;
-            input.value = BK_RULE + '\\n\\n' + raw;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          input.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) prepend();
-          }, true);
-          var btns = panel.querySelectorAll('button');
-          for (var bi = 0; bi < btns.length; bi++) {
-            (function(b){ b.addEventListener('click', prepend, true); })(btns[bi]);
-          }
-          input.addEventListener('input', function() { if (!input.value || input.value.indexOf('【CAID规则】') !== 0) { sending = false; } });
-        }
-        tryHookInput();
-      }
-      /* === Custom LLM path === */
-      if (LLMCFG && window.PageAgent) {
-        setTimeout(function() {
-          try {
-            if (window.agent && typeof window.agent.destroy === 'function') { try { window.agent.destroy(); } catch(e){} }
-            cleanupDupPanels();
-            window.agent = new window.PageAgent({
-              language: ${JSON.stringify(lang)},
-              model: {
-                provider: LLMCFG.provider,
-                baseUrl: LLMCFG.baseUrl,
-                apiKey: LLMCFG.apiKey,
-                model: LLMCFG.model,
-                temperature: LLMCFG.temperature
-              },
-              systemPrompt: ENH_SP,
-              experimentalScriptExecutionTool: true,
-              customTools: BK_CT
-            });
-            setTimeout(function(){ cleanupDupPanels(); bkHijackClose(); }, 700);
-            bkStartHook(false); /* 自定义 LLM 已有 systemPrompt，不需要 prepend，但仍要 UI 注入 */
-          } catch(err) {
-            console.warn('[Modded PA Bookmarklet] custom LLM failed, fallback to demo:', err);
-            bkStartHook(true);
-          }
-        }, 350);
-        return;
-      }
-      /* === No custom LLM: 保留原版 demo agent + 输入 Hook + UI 注入 === */
-      if (!LLMCFG) {
-        bkStartHook(true);
+      try{
+        if(window.agent&&typeof window.agent.dispose==='function'){try{window.agent.dispose();}catch(_){}}
+        window.agent=new window.PageAgent(paCfg_);
+        bindCpEvents(window.agent);
+      }catch(err){
+        console.error('[BK CAID Copilot] new agent error:',err);
+        showNote('副驾初始化失败:'+err.message);
       }
     };
-    document.head.appendChild(s);
+    (document.head||document.documentElement).appendChild(s);
   }
   function showNote(text) {
     setTimeout(function(){
