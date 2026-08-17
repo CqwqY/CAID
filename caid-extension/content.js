@@ -56,36 +56,52 @@
   window.addEventListener('__caid_save_settings', function (e) {
     var cfg = e && e.detail;
     if (!cfg) return;
-    console.log('[CAID-content] 收到 __caid_save_settings，写入 chrome.storage.local.caidLlm');
-    try { chrome.storage.local.set({ caidLlm: cfg }); } catch (ex) {}
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) return;
+      console.log('[CAID-content] 收到 __caid_save_settings，写入 chrome.storage.local.caidLlm');
+      chrome.storage.local.set({ caidLlm: cfg });
+    } catch (ex) {
+      console.warn('[CAID-content] save_settings failed:', ex.message || ex);
+    }
   });
 
   // MAIN world 的 navigate_to_url 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
   window.addEventListener('__caid_store_handoff', function (e) {
     var h = e && e.detail;
     if (!h) return;
-    console.log('[CAID-content] 收到续传上下文，写入 storage.session');
-    try { chrome.storage.session.set({ caidHandoff: h }); } catch (ex) {}
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.session) return;
+      console.log('[CAID-content] 收到续传上下文，写入 storage.session');
+      chrome.storage.session.set({ caidHandoff: h });
+    } catch (ex) {
+      console.warn('[CAID-content] store_handoff failed:', ex.message || ex);
+    }
   });
 
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
   // 扩展副驾（#caidExtCopilot 已注入）时跳过，避免重复启动。
   (function tryAutoResume() {
-    if (!chrome || !chrome.storage || !chrome.storage.session) return;
-    if (document.getElementById('caidExtCopilot')) return; // 扩展副驾已注入
-    chrome.storage.session.get(['caidHandoff'], function (got) {
-      const h = got && got.caidHandoff;
-      if (!h || !h.toUrl) return;
-      // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
-      if (h.ts && Date.now() - h.ts > 120000) { chrome.storage.session.remove(['caidHandoff']); return; }
-      let match = false;
-      try { match = location.host === new URL(h.toUrl).host; } catch (e) {}
-      if (!match) return;
-      // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
-      chrome.storage.session.remove(['caidHandoff'], function () {
-        chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.session) return;
+      if (document.getElementById('caidExtCopilot')) return; // 扩展副驾已注入
+      chrome.storage.session.get(['caidHandoff'], function (got) {
+        if (chrome.runtime.lastError) return; // storage unavailable in this context
+        const h = got && got.caidHandoff;
+        if (!h || !h.toUrl) return;
+        // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
+        if (h.ts && Date.now() - h.ts > 120000) { chrome.storage.session.remove(['caidHandoff']); return; }
+        let match = false;
+        try { match = location.host === new URL(h.toUrl).host; } catch (e) {}
+        if (!match) return;
+        // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
+        chrome.storage.session.remove(['caidHandoff'], function () {
+          if (chrome.runtime.lastError) return;
+          chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
+        });
       });
-    });
+    } catch(e) {
+      console.warn('[CAID-content] auto-resume skipped:', e.message || e);
+    }
   })();
 })();
