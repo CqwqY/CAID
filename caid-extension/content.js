@@ -80,6 +80,16 @@
     }
   });
 
+  // MAIN world 的副驾在任务正常结束 / 被强行终止时派发此事件，清除续传上下文，避免误触发
+  window.addEventListener('__caid_clear_handoff', function () {
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.session) return;
+      chrome.storage.session.remove(['caidHandoff'], function () {
+        if (chrome.runtime.lastError) { console.warn('[CAID-content] clear_handoff 失败:', chrome.runtime.lastError.message); }
+      });
+    } catch (ex) {}
+  });
+
   // MAIN world 的副驾（无 chrome.*）把 LLM 网络请求经 window.postMessage 转交本 ISOLATED world，
   // 再由本脚本发往 background service worker 真正发起（扩展网络，不受宿主页 CSP 限制），
   // 最后把响应回传 MAIN world，由其重建为标准 Response 交给 Page-Agent。
@@ -120,12 +130,16 @@
       chrome.storage.session.get(['caidHandoff'], function (got) {
         if (chrome.runtime.lastError) return; // storage unavailable in this context
         const h = got && got.caidHandoff;
-        if (!h || !h.toUrl) return;
+        if (!h) return;
         // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
         if (h.ts && Date.now() - h.ts > 120000) { chrome.storage.session.remove(['caidHandoff']); return; }
-        let match = false;
-        try { match = location.host === new URL(h.toUrl).host; } catch (e) {}
-        if (!match) return;
+        // 来源页本身不续跑，避免同页循环
+        if (location.href === (h.fromUrl || '')) return;
+        // 续跑判定：① 显式目的地命中（toUrl 主机 == 当前页）；或 ② 已离开检查点来源页（moved，覆盖站内表单提交等任意跳转）
+        let destMatch = false;
+        try { if (h.toUrl) destMatch = location.host === new URL(h.toUrl).host; } catch (e) {}
+        let moved = (location.href !== (h.toUrl || ''));
+        if (!destMatch && !moved) return;
         // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
         chrome.storage.session.remove(['caidHandoff'], function () {
           if (chrome.runtime.lastError) return;

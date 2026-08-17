@@ -247,6 +247,10 @@
             window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
           }
         } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
+        // 立即终止当前页 agent，避免它在原页面继续空转输出；
+        // 检查点已保存，新页面副驾会自动续跑（控制权随焦点转移到新页面）。
+        isHandingOff = true;
+        try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
         try { (window.top || window).location.href = url; }
         catch (e) { window.location.href = url; }
         return `✅ Navigating to: ${url}`;
@@ -268,8 +272,9 @@
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
         document.body.appendChild(a); a.click(); a.remove();
-        // 当前页 agent 无法操作新标签，稍后停止，使控制权转移到新标签续跑的副驾（单标签续跑语义）。
-        setTimeout(function () { try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {} }, 400);
+        // 当前页 agent 无法操作新标签，立即终止本页 agent，使控制权转移到新标签续跑的副驾。
+        isHandingOff = true;
+        try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {}
         return `✅ Opened in new tab (task will continue there): ${url}`;
       }
     },
@@ -496,8 +501,28 @@
       if (ev.type === 'step') return { type: 'step', action: { name: ev.action && ev.action.name, input: ev.action && ev.action.input, output: (ev.action && ev.action.output || '').slice(0, 300) } };
       if (ev.type === 'error') return { type: 'error', message: ev.message };
       return { type: ev.type };
-    });
+    }).filter(function (ev) { return ev.type !== 'error'; });
     return { goal: goal, fromUrl: location.href, toUrl: targetUrl, ts: Date.now(), recent: recent };
+  }
+
+  // ---------- 持续检查点：任务运行期间不断把上下文快照写入 storage.session ----------
+  // 这样无论跳转由哪个工具触发、还是站内表单提交/意外崩溃，新页面都能捡起续跑。
+  var isHandingOff = false;     // 正在因跳转而终止当前页 agent（此时不要清除检查点）
+  var isResuming = false;       // 正在恢复上次任务（此时不要重复检查点）
+  var _lastCpTs = 0;
+  function checkpoint() {
+    if (!agent || isHandingOff || isResuming) return;
+    if (agent.status !== 'running') return;
+    var now = Date.now();
+    if (now - _lastCpTs < 1500) return;   // 节流，避免每步都写存储
+    _lastCpTs = now;
+    try {
+      var h = buildHandoff(null);         // toUrl=null：任何跳转目的地都可续跑
+      if (h) window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+    } catch (e) {}
+  }
+  function clearCheckpoint() {
+    try { window.dispatchEvent(new CustomEvent('__caid_clear_handoff')); } catch (e) {}
   }
 
   // ---------- 创建 agent ----------
@@ -511,7 +536,9 @@
   const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
     'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台。' +
-    '优先使用合适的工具完成任务，最后用 done 汇报结果。';
+    '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
+    '跳转其他网站时优先用 navigate_to_url（在当前标签打开、焦点跟随）；' +
+    '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。';
   const customTools = tools;
   const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
   const config = isCustom
@@ -538,7 +565,7 @@
     if (!hasKey && !isFreeProxy) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
-  function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); if (stopEl) { if (agent.status === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } renderApiInfo(); }
+  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) clearCheckpoint(); } renderApiInfo(); }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
@@ -599,7 +626,7 @@
   }
   function onHistoryChangeSafe() {
     var mc = typeof queueMicrotask === 'function' ? queueMicrotask : function (f) { setTimeout(f, 0); };
-    mc(function () { var pushed = preprocessDoneToAssistant(); renderHistory(); renderApiInfo(); if (pushed) setTimeout(function () { renderHistory(); renderApiInfo(); }, 0); });
+    mc(function () { var pushed = preprocessDoneToAssistant(); renderHistory(); renderApiInfo(); checkpoint(); if (pushed) setTimeout(function () { renderHistory(); renderApiInfo(); }, 0); });
   }
 
   var cpToolCalls = [];
@@ -627,7 +654,7 @@
     agent.history.push({ type: 'user', content: t });
     agent.dispatchEvent(new Event('historychange'));
     try { await agent.execute(t); }
-    catch (e) { agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) }); agent.dispatchEvent(new Event('historychange')); }
+    catch (e) { if (!isHandingOff) { agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) }); agent.dispatchEvent(new Event('historychange')); } }
   }
   if (sendEl) sendEl.addEventListener('click', sendTask);
   if (inputEl) inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); } });
@@ -686,6 +713,8 @@
     try {
       const h = window.__CAID_HANDOFF;
       if (!h || !agent) return;
+      isResuming = true;
+      isHandingOff = false;
       // 恢复历史展示
       if (Array.isArray(h.recent) && h.recent.length) {
         agent.history = h.recent;
@@ -694,11 +723,13 @@
       if (inputEl && typeof sendTask === 'function') {
         const cont = '【任务续传】你正在协助用户完成：' + (h.goal || '') +
           '\n此前你已离开 ' + (h.fromUrl || '上一页') + ' 并自动跳转到当前页面 ' + location.href +
-          '。请先观察当前页面，然后继续完成上述任务（例如执行搜索 / 操作 / 填表）。';
+          '。请先观察当前页面（URL 可能已变化），然后继续完成上述任务（例如执行搜索 / 操作 / 填表）。';
         logBubble('assistant', '⟳ 检测到任务续传：' + (h.goal || ''));
-        setTimeout(function () { inputEl.value = cont; sendTask(); }, 500);
+        setTimeout(function () { inputEl.value = cont; sendTask(); isResuming = false; }, 500);
+      } else {
+        isResuming = false;
       }
       window.__CAID_HANDOFF = null;
-    } catch (e) { console.warn('[CAID] 续传失败', e); }
+    } catch (e) { console.warn('[CAID] 续传失败', e); isResuming = false; }
   })();
 })();
