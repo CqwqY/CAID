@@ -65,14 +65,16 @@
     }
   });
 
-  // MAIN world 的 navigate_to_url 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
+  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
   window.addEventListener('__caid_store_handoff', function (e) {
     var h = e && e.detail;
     if (!h) return;
     try {
       if (!chrome || !chrome.storage || !chrome.storage.session) return;
       console.log('[CAID-content] 收到续传上下文，写入 storage.session');
-      chrome.storage.session.set({ caidHandoff: h });
+      chrome.storage.session.set({ caidHandoff: h }, function () {
+        if (chrome.runtime.lastError) { console.warn('[CAID-content] store_handoff 写入失败:', chrome.runtime.lastError.message); return; }
+      });
     } catch (ex) {
       console.warn('[CAID-content] store_handoff failed:', ex.message || ex);
     }

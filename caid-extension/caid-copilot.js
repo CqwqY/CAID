@@ -259,10 +259,18 @@
       execute: async function (input) {
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('open_url_in_new_tab: url is required');
+        // 断点续传：新标签会自动启动副驾并续跑（与 navigate_to_url 一致）。
+        // MAIN world 无 chrome.storage，经 DOM 事件桥接 ISOLATED world 的 content.js 写入 session。
+        try {
+          const h = buildHandoff(url);
+          if (h) window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+        } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
         document.body.appendChild(a); a.click(); a.remove();
-        return `✅ Opened in new tab: ${url}`;
+        // 当前页 agent 无法操作新标签，稍后停止，使控制权转移到新标签续跑的副驾（单标签续跑语义）。
+        setTimeout(function () { try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {} }, 400);
+        return `✅ Opened in new tab (task will continue there): ${url}`;
       }
     },
 
