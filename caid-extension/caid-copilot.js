@@ -294,9 +294,7 @@
         const url = String(input && input.url || '').trim();
         console.log('[CAID-R] ★★★ navigate_to_url 工具被调用! input=', JSON.stringify(input), ' resolved url=', url);
         if (!url) throw new Error('navigate_to_url: url is required');
-        // 断点续传：构建 handoff 并随导航消息一起发给 background 存储。
-        // 不再依赖 DOM 事件 → content.js → storage 桥接链路（扩展页/newtab 上 content.js 不运行，
-        // 派发的事件无人监听，handoff 从未写入 storage —— 此前跨站续跑始终失败的根因）。
+        // 断点续传：构建 handoff，经 caidRequestNavigate 桥接发给 background（handoff 存储与开标签都在 background 完成）。
         let handoff = null;
         try {
           handoff = buildHandoff(url);
@@ -311,21 +309,11 @@
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
         cleanupAgentOverlays();  // 清理残留覆盖层，避免遮挡原页 UI
-        // 把「导航目标 + 续传上下文」打包一条消息发给 background：
-        //   ① background 用特权 API chrome.tabs.create 打开新标签（可靠、不被弹窗拦截）
-        //   ② background 同时把 handoff 写入 chrome.storage.session（永远有权限，不依赖 content.js）
-        //   ③ 新标签加载完成后 tabs.onUpdated 读 handoff → bootCopilot 注入副驾并续跑
-        try {
-          if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: true, handoff: handoff });
-            console.log('[CAID-R] navigate_to_url: 已请求 background 打开新标签+存储续传 (url=' + url + ', handoff=' + !!handoff + ')');
-          } else { throw new Error('no-chrome-runtime'); }
-        } catch (e) {
-          // 兜底：MAIN world 里 window.open 仍可用（仅当 runtime 消息失败时才走到这里）
-          console.warn('[CAID-R] navigate_to_url: 消息失败, 回退 window.open:', e.message || e);
-          try { window.open(url, '_blank', 'noopener,noreferrer'); }
-          catch (e2) { console.warn('[CAID-R] navigate_to_url: window.open 也失败:', e2.message || e2); }
-        }
+        // caidRequestNavigate 路由：扩展页 MAIN world 自带 chrome API → 直连 background；
+        // 正则网页 MAIN world 无 chrome.* → 派发 __caid_navigate_request DOM 事件，由 ISOLATED world
+        // 的 content.js 转发给 background。background 用 chrome.tabs.create 打开新标签并存储 handoff
+        // （chrome.storage.session 永远有权限）→ 新标签加载完成 tabs.onUpdated 读 handoff 注入副驾续跑。
+        caidRequestNavigate(url, true, handoff);
         return `✅ Opened in new tab (task continues there): ${url}`;
       }
     },
@@ -343,20 +331,8 @@
           if (h2) console.log('[CAID-R] open_url_in_new_tab: buildHandoff goal=', h2.goal);
           else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
         } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 异常', e); }
-        // MAIN world 下 chrome.tabs 不可用 → 改发消息给 background
-        try {
-          if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: false, handoff: h2 });
-            console.log('[CAID-R] open_url_in_new_tab: 已请求 background 打开新标签+存储续传 (url=' + url + ', handoff=' + !!h2 + ')');
-          } else { throw new Error('no-chrome-runtime'); }
-        } catch (e) {
-          console.warn('[CAID-R] open_url_in_new_tab: 消息失败, 回退 anchor:', e.message || e);
-          try {
-            const a = document.createElement('a');
-            a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-            document.body.appendChild(a); a.click(); a.remove();
-          } catch (e2) { console.warn('[CAID-R] open_url_in_new_tab: anchor 也失败:', e2.message || e2); }
-        }
+        // 经桥接把「导航目标 + 续传上下文」发给 background（扩展页直连 / 正则网页走 content.js DOM 桥）
+        caidRequestNavigate(url, false, h2);
         // 当前页 agent 无法操作新标签，立即终止本页 agent，使控制权转移到新标签续跑的副驾。
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {}
@@ -613,6 +589,39 @@
   }
   function clearCheckpoint() {
     try { window.dispatchEvent(new CustomEvent('__caid_clear_handoff')); } catch (e) {}
+  }
+
+  // ---------- 导航请求桥接：MAIN world 无 chrome.*，统一经 DOM 事件交给 ISOLATED world 的 content.js 转发 ----------
+  // 背景：navigate_to_url / open_url_in_new_tab 在正则网页（MAIN world）上拿不到 chrome.runtime，
+  // 直接发消息会抛 no-chrome-runtime，此前误用 window.open 兜底导致 handoff 未写入、续跑中断。
+  // 方案：① 扩展页（newtab 等，MAIN world 自带 chrome API）直接发消息给 background；
+  //       ② 正则网页改派发 __caid_navigate_request DOM 事件，由 content.js（ISOLATED world）转发给 background；
+  //       ③ 终极兜底才用 window.open（此时无法续跑，但至少打开页面）。
+  // background 收到后：存储 handoff（chrome.storage.session，永远有权限）+ 用 chrome.tabs.create 打开新标签，
+  // 新标签加载完成触发 tabs.onUpdated → 自动注入副驾续跑。
+  function caidRequestNavigate(url, active, handoff) {
+    // ① 扩展页 MAIN world 自带 chrome API → 直接发消息（最可靠）
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: active !== false, handoff: handoff || null });
+        console.log('[CAID-R] caidRequestNavigate: 已直接发 NAVIGATE_TO_URL 给 background (url=' + url + ', handoff=' + !!(handoff) + ')');
+        return;
+      }
+    } catch (e) {
+      console.warn('[CAID-R] caidRequestNavigate: 直接发送失败, 转 DOM 桥:', e.message || e);
+    }
+    // ② 正则网页 MAIN world 无 chrome API → 派发 DOM 事件，由 content.js（ISOLATED world）转发
+    try {
+      window.dispatchEvent(new CustomEvent('__caid_navigate_request', {
+        detail: { url: url, active: active !== false, handoff: handoff || null }
+      }));
+      console.log('[CAID-R] caidRequestNavigate: 已派发 __caid_navigate_request 给 content.js（DOM 桥）');
+      return;
+    } catch (e2) {
+      console.warn('[CAID-R] caidRequestNavigate: DOM 桥失败, 最后回退 window.open:', e2.message || e2);
+    }
+    // ③ 终极兜底：仅打开页面（无法续跑）
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e3) {}
   }
 
   // ---------- 创建 agent ----------

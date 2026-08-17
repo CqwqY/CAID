@@ -134,6 +134,25 @@
     });
   });
 
+  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具（无 chrome.*）通过此 DOM 事件请求开新标签；
+  // 由本 ISOLATED world 脚本转发给 background，background 用特权 API chrome.tabs.create 打开，
+  // 同时把 handoff 写入 chrome.storage.session，新标签加载完成后自动注入副驾续跑。
+  window.addEventListener('__caid_navigate_request', function (e) {
+    var detail = e && e.detail;
+    if (!detail || !detail.url) return;
+    var url = detail.url;
+    var active = detail.active !== false;
+    var handoff = detail.handoff || null;
+    console.log('[CAID-content] 收到 __caid_navigate_request, url=', url, ' active=', active, ' handoff=', !!handoff);
+    try {
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+      chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: active, handoff: handoff });
+      console.log('[CAID-content] 已转发 NAVIGATE_TO_URL 给 background');
+    } catch (err) {
+      console.error('[CAID-content] 转发 NAVIGATE_TO_URL 失败:', err.message || err);
+    }
+  });
+
   // MAIN world 的副驾在任务正常结束 / 被强行终止时派发此事件，清除续传上下文，避免误触发
   window.addEventListener('__caid_clear_handoff', function () {
     sessionRemove(['caidHandoff']).catch(function () {});
