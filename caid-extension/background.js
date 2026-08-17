@@ -116,8 +116,9 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
       if (fresh) { chrome.storage.session.remove(['caidHandoff']); }
       console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, handoff=', !!fresh);
       bootCopilot(tabId, tab.url, fresh ? h : null);
-    } else if (fresh && tab.url !== (h.fromUrl || '')) {
-      // B) 普通页面 + 有效 handoff + 非来源页 → 自动注入副驾并续跑
+    } else if (fresh && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
+      // B) 普通页面 + 有效 handoff + 非来源页 + 真实 http(s) URL → 自动注入副驾并续跑
+      // （防 chrome.tabs.create 过程中的 about:blank 等中间态提前消耗 handoff）
       chrome.storage.session.remove(['caidHandoff']);
       console.log('[CAID-R] tabs.onUpdated: 普通页面检测到续传, goal=', h.goal, ' url=', tab.url);
       bootCopilot(tabId, tab.url, h);
@@ -129,6 +130,17 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 
 async function bootCopilot(tabId, tabUrl, handoff) {
   try {
+
+    // 0) 先在目标页 F12 控制台打印可见日志（background 的 console.log 只出现在 SW 控制台，用户看不到）
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (hasHandoff, goal) => {
+        console.log('%c[CAID-R] ★★★ bootCopilot 开始注入副驾到当前页 ★★★  handoff=' + !!hasHandoff + (goal ? ' goal=' + goal : ''),
+          'color:#185FA5;font-weight:bold;font-size:13px');
+      },
+      args: [!!handoff, handoff && handoff.goal],
+      world: 'MAIN'
+    });
 
     const stored = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
     // 合并优先级：扩展自身设置（caidLlm，用户在 options 页显式配置）优先；
@@ -158,7 +170,10 @@ async function bootCopilot(tabId, tabUrl, handoff) {
       console.log('[CAID-R] bootCopilot: 落地 window.__CAID_HANDOFF, goal=', handoff.goal);
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (h) => { window.__CAID_HANDOFF = h; },
+        func: (h) => {
+          window.__CAID_HANDOFF = h;
+          console.log('%c[CAID-R] ✅ window.__CAID_HANDOFF 已落地, goal=' + h.goal, 'color:green;font-weight:bold');
+        },
         args: [handoff],
         world: 'MAIN'
       });
@@ -168,6 +183,16 @@ async function bootCopilot(tabId, tabUrl, handoff) {
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['caid-copilot.js'],
+      world: 'MAIN'
+    });
+
+    // 5) 确认注入完成（在目标页 F12 可见）
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        console.log('%c[CAID-R] ✅ bootCopilot 全部注入完成（zod-v4 + page-agent + LLM_CFG + caid-copilot）',
+          'color:green;font-weight:bold');
+      },
       world: 'MAIN'
     });
   } catch (e) {
