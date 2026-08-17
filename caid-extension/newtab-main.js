@@ -1,0 +1,3842 @@
+/* ======================================================================
+   CAID Workbench · Single-file SPA
+   Pure HTML/CSS/JS. All modules in one file for simple deployment.
+   ====================================================================== */
+
+// ---- syntax error self-report (temporary debug hook, removed in production)
+(function(){
+  function caidErrRep(msg, url, line, col, err) {
+    try {
+      var payload = 'CAID_ERR|' + Date.now() + '|' + encodeURIComponent(String(msg||'')) +
+        '|L=' + (line||0) + '|C=' + (col||0);
+      if (err && err.stack) payload += '|S=' + encodeURIComponent(String(err.stack).slice(0,400));
+      location.hash = payload;
+    } catch(_) {}
+  }
+  window.addEventListener('error', function(e){ caidErrRep(e.message, e.filename, e.lineno, e.colno, e.error); });
+  window.addEventListener('unhandledrejection', function(e){
+    try { caidErrRep('UNHANDLED: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)), '', 0, 0, e.reason); } catch(_){}
+  });
+})();
+
+// ============ Utilities ============
+// 注意：不要用全局名 `$`，因为主网站（graduate.dpdns.org）可能已经声明过 const/let $，
+// 跨 <script> 在同一全局词法作用域会报 "Identifier '$' has already been declared"。
+const caidQs = (sel, el = document) => el.querySelector(sel);
+const caidQsa = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const debounce = (fn, ms = 200) => {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+};
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// lucide.createIcons 防抖版：合并短时间内的多次调用，避免全量 DOM 扫描
+const refreshIcons = debounce(() => { if (window.lucide) lucide.createIcons(); }, 50);
+
+// ============ 主网站信息（给 Page-Agent 读）============
+const MAIN_SITE_URL = 'https://graduate.dpdns.org/';
+const MAIN_SITE_NAME = '程序员工作台 · CAID';
+function navigateToMainSite() {
+  try { (window.top || window).location.href = MAIN_SITE_URL; }
+  catch(e) { window.location.href = MAIN_SITE_URL; }
+}
+window.navigateToMainSite = navigateToMainSite;
+window.__MAIN_SITE_URL__ = MAIN_SITE_URL;
+window.__MAIN_SITE_NAME__ = MAIN_SITE_NAME;
+
+/* ========== Page-Agent 魔改版 · 全局工具函数注入 ==========
+   统一放到 window.__PA_UTILS__ 命名空间，并暴露短别名方便 LLM 发现。
+   所有函数都设计为：同步优先、尽量不抛异常、返回可读的执行结果字符串。
+*/
+function injectPaUtilities() {
+  if (window.__PA_UTILS__ && window.__PA_UTILS__.__injected) return;
+  const U = {};
+  U.__injected = true;
+  U.__version = 'caid-modded-1.0';
+
+  /* ---- 导航类 ---- */
+  // 返回主网站（兼容 iframe / 顶层窗口）
+  U.navigateToMainSite = function() {
+    try { (window.top || window).location.href = MAIN_SITE_URL; return 'OK navigating to ' + MAIN_SITE_URL; }
+    catch(e) { window.location.href = MAIN_SITE_URL; return 'OK (fallback) navigating to ' + MAIN_SITE_URL; }
+  };
+  // 通用跳转：默认顶层窗口。newTab=true 则新标签打开（可能被弹窗拦截）。
+  U.navigateTo = function(url, newTab) {
+    if (!url) return 'ERROR: empty url';
+    let u = String(url).trim();
+    if (!/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(u) && !u.startsWith('javascript:') && !u.startsWith('#')) {
+      u = 'https://' + u;
+    }
+    try {
+      if (newTab) {
+        const a = document.createElement('a');
+        a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        try { a.click(); } finally { setTimeout(()=>a.remove(),0); }
+        return 'OK opened new tab: ' + u;
+      }
+      (window.top || window).location.href = u;
+      return 'OK navigating to: ' + u;
+    } catch(e) {
+      try { window.location.href = u; return 'OK (fallback) navigating to: ' + u; }
+      catch(err) { return 'ERROR navigateTo failed: ' + err.message; }
+    }
+  };
+  U.openInNewTab = function(url) { return U.navigateTo(url, true); };
+
+  /* ---- 页面信息抽取 ---- */
+  U.extractAllLinks = function(max) {
+    max = max || 200;
+    const arr = [];
+    const seen = new Set();
+    for (const a of document.querySelectorAll('a[href]')) {
+      const h = (a.href || '').trim();
+      if (!h || seen.has(h) || h.startsWith('#') || h.startsWith('javascript:')) continue;
+      seen.add(h);
+      arr.push({ text: (a.textContent || '').trim().slice(0,120), href: h });
+      if (arr.length >= max) break;
+    }
+    return arr;
+  };
+  U.extractPageText = function(maxChars) {
+    maxChars = maxChars || 20000;
+    const el = document.body || document.documentElement;
+    return (el.innerText || el.textContent || '').slice(0, maxChars);
+  };
+  U.getPageInfo = function() {
+    const metas = {};
+    for (const m of document.querySelectorAll('meta[name][content]')) {
+      metas[m.getAttribute('name')] = (m.getAttribute('content') || '').slice(0,300);
+    }
+    return {
+      title: document.title,
+      url: location.href,
+      mainSiteUrl: window.__MAIN_SITE_URL__ || '',
+      metas,
+      linkCount: document.querySelectorAll('a[href]').length,
+      formCount: document.querySelectorAll('form, input, textarea, select, button').length,
+      cookie: (document.cookie || '').slice(0,500)
+    };
+  };
+
+  /* ---- DOM 快捷操作 ---- */
+  U.fillForm = function(selectorOrIndex, value, submit) {
+    let el = null;
+    if (typeof selectorOrIndex === 'number') {
+      const all = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      el = all[selectorOrIndex];
+    } else {
+      try { el = document.querySelector(String(selectorOrIndex)); } catch(e){}
+      if (!el) {
+        const s = String(selectorOrIndex).toLowerCase();
+        for (const inp of document.querySelectorAll('input, textarea, [contenteditable]')) {
+          const ph = (inp.placeholder||'').toLowerCase();
+          const nm = (inp.name||'').toLowerCase();
+          const id = (inp.id||'').toLowerCase();
+          if ((ph && ph.includes(s)) || (nm && nm.includes(s)) || (id && id.includes(s))) { el = inp; break; }
+        }
+      }
+    }
+    if (!el) return 'ERROR fillForm: element not found';
+    try {
+      if (el.isContentEditable) {
+        el.focus();
+        el.textContent = String(value ?? '');
+      } else if (el.tagName === 'SELECT') {
+        el.value = String(value ?? '');
+      } else {
+        el.value = String(value ?? '');
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      if (submit) {
+        const f = el.closest('form');
+        if (f) f.submit();
+        else if (typeof el.blur === 'function') el.blur();
+      }
+      return 'OK filled';
+    } catch(err) { return 'ERROR fillForm: ' + err.message; }
+  };
+  U.scrollTo = function(target) {
+    try {
+      if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return 'OK scrolled top'; }
+      if (target === 'bottom') { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); return 'OK scrolled bottom'; }
+      const el = document.querySelector(String(target));
+      if (!el) return 'ERROR scrollTo: selector not found: ' + target;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return 'OK scrolled to element';
+    } catch(e) { return 'ERROR scrollTo: ' + e.message; }
+  };
+
+  /* ---- 剪贴板 / 下载 ---- */
+  U.copyToClipboard = function(text) {
+    try {
+      navigator.clipboard?.writeText?.(String(text ?? ''));
+      return 'OK copy queued';
+    } catch(e) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = String(text ?? ''); ta.style.position='fixed'; ta.style.left='-99999px';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        return 'OK copy fallback';
+      } catch(err) { return 'ERROR copy failed: ' + err.message; }
+    }
+  };
+  U.downloadAsFile = function(filename, content, mime) {
+    try {
+      const m = mime || (filename.endsWith('.json') ? 'application/json' : filename.endsWith('.html') ? 'text/html' : 'text/plain');
+      const blob = new Blob([content ?? ''], { type: m });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = String(filename || 'download.txt');
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch(_){} a.remove(); }, 500);
+      return 'OK download started';
+    } catch(e) { return 'ERROR download failed: ' + e.message; }
+  };
+
+  /* ---- 注入代码（关键能力：可在目标页插入任意脚本/样式，修改页面行为）---- */
+  U.injectScript = function(code) {
+    try {
+      const s = document.createElement('script');
+      s.type = 'text/javascript';
+      s.setAttribute('data-pa-inject', '1');
+      try { s.appendChild(document.createTextNode(String(code ?? ''))); }
+      catch(_ie) { s.text = String(code ?? ''); }
+      (document.head || document.documentElement).appendChild(s);
+      setTimeout(() => s.remove && s.remove(), 0);
+      return 'OK script injected';
+    } catch(e) { return 'ERROR injectScript: ' + e.message; }
+  };
+  U.injectStyles = function(css) {
+    try {
+      const st = document.createElement('style');
+      st.setAttribute('data-pa-inject', '1');
+      st.textContent = String(css ?? '');
+      (document.head || document.documentElement).appendChild(st);
+      return 'OK styles injected';
+    } catch(e) { return 'ERROR injectStyles: ' + e.message; }
+  };
+
+  /* ---- 存储访问（同源范围内）---- */
+  U.getCookies = function() { return document.cookie || ''; };
+  U.setCookie = function(name, value, days) {
+    try {
+      let exp = '';
+      if (days) {
+        const d = new Date(); d.setTime(d.getTime() + days*86400000);
+        exp = '; expires=' + d.toUTCString();
+      }
+      document.cookie = encodeURIComponent(String(name)) + '=' + encodeURIComponent(String(value ?? '')) + exp + '; path=/';
+      return 'OK cookie set';
+    } catch(e) { return 'ERROR setCookie: ' + e.message; }
+  };
+  U.getLocalStorage = function(key) {
+    try { return key == null ? JSON.stringify(localStorage) : (localStorage.getItem(String(key)) ?? ''); }
+    catch(e) { return 'ERROR getLocalStorage: ' + e.message; }
+  };
+  U.setLocalStorage = function(key, value) {
+    try { localStorage.setItem(String(key), String(value ?? '')); return 'OK localStorage set'; }
+    catch(e) { return 'ERROR setLocalStorage: ' + e.message; }
+  };
+
+  window.__PA_UTILS__ = U;
+  // 暴露短别名，让 LLM 扫描全局变量时更容易直接命中
+  window.paNavigate = U.navigateTo.bind(U);
+  window.paOpenTab = U.openInNewTab.bind(U);
+  window.paGoHome = U.navigateToMainSite.bind(U);
+  window.paLinks = U.extractAllLinks.bind(U);
+  window.paText = U.extractPageText.bind(U);
+  window.paInfo = U.getPageInfo.bind(U);
+  window.paFill = U.fillForm.bind(U);
+  window.paScroll = U.scrollTo.bind(U);
+  window.paCopy = U.copyToClipboard.bind(U);
+  window.paSave = U.downloadAsFile.bind(U);
+  window.paInject = U.injectScript.bind(U);
+  window.paInjectCSS = U.injectStyles.bind(U);
+  // 兼容旧函数名（之前版本挂载的）
+  if (!window.navigateToMainSite) window.navigateToMainSite = U.navigateToMainSite;
+  if (!window.__MAIN_SITE_URL__) window.__MAIN_SITE_URL__ = MAIN_SITE_URL;
+  if (!window.__MAIN_SITE_NAME__) window.__MAIN_SITE_NAME__ = MAIN_SITE_NAME;
+}
+
+/* ========== Page-Agent 魔改版 · 增强 systemPrompt 构建器 ========== */
+function buildEnhancedSystemPrompt(language) {
+  const lang = (language || 'zh-CN').startsWith('zh') ? 'zh' : 'en';
+  const utilDocZh = `
+【execute_javascript 工具的增强能力 — script 内部可调用的全局函数】
+当你调用 execute_javascript 工具时，script 字符串内部可以直接使用以下全局函数，无需自己写 DOM 代码。优先用它们，更可靠：
+  1. paGoHome()                                 → 立即跳转主网站 ${MAIN_SITE_URL}，无需用户确认
+  2. paNavigate(url, newTab?)                   → 跳转到 url（自动补 https://），newTab=true 则新标签打开
+                                                   例：paNavigate('https://github.com')
+                                                   例：paNavigate('google.com', true)
+  3. paOpenTab(url)                             → 等价 paNavigate(url, true)，新标签打开
+  4. paLinks(max?)                              → 返回当前页所有链接 [{text,href}]，默认最多 200 条
+  5. paText(maxChars?)                          → 返回当前页纯文本（默认最多 2 万字）
+  6. paInfo()                                   → 返回页面摘要 {title, url, metas, linkCount, formCount, cookie}
+  7. paFill(selectorOrKeywordOrIndex, value, submit?) → 填写表单；可传 CSS 选择器 / 关键词(匹配 placeholder/name/id) / 序号
+                                                          例：paFill('搜索', 'trae', true)  # 找到搜索框填 trae 并提交
+  8. paScroll('top' | 'bottom' | selector)      → 滚动到顶部 / 底部 / 指定选择器的元素
+  9. paCopy(text)                               → 把文本写入用户剪贴板
+  10. paSave(filename, content, mime?)          → 触发浏览器下载（文本 / JSON / HTML 等）
+  11. paInject(jsCodeString)                    → 在当前页面注入并执行任意原生 JS 代码（<script> 注入方式）
+                                                   应用场景：挂钩点击事件、拦截表单、基于条件自动重定向、覆盖页面函数等
+                                                   ⚠️ 注入代码运行在页面主世界，可访问页面真实 window/变量/DOM 闭包
+                                                   例：paInject("document.querySelectorAll('a').forEach(a=>{a.addEventListener('click',e=>{e.preventDefault();location.href='${MAIN_SITE_URL}'})})")
+  12. paInjectCSS(cssString)                    → 往页面注入样式
+  13. window.__PA_UTILS__                       → 完整工具对象，上面有更多函数（setCookie / setLocalStorage 等），你也可以直接访问它的方法。`;
+  const utilDocEn = `
+[UTILITY FUNCTIONS - available inside execute_javascript tool's script field]
+When you call execute_javascript, the script string can use these global functions directly. Prefer them over manual DOM clicks.
+  1. paGoHome()                                 → Immediately navigate to main site ${MAIN_SITE_URL}. Never ask for confirmation.
+  2. paNavigate(url, newTab?)                   → Navigate to url (auto-prefix https://). Pass newTab=true to open a new tab.
+  3. paOpenTab(url)                             → Same as paNavigate(url, true).
+  4. paLinks(max?)                              → Return Array<{text,href}> of all links on the page (default max 200).
+  5. paText(maxChars?)                          → Return page innerText up to maxChars (default 20000).
+  6. paInfo()                                   → Return page summary {title, url, metas, linkCount, formCount, cookie}.
+  7. paFill(selector|keyword|index, val, submit?) → Fill a form input. You can pass a CSS selector, keyword to match placeholder/name/id, or numeric index. Set submit=true to submit the parent form after fill.
+  8. paScroll('top' | 'bottom' | selector)      → Scroll page.
+  9. paCopy(text)                               → Write text to user clipboard.
+  10. paSave(filename, content, mime?)          → Trigger browser download.
+  11. paInject(jsCodeString)                    → Inject & run raw JS code on the current page via <script> tag (runs in page's REAL JS world, can access page window vars and hook page functions. Use this when user asks to MODIFY / HOOK / REDIRECT the page behavior.)
+  12. paInjectCSS(cssString)                    → Inject stylesheet.
+  13. window.__PA_UTILS__                       → Full util object. Explore its methods for more (cookies, localStorage helpers).`;
+  const criticalRulesZh = `
+【最重要的规则 — 先读完再行动】
+默认行为：正常回答用户的问题。不要跳转页面，不要执行任何导航动作，除非用户的消息明确包含了下面的跳转关键词。
+如果用户问的是知识问题、闲聊、写代码、解释概念等 — 正常回答即可，千万不要跳转。
+
+规则 1 · 返回主网站（仅在用户明确要求时）：只有当用户的消息里明确包含「返回主网站 / 回主网站 / 回工作台 / 去主页 / 打开主网站 / 回首页 / 返回主页 / go home / back to workbench」这些短语时，才执行跳转：
+  → 直接调用 navigate_to_main_site 工具（零参数）
+  其他任何情况都不要跳转。如果用户没说这些话，就不要跳。
+
+规则 2 · 跳转其他网站（仅在用户明确要求时）：只有当用户的消息里明确包含"打开 XX 网站""去 XX""跳转到 XX"这类导航意图时：
+  → 当前页跳转用 navigate_to_url 工具，参数 { "url": "https://..." }
+  → 新标签打开用 open_url_in_new_tab 工具，参数 { "url": "https://..." }
+  常识补全：谷歌→google.com, GitHub→github.com, 百度→baidu.com, 知乎→zhihu.com, 微博→weibo.com
+  在工作台页面内默认新标签打开（open_url_in_new_tab），避免跳离工作台。
+
+规则 3 · 优先用语义化工具：导航类需求优先调 navigate_to_main_site/navigate_to_url/open_url_in_new_tab，而非用 execute_javascript 手写 location.href。
+
+规则 4 · 执行 JS 与页面操作：需要执行任意 JS、读取页面内容、操作 DOM 时，调用 execute_javascript 工具。其 script 内部可用 paXxx 工具函数（paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS）增强能力，详见下方工具函数文档。
+
+规则 5 · 修改页面行为：用户要求"拦截/挂钩/修改页面"时，用 execute_javascript 工具，script 里调 paInject(jsCode) 注入脚本。
+
+规则 6 · 语言：用户用什么语言提问，你就用什么语言回答。默认中文。
+
+再次强调：如果用户没有明确说"返回主网站""打开某网站""去某页面"这类导航指令，就正常回答问题，不要执行任何跳转。`;
+  const criticalRulesEn = `
+[MOST IMPORTANT RULE — READ BEFORE ACTING]
+Default behavior: Answer the user's question normally. Do NOT navigate or redirect the page unless the user's message explicitly contains navigation keywords below.
+If the user asks a knowledge question, makes small talk, asks for code, wants an explanation — just answer normally. Do NOT jump/navigate.
+
+Rule 1 · Return to main site (ONLY when explicitly requested): Only when the user's message explicitly contains phrases like "返回主网站 / 回主网站 / 回工作台 / 去主页 / go home / back to workbench / take me home", then:
+  → Call the navigate_to_main_site tool directly (no args)
+  In all other cases, do NOT navigate.
+
+Rule 2 · Navigate to other sites (ONLY when explicitly requested): Only when the user's message explicitly contains navigation intent like "open XX", "go to XX", "跳转到 XX":
+  → Current tab: use navigate_to_url tool with { "url": "https://..." }
+  → New tab: use open_url_in_new_tab tool with { "url": "https://..." }
+  Common knowledge: google→google.com, GitHub→github.com, Baidu→baidu.com, Zhihu→zhihu.com, Weibo→weibo.com
+  Inside the workbench, default to new tab (open_url_in_new_tab) to avoid leaving the workbench.
+
+Rule 3 · Prefer semantic tools: For navigation, prefer navigate_to_main_site/navigate_to_url/open_url_in_new_tab over execute_javascript with manual location.href.
+
+Rule 4 · Execute JS & page ops: When you need to run arbitrary JS, read page content, or manipulate DOM, call the execute_javascript tool. Its script can use paXxx utility functions (paLinks/paText/paFill/paCopy/paSave/paInject/paInjectCSS) for enhanced capability — see utility function docs below.
+
+Rule 5 · Modify page behavior: When user asks to "intercept/hook/modify page", use execute_javascript tool, call paInject(jsCode) inside the script.
+
+Rule 6 · Language: Reply in the same language the user writes. Default to Chinese.
+
+Reminder: If the user did NOT explicitly say "return to main site" / "open some website" / "go to some page", then just answer the question normally. Do NOT navigate.`;
+
+  const utilDoc = lang === 'zh' ? utilDocZh : utilDocEn;
+  const critical = lang === 'zh' ? criticalRulesZh : criticalRulesEn;
+
+  /* === [CAID 显式工具清单 & AgentOutput JSON 强制格式对齐] —— LLM 提示词文本（注意下面两个变量是反引号字符串，不是 JS 注释，别加 /* 开头！）=== */
+  const agentOutFmtZh = `
+  【CAID 显式工具清单 · DeepSeek / 国产模型 必读】
+  Page-Agent 已在 tools 里额外注入了 9 个显式工具（customTools），你必须优先使用它们，
+  而不是在回答里输出"跳转到js"、"跳转到JavaScript"、"我会执行代码"等纯文本/伪代码。
+  下面的工具列表 = Page-Agent 当前真正拥有并可调用的全部工具（action.key 必须从这里选，一个字母都不能错）：
+    1. navigate_to_main_site     — 返回主网站(零参数)，action 键: navigate_to_main_site
+    2. navigate_to_url            — 当前页跳转，action 键: navigate_to_url，参数: { "url": "https://..." }
+    3. open_url_in_new_tab        — 新标签打开，action 键: open_url_in_new_tab，参数: { "url": "https://..." }
+    4. execute_javascript         — 任意 JS 执行，action 键: execute_javascript，参数: { "script": "JS字符串" }
+    5. search_web                 — 搜索网页(维基百科+搜索引擎)，action 键: search_web，参数: { "query": "搜索词" }
+    6. search_code                — 搜索代码(GitHub)，action 键: search_code，参数: { "query": "搜索词" }
+    7. output_code                — 输出代码到代码区(用户可复制/执行)，action 键: output_code，参数: { "code": "代码", "language": "javascript", "description": "说明" }
+    8. auto_fill_form             — 自动填写表单(登录/注册/搜索)，action 键: auto_fill_form，参数: { "field_values": "{\"用户名\":\"admin\"}", "submit": "true", "form_selector": "" }
+    9. extract_page_data          — 提取页面数据(表格/链接/文本/图片)，action 键: extract_page_data，参数: { "type": "table", "selector": "" }
+    10. Page-Agent 内置工具: click / fill / scroll / drag / keyboard
+    11. Page-Agent 内置宏: done / evaluate —— 注意 evaluate 本质上就是 execute_javascript，功能等价，优先用显式名
+  你必须严格按照 Page-Agent MacroTool 要求的 JSON 结构输出，不要夹杂任何自然语言/Markdown/伪代码/三引号代码块。
+  正确 JSON 结构（4 个字段全部必填，缺少任何一个字段都会导致 Parse 失败 → 你说的话会被原封不动显示给用户而不会执行工具）：
+    {
+      "evaluation_previous_goal": "对上一步目标完成度的简要评估（可空字符串）",
+      "memory": "你想让未来的自己记住的上下文（可空字符串）",
+      "next_goal": "下一步要达到的目标的一句话描述",
+      "action": {
+        "严格等于上方清单里的一个工具名": { 该工具的参数对象 }
+      }
+    }
+  【中文输出模板 · 直接复制粘贴改值】
+    场景A 用户说"返回主网站"：
+      {"evaluation_previous_goal":"","memory":"","next_goal":"返回CAID工作台","action":{"navigate_to_main_site":{}}}
+    场景B 用户说"打开百度"：
+      {"evaluation_previous_goal":"","memory":"","next_goal":"新标签打开百度","action":{"open_url_in_new_tab":{"url":"https://baidu.com"}}}
+    场景C 用户说"去 google.com"：
+      {"evaluation_previous_goal":"","memory":"","next_goal":"当前页跳转到Google","action":{"navigate_to_url":{"url":"https://google.com"}}}
+    场景D 用户说"滚动到底部"：
+      {"evaluation_previous_goal":"","memory":"","next_goal":"执行JS滚动页面到底部","action":{"execute_javascript":{"script":"window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})"}}}
+  【禁止行为 · 违反任何一条都不会被当作工具调用，直接失败】
+    ❌ 不要输出 markdown code fence（三引号）包裹的代码块
+    ❌ 不要输出 "跳转到js"、"执行 JavaScript:window.location=..." 这类纯文本或伪代码描述
+    ❌ 不要输出 "好的，我来为您跳转..." 等自然语言后跟 JSON；只输出一个 JSON 对象本身
+    ❌ action 的 key 不要写"跳转"、"navigate"、"go_home"、"evaluate_javascript" 等别名 —— 必须严格等于清单里的字符串
+    ❌ 不要调用 done 工具说"我无法跳转"：上面的 4 个显式工具 100% 可以执行，直接用。
+  【格式对齐结束 · 以上是强制要求】`;
+  const agentOutFmtEn = `
+  === CAID EXPLICIT TOOL LIST & AgentOutput JSON FORMAT (MANDATORY for DeepSeek / non-OpenAI models) ===
+  Page-Agent has injected 9 explicit customTools. You MUST use them instead of writing "navigate to js" in plain text.
+  COMPLETE ACTION KEYS YOU CAN CALL (any string outside this list → parse failure → shown raw to user):
+    1. navigate_to_main_site     — go back to CAID workbench, no args. action key: navigate_to_main_site
+    2. navigate_to_url            — navigate current tab. action key: navigate_to_url, args: { "url": "https://..." }
+    3. open_url_in_new_tab        — open in new tab. action key: open_url_in_new_tab, args: { "url": "https://..." }
+    4. execute_javascript         — run arbitrary JS. action key: execute_javascript, args: { "script": "string" }
+    5. search_web                 — search web (Wikipedia + search engines). action key: search_web, args: { "query": "text" }
+    6. search_code                — search code on GitHub. action key: search_code, args: { "query": "text" }
+    7. output_code                — display code in copilot panel (user can copy/run). action key: output_code, args: { "code": "string", "language": "javascript", "description": "string" }
+    8. auto_fill_form             — auto-fill form fields & submit. action key: auto_fill_form, args: { "field_values": "{\"username\":\"admin\"}", "submit": "true", "form_selector": "" }
+    9. extract_page_data          — extract structured data (table/links/text/images). action key: extract_page_data, args: { "type": "table", "selector": "" }
+    10. (built-in) click / fill / scroll / drag / keyboard
+    11. (built-in macros) done / evaluate — evaluate is alias of execute_javascript, prefer explicit names.
+  You MUST output a single JSON object matching the MacroTool schema. NO natural language, NO markdown, NO code blocks.
+  Correct structure (all fields required; omitting any → raw text output to user instead of tool invocation):
+    {
+      "evaluation_previous_goal": "brief eval of previous goal (may be empty string)",
+      "memory": "context to persist for future steps (may be empty string)",
+      "next_goal": "one-sentence description of the next sub-goal",
+      "action": {
+        "<exact tool name from list above>": { /* args */ }
+      }
+    }
+  [TEMPLATE EXAMPLES]
+    User says "go home" / "返回主网站"  → {"evaluation_previous_goal":"","memory":"","next_goal":"Return to CAID main","action":{"navigate_to_main_site":{}}}
+    User says "open Baidu"             → {"evaluation_previous_goal":"","memory":"","next_goal":"Open Baidu new tab","action":{"open_url_in_new_tab":{"url":"https://baidu.com"}}}
+    User says "go to google.com"       → {"evaluation_previous_goal":"","memory":"","next_goal":"Navigate tab to Google","action":{"navigate_to_url":{"url":"https://google.com"}}}
+    User says "scroll to bottom"       → {"evaluation_previous_goal":"","memory":"","next_goal":"Scroll page bottom via JS","action":{"execute_javascript":{"script":"window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})"}}}
+  [HARD RULES — violation causes silent parse failure]
+    ❌ NO markdown code fence / triple-quote wrapped code blocks
+    ❌ NO plain text like "jump to javascript" or pseudo-code descriptions
+    ❌ NO text before/after the JSON object. Output ONLY the JSON.
+    ❌ action key MUST be the exact name above. Do NOT invent aliases (e.g. "go_home" / "navigate" / "jump" are INVALID)
+    ❌ NEVER call done() saying "I cannot navigate". The 4 explicit tools ALWAYS work — just call them.
+  === END FORMAT SECTION ===`;
+
+  const agentOutFmt = lang === 'zh' ? agentOutFmtZh : agentOutFmtEn;
+
+  return (lang === 'zh'
+    ? `你是 Page-Agent · CAID 工作台魔改版。你运行在当前网页的上下文中，可以通过点击、输入、滚动，以及最重要的 — execute_javascript 工具执行任意 JS 代码来操控页面。
+${agentOutFmt}
+${critical}
+${utilDoc}
+【通用行为建议】
+- 回答简洁。步骤多时先输出计划再执行。
+- execute_javascript 的 script 尽量短小（单条语句或小函数），避免长脚本的异常。
+- 如果要对页面做大量 DOM 操作，优先用 paInject() 注入一段集中脚本，而不是连续发几十个 click/fill 动作。
+- 永远不要尝试读取其他域名的 Cookie / localStorage，浏览器同源策略会让你失败。
+`
+    : `You are Page-Agent · CAID Workbench Modded Edition. You run inside the current web page context and can control the page via click/fill/scroll AND — most powerfully — via the execute_javascript tool to run arbitrary JavaScript.
+${agentOutFmt}
+${critical}
+${utilDoc}
+[GENERAL BEHAVIOR]
+- Keep answers concise. For multi-step tasks, briefly state your plan then execute.
+- Keep execute_javascript scripts short; prefer single statements or small functions.
+- For mass DOM mutations, prefer a single paInject() with a focused script over 20+ separate DOM actions.
+- NEVER try to read cookies / localStorage of a different origin — browser same-origin policy will block you.
+`);
+}
+
+// Time formatting
+const fmtTime = (d = new Date()) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtDate = (d = new Date()) => {
+  const w = ['日','一','二','三','四','五','六'];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 星期${w[d.getDay()]}`;
+};
+const fmtHistoryTime = (ts) => {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  if ((now - d) < 7*86400000) {
+    return `周${['日','一','二','三','四','五','六'][d.getDay()]} ${d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}`;
+  }
+  return `${d.getMonth()+1}/${d.getDate()}`;
+};
+
+// ============ Local Storage Wrapper ============
+const LS = {
+  get(k, def) {
+    try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }
+    catch(e) { return def; }
+  },
+  set(k, v) { localStorage.setItem(k, JSON.stringify(v)); },
+  del(k) { localStorage.removeItem(k); },
+};
+
+// ============ 配置持久化（IndexedDB 备份 + 自动恢复） ============
+// localStorage 可能因浏览器清缓存/路径变更/隐私模式而丢失
+// IndexedDB 更持久，作为配置的二级备份
+const ConfigBackup = {
+  async save(key, value) {
+    try { await db.config.put({ key, value, savedAt: Date.now() }); } catch(e) {}
+  },
+  async load(key) {
+    try { const row = await db.config.get(key); return row?.value ?? null; } catch(e) { return null; }
+  },
+  // 检查 localStorage 中的配置是否丢失，如果丢失则从 IndexedDB 恢复
+  async restoreIfMissing(key, currentVal) {
+    if (currentVal && Object.keys(currentVal).length > 0 &&
+        (currentVal.apiKey || currentVal.baseUrl || currentVal.model)) {
+      // localStorage 有有效配置，备份到 IndexedDB
+      await this.save(key, currentVal);
+      return currentVal;
+    }
+    // localStorage 无有效配置，尝试从 IndexedDB 恢复
+    const backup = await this.load(key);
+    if (backup) {
+      LS.set(key, backup);
+      return backup;
+    }
+    return currentVal;
+  },
+};
+
+// 颜色混合：用于胶囊按钮渐变深色端（hexA 向 hexB 按 ratio 混合，ratio=0 返回 A, =1 返回 B）
+function mixWith(hexA, hexB, ratio = 0.5) {
+  const a = hexA.replace('#','');
+  const b = hexB.replace('#','');
+  const ar = parseInt(a.slice(0,2),16), ag = parseInt(a.slice(2,4),16), ab = parseInt(a.slice(4,6),16);
+  const br = parseInt(b.slice(0,2),16), bg = parseInt(b.slice(2,4),16), bb = parseInt(b.slice(4,6),16);
+  const r = Math.round(ar*(1-ratio) + br*ratio);
+  const g = Math.round(ag*(1-ratio) + bg*ratio);
+  const bv = Math.round(ab*(1-ratio) + bb*ratio);
+  return '#' + [r,g,bv].map(x => x.toString(16).padStart(2,'0')).join('');
+}
+// 加深颜色（按百分比 d 降低 RGB）
+function darken(hex, d = 0.15) {
+  const h = hex.replace('#','');
+  const r = Math.max(0, Math.round(parseInt(h.slice(0,2),16)*(1-d)));
+  const g = Math.max(0, Math.round(parseInt(h.slice(2,4),16)*(1-d)));
+  const b = Math.max(0, Math.round(parseInt(h.slice(4,6),16)*(1-d)));
+  return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+// ============ IndexedDB via Dexie ============
+const db = new Dexie('caid_workbench');
+db.version(1).stores({
+  snippets: '++id, title, lang, *tags, createdAt',
+  history: '++id, query, mode, timestamp',
+});
+db.version(2).stores({
+  snippets: '++id, title, lang, *tags, createdAt',
+  history: '++id, query, mode, timestamp',
+  config: 'key',  // 配置备份表（比 localStorage 更持久）
+});
+
+// ============ Toast ============
+function toast(msg, type = 'info', dur = 2500) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  caidQs('#toastContainer').appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.3s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, dur);
+}
+
+// ============ Clock & Greeting ============
+function updateClock() {
+  const now = new Date();
+  caidQs('#clockTime').textContent = fmtTime(now);
+  caidQs('#clockDate').textContent = fmtDate(now);
+  const h = now.getHours();
+  let g = '继续加油！';
+  if (h < 6) g = '夜深了，注意休息 🌙';
+  else if (h < 9) g = '早上好，开启元气满满的一天 ☀️';
+  else if (h < 12) g = '上午好，代码愉快 💻';
+  else if (h < 14) g = '中午好，记得吃饭 🍜';
+  else if (h < 18) g = '下午好，专注工作 ✨';
+  else if (h < 22) g = '晚上好，辛苦了 ☕';
+  else g = '夜深了，早点休息 🌙';
+  caidQs('#clockGreeting').textContent = g;
+}
+
+// ============ Default Data ============
+const DEFAULT_SHORTCUTS = [];
+
+const DEFAULT_SNIPPETS = [];
+
+const DEFAULT_LLM_CFG = {
+  provider: 'dashscope',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  apiKey: '',
+  model: 'qwen-plus',
+  temperature: 0.7,
+};
+
+// Page-Agent 配置（与 AI 回答的 llmCfg 完全独立）
+const DEFAULT_PA_CFG = {
+  mode: 'demo',           // 'demo' = 免费 LLM | 'custom' = 自定义 Key
+  provider: 'dashscope',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  apiKey: '',
+  model: 'qwen-turbo',
+  language: 'zh-CN',
+};
+
+// ============ App State ============
+const state = {
+  shortcuts: LS.get('shortcuts', DEFAULT_SHORTCUTS),
+  searchHistory: LS.get('searchHistory', []),
+  todos: LS.get('todos', []),
+  uiPrefs: LS.get('uiPrefs', { collapsed: {} }),
+  llmCfg: LS.get('llmCfg', DEFAULT_LLM_CFG),
+  paCfg: LS.get('paCfg', DEFAULT_PA_CFG),
+  searchMode: 'bing',
+  suggestionIdx: -1,
+  suggestions: [],
+  editingShortcut: null,
+  editingSnippet: null,
+};
+
+// ============ Shortcuts (Top Blue Bar) ============
+function renderShortcuts() {
+  const bar = caidQs('#shortcutBar');
+  bar.innerHTML = '';
+
+  // 空状态提示
+  if (state.shortcuts.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'shortcut-empty-hint';
+    hint.innerHTML = `<i data-lucide="sparkles" style="width:16px;height:16px;color:var(--accent);"></i>暂无快捷入口，点击右侧 <b>添加</b> 按钮自定义常用站点`;
+    bar.appendChild(hint);
+  }
+
+  state.shortcuts.forEach((sc, i) => {
+    const el = document.createElement('div');
+    el.className = 'shortcut';
+    el.draggable = true;
+    el.dataset.id = sc.id;
+    el.dataset.idx = i;
+    // 用户自定义颜色胶囊渐变（与CSS风格一致：三段渐变+内阴影）
+    const c = sc.color || '#5b8dff';
+    const c2 = darken(c, 0.16);
+    const c3 = darken(c, 0.3);
+    el.style.background = `linear-gradient(135deg, ${c} 0%, ${c2} 55%, ${c3} 100%)`;
+    el.innerHTML = `
+      <span class="shortcut-icon"><i data-lucide="${sc.icon || 'globe'}"></i></span>
+      <span class="shortcut-name">${escapeHtml(sc.name)}</span>
+    `;
+    el.addEventListener('click', (e) => {
+      if (e.defaultPrevented) return;
+      window.open(sc.url, '_blank');
+      addHistory(sc.name, 'nav', sc.url);
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showCtxMenu(e.clientX, e.clientY, [
+        { icon: 'external-link', label: '在新标签打开', action: () => window.open(sc.url, '_blank') },
+        { icon: 'edit', label: '编辑', action: () => openShortcutModal(sc) },
+        { icon: 'copy', label: '复制链接', action: () => { navigator.clipboard.writeText(sc.url); toast('链接已复制','success'); } },
+        { sep: true },
+        { icon: 'trash-2', label: '删除', danger: true, action: () => {
+          if (confirm(`确认删除快捷入口「${sc.name}」？`)) {
+            state.shortcuts = state.shortcuts.filter(s => s.id !== sc.id);
+            LS.set('shortcuts', state.shortcuts);
+            renderShortcuts();
+            toast('已删除','success');
+          }
+        }},
+      ]);
+    });
+    // Drag & Drop
+    el.addEventListener('dragstart', (e) => {
+      el.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', sc.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const dragId = e.dataTransfer.getData('text/plain');
+      const from = state.shortcuts.findIndex(s => s.id === dragId);
+      const to = state.shortcuts.findIndex(s => s.id === sc.id);
+      if (from === -1 || to === -1 || from === to) return;
+      const [moved] = state.shortcuts.splice(from, 1);
+      state.shortcuts.splice(to, 0, moved);
+      LS.set('shortcuts', state.shortcuts);
+      renderShortcuts();
+    });
+    bar.appendChild(el);
+  });
+
+  // Add button
+  const add = document.createElement('div');
+  add.className = 'shortcut shortcut-add';
+  add.innerHTML = `
+    <span class="shortcut-icon"><i data-lucide="plus"></i></span>
+    <span class="shortcut-name">添加</span>
+  `;
+  add.addEventListener('click', () => openShortcutModal());
+
+  // Settings & top-right controls
+  const ctrl = document.createElement('div');
+  ctrl.className = 'topbar-controls';
+  ctrl.innerHTML = `
+    <button class="icon-btn" id="btnPageAgent" title="Page-Agent (Ctrl+I+L)"><i data-lucide="bot"></i></button>
+    <button class="icon-btn" id="btnSetHome" title="设为首页"><i data-lucide="home"></i></button>
+    <button class="icon-btn" id="btnSettings" title="设置"><i data-lucide="settings"></i></button>
+  `;
+  bar.appendChild(add);
+  bar.appendChild(ctrl);
+  const btnSettings = ctrl.querySelector('#btnSettings');
+  if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
+  const btnPA = ctrl.querySelector('#btnPageAgent');
+  if (btnPA) btnPA.addEventListener('click', togglePageAgentPanel);
+  const btnSetHome = ctrl.querySelector('#btnSetHome');
+  if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
+  setupPaBookmarklet();
+  setupPaJumpBtns();
+  injectPaUtilities();
+  refreshIcons();
+}
+
+function openShortcutModal(sc = null) {
+  state.editingShortcut = sc;
+  caidQs('#shortcutModalTitle').textContent = sc ? '编辑快捷入口' : '添加快捷入口';
+  caidQs('#scName').value = sc?.name || '';
+  caidQs('#scIcon').value = sc?.icon || '';
+  caidQs('#scUrl').value = sc?.url || '';
+  caidQs('#scColor').value = sc?.color || '#58a6ff';
+  openModal('shortcutModal');
+}
+
+caidQs('#saveShortcutBtn').addEventListener('click', () => {
+  const name = caidQs('#scName').value.trim();
+  let url = caidQs('#scUrl').value.trim();
+  if (!name) return toast('请输入名称','warn');
+  if (!url) return toast('请输入 URL','warn');
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const sc = {
+    id: state.editingShortcut?.id || uid(),
+    name,
+    url,
+    icon: caidQs('#scIcon').value.trim() || 'globe',
+    color: caidQs('#scColor').value,
+  };
+  if (state.editingShortcut) {
+    const i = state.shortcuts.findIndex(s => s.id === sc.id);
+    if (i >= 0) state.shortcuts[i] = sc;
+  } else {
+    state.shortcuts.push(sc);
+  }
+  LS.set('shortcuts', state.shortcuts);
+  renderShortcuts();
+  closeModal('shortcutModal');
+  toast('已保存','success');
+});
+
+// ============ Context Menu ============
+function showCtxMenu(x, y, items) {
+  const menu = caidQs('#ctxMenu');
+  menu.innerHTML = '';
+  items.forEach(it => {
+    if (it.sep) {
+      const s = document.createElement('div');
+      s.className = 'ctx-sep';
+      menu.appendChild(s);
+    } else {
+      const el = document.createElement('div');
+      el.className = 'ctx-item' + (it.danger ? ' danger' : '');
+      el.innerHTML = `<i data-lucide="${it.icon}"></i><span>${it.label}</span>`;
+      el.addEventListener('click', () => { hideCtxMenu(); it.action(); });
+      menu.appendChild(el);
+    }
+  });
+  menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - items.length * 34) + 'px';
+  menu.classList.add('open');
+  refreshIcons();
+  setTimeout(() => document.addEventListener('click', hideCtxMenu, { once: true }), 0);
+}
+function hideCtxMenu() { caidQs('#ctxMenu').classList.remove('open'); }
+
+// ============ Modals ============
+function openModal(id, onOpen) {
+  const m = caidQs('#' + id);
+  m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (onOpen) onOpen();
+  refreshIcons();
+}
+function closeModal(id) {
+  caidQs('#' + id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('click', (e) => {
+  if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+    const modal = e.target.closest('.modal-backdrop');
+    if (modal) closeModal(modal.id);
+  }
+  if (e.target.matches('.modal-backdrop')) closeModal(e.target.id);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const open = document.querySelector('.modal-backdrop.open');
+    if (open) { closeModal(open.id); e.preventDefault(); }
+  }
+});
+
+// 设为首页 / 新标签页弹窗（扩展内提示新标签已被接管，网页版则提供可复制的地址）
+function openHomepageModal() {
+  var urlEl = document.getElementById('homeUrl');
+  if (urlEl) {
+    var inExt = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+    urlEl.textContent = inExt ? '（CAID 扩展已接管新标签页，开新标签即为本工作台）' : 'https://graduate.dpdns.org/';
+  }
+  var copyBtn = document.getElementById('copyHomeUrl');
+  if (copyBtn && !copyBtn.dataset.bound) {
+    copyBtn.dataset.bound = '1';
+    copyBtn.addEventListener('click', function () {
+      var url = (document.getElementById('homeUrl') || {}).textContent || 'https://graduate.dpdns.org/';
+      var text = url.indexOf('http') === 0 ? url : 'https://graduate.dpdns.org/';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { toast('已复制主页地址', 'success'); })
+          .catch(function () { toast('复制失败', 'error'); });
+      } else { toast('复制失败：浏览器不支持', 'error'); }
+    });
+  }
+  // 按浏览器显示正确的设置入口（Edge 与 Chrome 的 settings URL 不同）
+  var homeSteps = document.getElementById('homeSteps');
+  if (homeSteps) {
+    if (/Edg\//.test(navigator.userAgent)) {
+      homeSteps.innerHTML =
+        '<li>地址栏输入 <code>edge://settings/startHome</code> 打开「开始、主页和新建选项卡页」</li>' +
+        '<li>开启<b>显示主页按钮</b>，并把主页设为上面的地址</li>' +
+        '<li>同一页的<b>新建选项卡页</b>已被 CAID 扩展自动接管（若已安装扩展），开新标签即为工作台</li>' +
+        '<li>若还想让<b>启动时</b>打开本页：地址栏输入 <code>edge://settings/startup</code> → 「打开特定页面或一组页面」→ 添加上面的地址</li>';
+    } else {
+      homeSteps.innerHTML =
+        '<li>地址栏输入 <code>chrome://settings/appearance</code> 打开「外观」</li>' +
+        '<li>开启<b>显示主页按钮</b>，并把主页设为上面的地址</li>' +
+        '<li>地址栏输入 <code>chrome://settings/onStartup</code> → 选择「打开特定网页或一组网页」，添加上面的地址</li>' +
+        '<li>若已安装 CAID 扩展：新标签页已被自动接管为本工作台，开新标签即为工作台</li>';
+    }
+  }
+  openModal('homepageModal');
+}
+
+// Settings Tabs
+caidQs('#settingsTabs').addEventListener('click', (e) => {
+  const t = e.target.closest('.modal-tab');
+  if (!t) return;
+  caidQsa('#settingsTabs .modal-tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const name = t.dataset.tab;
+  caidQsa('.settings-panel').forEach(p => p.style.display = p.dataset.panel === name ? '' : 'none');
+});
+
+// ============ Search Engine ============
+const searchInput = caidQs('#searchInput');
+const suggestionsEl = caidQs('#suggestions');
+
+async function fetchBingSuggestions(q) {
+  return new Promise((resolve) => {
+    const cbName = '__bing_cb_' + uid();
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => {
+      cleanup(); resolve([]);
+    }, 1500);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+    }
+    window[cbName] = (data) => {
+      try {
+        const results = (data?.AS?.Results || []).map(r => r.Text).filter(Boolean);
+        cleanup(); resolve(results);
+      } catch(e) { cleanup(); resolve([]); }
+    };
+    script.onerror = () => { cleanup(); resolve([]); };
+    script.src = `https://api.bing.com/qsonhs.aspx?type=cb&q=${encodeURIComponent(q)}&cb=${cbName}`;
+    document.head.appendChild(script);
+  });
+}
+
+const highlightMatch = (text, query) => {
+  if (!query) return escapeHtml(text);
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+  return escapeHtml(text).replace(re, m => `<b>${m}</b>`);
+};
+
+async function updateSuggestions() {
+  const q = searchInput.value.trim();
+  state.suggestions = [];
+  state.suggestionIdx = -1;
+  if (!q) {
+    // Show recent history
+    const recent = state.searchHistory.slice(0, 5);
+    if (recent.length === 0) { suggestionsEl.classList.remove('open'); return; }
+    const html = `
+      <div class="suggestions-group-label">最近搜索</div>
+      ${recent.map((h, i) => `
+        <div class="suggestion-item" data-idx="${i}">
+          <span class="suggestion-icon"><i data-lucide="clock"></i></span>
+          <span class="suggestion-text">${escapeHtml(h.query)}</span>
+          <span class="suggestion-tag ${h.mode === 'bing' ? '' : h.mode === 'ai' ? 'green' : 'blue'}">${historyModeLabel(h.mode)}</span>
+        </div>
+      `).join('')}
+    `;
+    suggestionsEl.innerHTML = html;
+    state.suggestions = recent.map(h => ({ text: h.query, type: 'history', mode: h.mode }));
+    suggestionsEl.classList.add('open');
+    refreshIcons();
+    return;
+  }
+  // Bing + local history in parallel
+  const qLower = q.toLowerCase();
+  const [bing, localH] = await Promise.all([
+    fetchBingSuggestions(q),
+    Promise.resolve(state.searchHistory.filter(h => h.query.toLowerCase().includes(qLower)).slice(0, 5).map(h => h.query)),
+  ]);
+  // Dedup & build list
+  const seen = new Set();
+  const groups = [];
+  const push = (text, type, tag, tagCls, extra = {}) => {
+    const k = text.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    state.suggestions.push({ text, type, ...extra });
+    groups.push({ text, type, tag, tagCls });
+  };
+  localH.forEach(h => push(h, 'history', '历史', 'blue'));
+  bing.forEach(b => push(b, 'bing', 'Bing', ''));
+  if (groups.length === 0) { suggestionsEl.classList.remove('open'); return; }
+  // Render
+  const byType = {};
+  groups.forEach(g => { (byType[g.type] ||= []).push(g); });
+  const labelMap = { history: '历史匹配', bing: 'Bing 建议' };
+  let html = '';
+  let i = 0;
+  Object.entries(byType).forEach(([type, items]) => {
+    html += `<div class="suggestions-group-label">${labelMap[type] || type}</div>`;
+    items.forEach(g => {
+      const icon = g.type === 'history' ? 'clock' : 'search';
+      html += `
+        <div class="suggestion-item" data-idx="${i}">
+          <span class="suggestion-icon"><i data-lucide="${icon}"></i></span>
+          <span class="suggestion-text">${highlightMatch(g.text, q)}</span>
+          ${g.tag ? `<span class="suggestion-tag ${g.tagCls}">${g.tag}</span>` : ''}
+        </div>`;
+      i++;
+    });
+  });
+  suggestionsEl.innerHTML = html;
+  suggestionsEl.classList.add('open');
+  refreshIcons();
+}
+
+const debouncedSuggest = debounce(updateSuggestions, 200);
+searchInput.addEventListener('input', () => {
+  debouncedSuggest();
+  updateIntentHint();
+});
+searchInput.addEventListener('focus', () => { updateSuggestions(); updateIntentHint(); });
+caidQs('#searchGoBtn').addEventListener('click', () => executeSearch(searchInput.value));
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrapper')) suggestionsEl.classList.remove('open');
+});
+
+suggestionsEl.addEventListener('click', (e) => {
+  const item = e.target.closest('.suggestion-item');
+  if (!item) return;
+  const i = +item.dataset.idx;
+  const s = state.suggestions[i];
+  if (!s) return;
+  searchInput.value = s.text;
+  executeSearch(s.text);
+});
+
+// Keyboard nav
+searchInput.addEventListener('keydown', (e) => {
+  const items = caidQsa('.suggestion-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!suggestionsEl.classList.contains('open')) { updateSuggestions(); return; }
+    state.suggestionIdx = Math.min(state.suggestionIdx + 1, items.length - 1);
+    updateSugSelection(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    state.suggestionIdx = Math.max(state.suggestionIdx - 1, -1);
+    updateSugSelection(items);
+  } else if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    cycleSearchMode();
+  } else if (e.key === 'Escape') {
+    suggestionsEl.classList.remove('open');
+    searchInput.value = '';
+    caidQs('#intentHint').textContent = '';
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const selected = state.suggestionIdx >= 0 ? state.suggestions[state.suggestionIdx] : null;
+    if (!e.ctrlKey && selected) {
+      searchInput.value = selected.text;
+      if (selected.type === 'bookmark' && selected.url) {
+        window.open(selected.url, '_blank');
+        addHistory(selected.text, 'nav', selected.url);
+        return;
+      }
+      executeSearch(selected.text);
+    } else {
+      executeSearch(searchInput.value.trim());
+    }
+  }
+});
+function updateSugSelection(items) {
+  items.forEach((it, i) => it.classList.toggle('active', i === state.suggestionIdx));
+  if (state.suggestionIdx >= 0) items[state.suggestionIdx]?.scrollIntoView({ block: 'nearest' });
+}
+
+// ============ Mode Bar ============
+caidQsa('.mode-pill').forEach(p => {
+  p.addEventListener('click', () => setSearchMode(p.dataset.mode));
+});
+function setSearchMode(m) {
+  state.searchMode = m;
+  caidQsa('.mode-pill').forEach(p => p.classList.toggle('active', p.dataset.mode === m));
+  updateIntentHint();
+}
+function cycleSearchMode() {
+  const order = ['ai-ans', 'bing'];
+  const cur = order.indexOf(state.searchMode);
+  setSearchMode(order[(cur + 1) % order.length]);
+}
+
+// ============ Execute Search ============
+function executeSearch(q) {
+  if (!q) return;
+  suggestionsEl.classList.remove('open');
+  state.suggestionIdx = -1;
+  const trimmed = q.trim();
+  // URL 直接打开
+  if (/^(https?:\/\/|www\.)/i.test(trimmed) || /^[\w-]+\.(com|cn|net|org|io|dev|ai|app|co|me|xyz|top)(\/|$)/i.test(trimmed)) {
+    let url = trimmed;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    window.open(url, '_blank');
+    addHistory(trimmed, 'nav', url);
+    searchInput.value = '';
+    caidQs('#intentHint').textContent = '';
+    return;
+  }
+  // 命令识别："帮我搜一下 XXX"
+  const searchCmd = trimmed.match(/^(?:帮我搜一下|帮我搜|搜一下|搜索)\s*(.+)/i);
+  if (searchCmd) {
+    const query = searchCmd[1].trim();
+    runAIAnswer(query, true); // true = 搜索模式
+    addHistory(query, 'ai');
+    searchInput.value = '';
+    caidQs('#intentHint').textContent = '';
+    return;
+  }
+  // 命令识别："保存 XXX" 快捷保存代码片段
+  const saveCmd = trimmed.match(/^(?:保存|存一下|保存片段)\s*([\s\S]+)/i);
+  if (saveCmd) {
+    const text = saveCmd[1].trim();
+    openSnippetModal(null, { title: '快速保存', code: text, lang: 'text' });
+    searchInput.value = '';
+    caidQs('#intentHint').textContent = '';
+    toast('已打开保存面板', 'info');
+    return;
+  }
+  const mode = state.searchMode;
+  if (mode === 'bing') {
+    window.open('https://www.bing.com/search?q=' + encodeURIComponent(trimmed), '_blank');
+    addHistory(trimmed, 'bing');
+  } else {
+    // ai-ans
+    runAIAnswer(trimmed);
+    addHistory(trimmed, 'ai');
+  }
+  searchInput.value = '';
+  caidQs('#intentHint').textContent = '';
+}
+
+function updateIntentHint() {
+  const q = searchInput.value.trim();
+  const hint = caidQs('#intentHint');
+  if (!q) { hint.innerHTML = ''; return; }
+  // 命令识别
+  if (/^(?:帮我搜一下|帮我搜|搜一下|搜索)\s/i.test(q)) {
+    hint.innerHTML = `<b style="color:var(--accent2);">AI 搜索</b> · AI 先给结论再附链接`;
+    return;
+  }
+  if (/^(?:保存|存一下|保存片段)\s/i.test(q)) {
+    hint.innerHTML = `<b style="color:var(--purple);">保存片段</b> · 快速保存到代码片段`;
+    return;
+  }
+  const map = { 'ai-ans':'AI 回答模式', 'bing':'Bing 搜索模式' };
+  hint.innerHTML = `当前模式：<b>${map[state.searchMode]||''}</b> · 按 <kbd style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换`;
+}
+
+// ============ History ============
+function addHistory(query, mode, extra = '') {
+  state.searchHistory.unshift({ id: uid(), query, mode, extra, timestamp: Date.now() });
+  state.searchHistory = state.searchHistory.slice(0, 200);
+  LS.set('searchHistory', state.searchHistory);
+  try { db.history.add({ query, mode, extra, timestamp: Date.now() }).catch(()=>{}); } catch(e){}
+  renderHistory();
+  updateCounts();
+}
+function historyModeLabel(m) {
+  return { bing:'Bing', ai:'AI回答', nav:'导航' }[m] || m;
+}
+function renderHistory(filter = '') {
+  const list = caidQs('#historyList');
+  let items = state.searchHistory;
+  if (filter) {
+    const f = filter.toLowerCase();
+    items = items.filter(h => h.query.toLowerCase().includes(f));
+  }
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><i data-lucide="history"></i>暂无搜索记录</div>`;
+    refreshIcons();
+    return;
+  }
+  list.innerHTML = items.slice(0, 100).map(h => `
+    <div class="history-item" data-id="${h.id}">
+      <span class="history-time">${fmtHistoryTime(h.timestamp)}</span>
+      <span class="history-query" title="${escapeHtml(h.query)}">${escapeHtml(h.query)}</span>
+      <span class="history-mode ${h.mode}">${historyModeLabel(h.mode)}</span>
+      <button class="history-del" title="删除"><i data-lucide="x"></i></button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.history-item').forEach(el => {
+    const id = el.dataset.id;
+    const h = state.searchHistory.find(x => x.id === id);
+    if (!h) return;
+    el.querySelector('.history-query').addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchInput.value = h.query;
+      searchInput.focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    el.addEventListener('click', () => {
+      if (h.mode === 'nav' && h.extra) {
+        window.open(h.extra, '_blank');
+      } else {
+        searchInput.value = h.query;
+        searchInput.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+    el.querySelector('.history-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.searchHistory = state.searchHistory.filter(x => x.id !== id);
+      LS.set('searchHistory', state.searchHistory);
+      renderHistory(filter);
+      updateCounts();
+    });
+  });
+  refreshIcons();
+}
+caidQs('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
+caidQs('#clearHistoryBtn').addEventListener('click', () => {
+  if (!confirm('确认清空所有搜索历史？此操作不可恢复。')) return;
+  state.searchHistory = [];
+  LS.set('searchHistory', []);
+  db.history.clear().catch(()=>{});
+  renderHistory();
+  updateCounts();
+  toast('已清空','success');
+});
+
+// ============ AI Answer ============
+async function runAIAnswer(q, isSearch = false) {
+  openAnswerPanel();
+  const body = caidQs('#answerBody');
+  const cfg = state.llmCfg;
+  const providerLabel = { dashscope:'通义千问', openai:'OpenAI', ollama:'Ollama', custom:'自定义' };
+  caidQs('#answerModel').textContent = (isSearch ? 'AI 搜索 · ' : '') + (providerLabel[cfg.provider] || 'LLM');
+  body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--muted);"><i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>${isSearch ? '正在搜索并总结…' : '正在生成回答…'}</div>`;
+  refreshIcons();
+
+  // 搜索模式：无 API Key 时直接回退 Bing + 提示
+  if (isSearch && !cfg.apiKey) {
+    body.innerHTML = `
+      <div style="padding:14px;background:rgba(255,180,84,0.08);border:1px solid rgba(255,180,84,0.2);border-radius:10px;color:var(--warn);margin-bottom:12px;">
+        <b>未配置 LLM API Key</b>，无法执行 AI 搜索总结。
+      </div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.8;">
+        你可以：
+        <ol style="margin-left:18px;">
+          <li>前往 <b>设置 → AI 回答</b> 配置 API Key 后重试</li>
+          <li>按 <kbd style="font-size:11px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换到 Bing 模式直接搜索</li>
+        </ol>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn primary" onclick="window.open('https://www.bing.com/search?q=${encodeURIComponent(q)}','_blank')">
+          <i data-lucide="external-link" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:4px;"></i>
+          用 Bing 搜索「${escapeHtml(q)}」
+        </button>
+      </div>`;
+    refreshIcons();
+    return;
+  }
+
+  if (!cfg.apiKey) {
+    // Rule engine fallback
+    body.innerHTML = ruleEngineFallback(q);
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    addSaveButtons(body);
+    const af = caidQs('#answerFooter');
+    if (af) af.innerHTML = '<span class="ans-tok-badge" style="background:rgba(248,81,73,0.12);color:#f87171;">无 API Key</span><span>本地规则引擎兜底</span>';
+    return;
+  }
+  // Call LLM
+  const ansFooter = caidQs('#answerFooter');
+  if (ansFooter) ansFooter.innerHTML = '';
+  try {
+    let url = cfg.baseUrl + '/chat/completions';
+    const sysPrompt = isSearch
+      ? `你是一个搜索助手。用户想搜索某个主题，请：
+1. 先用一句话给出结论/概述
+2. 然后补充关键要点（2-4 条）
+3. 最后附上 2-4 个参考链接（用 Markdown 格式，标题+URL）
+回答简洁、信息密度高。代码块用 Markdown 标注语言。`
+      : '你是一个帮助程序员的助手。回答简洁，代码块使用 Markdown 标注语言，必要时给出示例代码。';
+    const body_data = {
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: q }
+      ],
+      temperature: +cfg.temperature || 0.7,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + cfg.apiKey,
+    };
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body_data) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().slice(0,200)}`);
+    const reader = resp.body?.getReader();
+    if (!reader) throw new Error('无流式响应');
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let fullMd = '';
+    let usage = null;
+    body.innerHTML = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || !t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const j = JSON.parse(data);
+          const c = j?.choices?.[0]?.delta?.content;
+          if (c) {
+            fullMd += c;
+            body.innerHTML = marked.parse(fullMd);
+            body.scrollTop = body.scrollHeight;
+          }
+          // 捕获 usage（流式最后一帧或非流式响应里携带）
+          if (j?.usage) usage = j.usage;
+        } catch(e){}
+      }
+    }
+    if (!fullMd) throw new Error('无返回内容');
+    body.innerHTML = marked.parse(fullMd);
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    // 为代码块和链接添加"保存"按钮
+    addSaveButtons(body);
+    // 显示 token 消耗
+    if (ansFooter && usage && usage.total_tokens) {
+      ansFooter.innerHTML = '<span class="ans-tok-badge">'+escapeHtml(cfg.model||'')+'</span>'
+        + '<span>Token: '+usage.total_tokens+' (↑'+(usage.prompt_tokens||0)+' ↓'+(usage.completion_tokens||0)+')</span>';
+    } else if (ansFooter && cfg.model) {
+      ansFooter.innerHTML = '<span class="ans-tok-badge">'+escapeHtml(cfg.model)+'</span>';
+    }
+  } catch (e) {
+    body.innerHTML = `
+      <div style="padding:14px;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.2);border-radius:8px;color:var(--danger);">
+        <b>调用 LLM 失败</b><br>
+        <span style="color:var(--muted);font-size:12px;">${escapeHtml(e.message || String(e))}</span><br><br>
+        <span style="color:var(--muted);font-size:13px;">可能原因：</span>
+        <ul style="margin-left:18px;color:var(--muted);font-size:13px;">
+          <li>未配置正确的 API Key（设置 → AI 回答）</li>
+          <li>Base URL 不可达或模型名称错误</li>
+          <li>当前为 file:// 协议被浏览器 CORS 拦截（建议部署到静态托管）</li>
+        </ul>
+      </div>
+      <hr style="border-color:var(--rule);margin:16px 0;">
+      <div style="color:var(--muted);font-size:12px;margin-bottom:8px;">🔽 以下为本地规则引擎兜底回答（无 LLM）：</div>
+      ${ruleEngineFallback(q)}
+    `;
+    if (window.hljs) caidQsa('#answerBody pre code').forEach(block => hljs.highlightElement(block));
+    addSaveButtons(body);
+  }
+}
+
+// ============ 为 AI 回答添加"保存"按钮 ============
+function addSaveButtons(container) {
+  // 为每个代码块添加"保存到片段"按钮
+  container.querySelectorAll('pre').forEach((pre, i) => {
+    if (pre.querySelector('.pa-save-bar')) return; // 避免重复添加
+    const code = pre.querySelector('code');
+    if (!code) return;
+    const lang = (code.className.match(/language-(\w+)/) || [])[1] || 'text';
+    const codeText = code.textContent;
+    const bar = document.createElement('div');
+    bar.className = 'pa-save-bar';
+    bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-bottom:none;border-radius:8px 8px 0 0;font-size:12px;color:var(--muted);';
+    bar.innerHTML = `<span style="font-family:monospace;">${escapeHtml(lang)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.cssText = 'padding:3px 10px;font-size:12px;height:auto;';
+    btn.innerHTML = `<i data-lucide="bookmark-plus" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:3px;"></i>保存到片段`;
+    btn.addEventListener('click', () => {
+      // 从代码内容推断标题
+      let title = 'AI 回答片段';
+      const firstLine = codeText.split('\n')[0].trim();
+      if (firstLine.length > 0 && firstLine.length <= 50) title = firstLine.replace(/^(function|const|class|def|import|export)\s+/, '').slice(0, 40);
+      openSnippetModal(null, { title, code: codeText, lang });
+      toast('已打开保存面板', 'info');
+    });
+    bar.appendChild(btn);
+    pre.style.borderRadius = '0 0 8px 8px';
+    pre.parentNode.insertBefore(bar, pre);
+  });
+  // 为链接列表添加"保存全部链接"按钮（如果有多个链接）
+  const links = container.querySelectorAll('a[href]');
+  if (links.length >= 2) {
+    const linkBar = document.createElement('div');
+    linkBar.style.cssText = 'margin-top:12px;padding:8px 12px;background:rgba(91,141,255,0.06);border:1px solid rgba(91,141,255,0.15);border-radius:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+    const saveAllBtn = document.createElement('button');
+    saveAllBtn.className = 'btn primary';
+    saveAllBtn.style.cssText = 'padding:4px 12px;font-size:12px;height:auto;';
+    saveAllBtn.innerHTML = `<i data-lucide="bookmark-plus" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:3px;"></i>保存全部链接到片段`;
+    saveAllBtn.addEventListener('click', () => {
+      const md = Array.from(links).map(a => `- [${escapeHtml(a.textContent)}](${a.href})`).join('\n');
+      openSnippetModal(null, { title: 'AI 回答参考链接', code: md, lang: 'markdown' });
+      toast('已打开保存面板', 'info');
+    });
+    linkBar.appendChild(saveAllBtn);
+    container.appendChild(linkBar);
+  }
+  refreshIcons();
+}
+
+function ruleEngineFallback(q) {
+  const ql = q.toLowerCase();
+  let ans = '';
+  if (/debounce|防抖/.test(ql)) {
+    ans = `## 防抖函数 (Debounce)
+
+防抖：事件触发后，**延迟一段时间**才执行。若该段时间内再次触发，则重新计时。常用于搜索框输入、窗口 resize 等场景。
+
+\`\`\`javascript
+function debounce(fn, wait = 300) {
+  let t;
+  return function(...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// 使用
+const onSearch = debounce((val) => {
+  console.log('搜索:', val);
+}, 300);
+\`\`\`
+
+> 💡 建议在"代码片段"组件中保存常用工具函数，随时查找。`;
+  } else if (/throttle|节流/.test(ql)) {
+    ans = `## 节流函数 (Throttle)
+
+节流：**固定频率**执行函数。若单位时间内多次触发，只有第一次生效。常用于滚动监听、按钮防重复点击。
+
+\`\`\`javascript
+function throttle(fn, wait = 300) {
+  let last = 0;
+  return function(...args) {
+    const now = Date.now();
+    if (now - last >= wait) {
+      last = now;
+      fn.apply(this, args);
+    }
+  };
+}
+\`\`\`
+
+**防抖 vs 节流**：防抖是"等用户安静下来再执行"，节流是"按节奏匀速执行"。`;
+  } else if (/promise|async|await|异步/.test(ql)) {
+    ans = `## JavaScript 异步编程
+
+### Promise 基础
+\`\`\`javascript
+function fetchData() {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => resolve({ data: 'ok' }), 1000);
+  });
+}
+fetchData().then(res => console.log(res)).catch(err => console.error(err));
+\`\`\`
+
+### async/await (推荐)
+\`\`\`javascript
+async function main() {
+  try {
+    const res = await fetchData();
+    console.log(res);
+  } catch (err) {
+    console.error(err);
+  }
+}
+\`\`\`
+
+### 并行执行
+\`\`\`javascript
+const [a, b] = await Promise.all([taskA(), taskB()]);
+\`\`\``;
+  } else if (/fetch|axios|请求|api|http/.test(ql)) {
+    ans = `## Fetch API 调用示例
+
+\`\`\`javascript
+async function request(url, options = {}) {
+  const resp = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return resp.json();
+}
+
+// GET
+const users = await request('/api/users');
+
+// POST
+const created = await request('/api/users', {
+  method: 'POST',
+  body: JSON.stringify({ name: '张三' }),
+});
+\`\`\`
+
+> ⚠️ 若使用配置了 API Key 的外部 LLM，此栏会显示完整的 AI 回答。请在「设置 → AI 模型」中配置。`;
+  } else {
+    ans = `## 关于「${escapeHtml(q)}」
+
+> ⚠️ **当前为本地规则引擎的兜底回答**。未检测到有效的 LLM API Key 配置。
+
+### 获得完整 AI 回答
+
+请点击右上角 **⚙️ 设置 → AI 模型**，填入：
+
+| 项目 | 建议值 |
+|---|---|
+| Provider | DashScope (通义千问) |
+| Base URL | \`https://dashscope.aliyuncs.com/compatible-mode/v1\` |
+| API Key | 前往 [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/) 获取 |
+| Model | \`qwen-plus\` 或 \`qwen-turbo\` |
+
+保存后即可获得高质量 AI 回答。
+
+### 本地快速搜索
+
+- **Bing 搜索**：按 \`Tab\` 切换到 Bing 模式后再 Enter
+- **代码片段**：在「代码片段」中搜索相关代码`;
+  }
+  return ans;
+}
+
+function openAnswerPanel() { caidQs('#answerPanel').classList.add('open'); }
+caidQs('#closeAnswer').addEventListener('click', () => caidQs('#answerPanel').classList.remove('open'));
+
+// ============ Snippets ============
+// 语义搜索：中英文同义词映射表
+const SYNONYM_MAP = {
+  '防抖': ['debounce', '防抖', 'delay'],
+  '节流': ['throttle', '节流', 'throttle'],
+  '异步': ['async', 'await', 'promise', '异步', 'then', 'resolve'],
+  '请求': ['fetch', 'axios', 'request', '请求', 'http', 'xhr', 'ajax'],
+  '路由': ['router', 'route', '路由', 'navigation', 'navigate'],
+  '状态': ['state', 'store', '状态', 'redux', 'vuex', 'pinia'],
+  '钩子': ['hook', 'hooks', 'useEffect', 'useMemo', 'useCallback', 'useState', '钩子'],
+  '组件': ['component', '组件', 'vue', 'react', 'svelte'],
+  '样式': ['css', 'style', '样式', 'scss', 'tailwind', 'styled'],
+  '深拷贝': ['deep', 'clone', '深拷贝', 'copy', 'structuredClone'],
+  '排序': ['sort', '排序', 'order', 'arrange'],
+  '加密': ['crypto', 'encrypt', '加密', 'hash', 'md5', 'sha'],
+  '正则': ['regex', 'regexp', '正则', 'match', 'pattern', 'replace'],
+  '存储': ['storage', 'localstorage', '存储', 'cookie', 'sessionstorage', 'indexeddb'],
+  '时间': ['date', 'time', '时间', 'moment', 'dayjs', 'format'],
+  '工具': ['util', 'utils', '工具', 'helper', 'format'],
+  '类型': ['type', 'typescript', '类型', 'interface', 'enum', 'generic'],
+  '错误': ['error', '错误', 'catch', 'try', 'exception', 'throw'],
+  '测试': ['test', '测试', 'jest', 'vitest', 'mocha', 'spec'],
+  '动画': ['animation', '动画', 'transition', 'transform', 'keyframe'],
+};
+// 扩展搜索词：返回包含原词 + 同义词的数组
+function expandQuery(q) {
+  const ql = q.toLowerCase();
+  const terms = new Set([ql, q]);
+  for (const [cn, syns] of Object.entries(SYNONYM_MAP)) {
+    if (ql.includes(cn) || syns.some(s => ql.includes(s.toLowerCase()))) {
+      syns.forEach(s => terms.add(s.toLowerCase()));
+    }
+  }
+  return Array.from(terms);
+}
+// 模糊匹配：Levenshtein 距离的简化版（判断是否有部分匹配）
+function fuzzyMatch(text, query) {
+  if (!text || !query) return false;
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  if (t.includes(q)) return true;
+  // 允许 1 个字符的拼写错误（仅对长度 >= 4 的词）
+  if (q.length >= 4) {
+    for (let i = 0; i <= t.length - q.length; i++) {
+      let mismatches = 0;
+      for (let j = 0; j < q.length; j++) {
+        if (t[i+j] !== q[j]) { mismatches++; if (mismatches > 1) break; }
+      }
+      if (mismatches <= 1) return true;
+    }
+  }
+  return false;
+}
+
+async function renderSnippets(filter = '') {
+  const list = caidQs('#snippetList');
+  let items = await db.snippets.orderBy('createdAt').reverse().toArray().catch(() => []);
+  if (filter) {
+    // 语义搜索：扩展关键词 + 模糊匹配
+    const terms = expandQuery(filter);
+    items = items.filter(s => {
+      const haystack = [
+        (s.title||''), (s.code||''), (s.lang||''),
+        ...(s.tags||[])
+      ].join(' ').toLowerCase();
+      // 任一扩展词命中即匹配
+      return terms.some(term => haystack.includes(term) || fuzzyMatch(haystack, term));
+    });
+  }
+  caidQs('#snippetCount').textContent = items.length;
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><i data-lucide="file-code"></i>暂无代码片段</div>`;
+    refreshIcons();
+    return;
+  }
+  list.innerHTML = items.map(s => `
+    <div class="snippet-item" data-id="${s.id}">
+      <div class="snippet-head">
+        <span class="snippet-lang">${escapeHtml(s.lang||'text')}</span>
+        <span class="snippet-title">${escapeHtml(s.title)}</span>
+        <span class="snippet-meta">${fmtHistoryTime(s.createdAt)}</span>
+        <div class="snippet-actions">
+          <button class="icon-btn-xs" title="复制代码" data-act="copy"><i data-lucide="copy"></i></button>
+          <button class="icon-btn-xs" title="编辑" data-act="edit"><i data-lucide="edit"></i></button>
+          <button class="icon-btn-xs" title="删除" data-act="del" style="color:var(--danger);"><i data-lucide="trash-2"></i></button>
+        </div>
+      </div>
+      <div class="snippet-code">
+        <pre><code class="language-${escapeHtml(s.lang||'text')}">${escapeHtml(s.code||'')}</code></pre>
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.snippet-item').forEach(el => {
+    const id = el.dataset.id;
+    const item = items.find(s => s.id == id);
+    if (!item) return;
+    el.querySelector('.snippet-head').addEventListener('click', (e) => {
+      if (e.target.closest('.icon-btn-xs')) return;
+      el.classList.toggle('open');
+      if (el.classList.contains('open') && window.hljs) {
+        const code = el.querySelector('pre code');
+        if (code) hljs.highlightElement(code);
+      }
+    });
+    el.querySelector('[data-act="copy"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(item.code||'').then(() => toast('已复制到剪贴板','success'));
+    });
+    el.querySelector('[data-act="edit"]').addEventListener('click', (e) => { e.stopPropagation(); openSnippetModal(item); });
+    el.querySelector('[data-act="del"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`删除代码片段「${item.title}」？`)) {
+        db.snippets.delete(item.id).then(() => { renderSnippets(filter); updateCounts(); toast('已删除','success'); });
+      }
+    });
+  });
+  refreshIcons();
+}
+caidQs('#snippetSearch').addEventListener('input', (e) => renderSnippets(e.target.value));
+caidQs('#addSnippetBtn').addEventListener('click', () => openSnippetModal());
+function openSnippetModal(s = null, prefill = null) {
+  state.editingSnippet = s;
+  caidQs('#snippetModalTitle').textContent = s ? '编辑代码片段' : (prefill ? '保存代码片段' : '添加代码片段');
+  caidQs('#snTitle').value = s?.title || prefill?.title || '';
+  caidQs('#snLang').value = s?.lang || prefill?.lang || 'javascript';
+  caidQs('#snTags').value = (s?.tags||[]).join(', ') || (prefill?.tags||[]).join(', ');
+  caidQs('#snCode').value = s?.code || prefill?.code || '';
+  openModal('snippetModal');
+}
+caidQs('#saveSnippetBtn').addEventListener('click', async () => {
+  const title = caidQs('#snTitle').value.trim();
+  const lang = caidQs('#snLang').value;
+  const tags = caidQs('#snTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  const code = caidQs('#snCode').value;
+  if (!title) return toast('请输入标题','warn');
+  if (!code) return toast('请输入代码','warn');
+  if (state.editingSnippet) {
+    await db.snippets.update(state.editingSnippet.id, { title, lang, tags, code });
+  } else {
+    await db.snippets.add({ id: uid(), title, lang, tags, code, createdAt: Date.now() });
+  }
+  closeModal('snippetModal');
+  renderSnippets();
+  updateCounts();
+  toast('已保存','success');
+});
+
+// ============ Todos ============
+function addTodoItem(text, priority = 'mid') {
+  if (!text) return;
+  state.todos.unshift({ id: uid(), text, done: false, priority, createdAt: Date.now() });
+  LS.set('todos', state.todos);
+  renderTodos();
+  updateCounts();
+}
+function renderTodos(filter = '') {
+  const list = caidQs('#todoList');
+  let items = [...state.todos];
+  if (filter) {
+    const f = filter.toLowerCase();
+    items = items.filter(t => t.text.toLowerCase().includes(f));
+  }
+  caidQs('#todoCount').textContent = items.length;
+  const total = state.todos.length;
+  const done = state.todos.filter(t => t.done).length;
+  caidQs('#todoProgressText').textContent = `${done} / ${total}`;
+  caidQs('#todoProgressFill').style.width = (total ? (done/total*100) : 0) + '%';
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><i data-lucide="check-square"></i>暂无待办任务，加一条试试？</div>`;
+    refreshIcons();
+    return;
+  }
+  const pLabel = { high:'高', mid:'中', low:'低' };
+  list.innerHTML = items.map(t => `
+    <div class="todo-item ${t.done ? 'done' : ''}" data-id="${t.id}">
+      <div class="todo-check"><i data-lucide="check"></i></div>
+      <div class="todo-text">${escapeHtml(t.text)}</div>
+      <span class="todo-priority ${t.priority||'mid'}">${pLabel[t.priority||'mid']}</span>
+      <button class="todo-del" title="删除"><i data-lucide="x"></i></button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.todo-item').forEach(el => {
+    const id = el.dataset.id;
+    const t = state.todos.find(x => x.id === id);
+    if (!t) return;
+    el.querySelector('.todo-check').addEventListener('click', (e) => {
+      e.stopPropagation();
+      t.done = !t.done;
+      LS.set('todos', state.todos);
+      renderTodos(filter);
+    });
+    el.querySelector('.todo-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.todos = state.todos.filter(x => x.id !== id);
+      LS.set('todos', state.todos);
+      renderTodos(filter);
+      updateCounts();
+    });
+  });
+  refreshIcons();
+}
+caidQs('#addTodoBtn').addEventListener('click', () => {
+  const v = caidQs('#todoInput').value.trim();
+  if (!v) return;
+  addTodoItem(v, caidQs('#todoPriority').value);
+  caidQs('#todoInput').value = '';
+});
+caidQs('#todoInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { caidQs('#addTodoBtn').click(); e.preventDefault(); }
+});
+
+// ============ Component Collapse ============
+caidQsa('.comp-card').forEach(card => {
+  const id = card.dataset.comp;
+  if (state.uiPrefs.collapsed?.[id]) card.classList.add('collapsed');
+  card.querySelector('.comp-header').addEventListener('click', () => {
+    card.classList.toggle('collapsed');
+    state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
+    state.uiPrefs.collapsed[id] = card.classList.contains('collapsed');
+    LS.set('uiPrefs', state.uiPrefs);
+  });
+});
+
+// ============ Counts ============
+async function updateCounts() {
+  try {
+    caidQs('#snippetCount').textContent = await db.snippets.count() || 0;
+  } catch(e){}
+  caidQs('#historyCount').textContent = state.searchHistory.length;
+  caidQs('#todoCount').textContent = state.todos.length;
+}
+
+// ============ Settings ============
+function fillSettingsForm() {
+  const c = state.llmCfg;
+  caidQs('#cfgProvider').value = c.provider || 'dashscope';
+  caidQs('#cfgBaseUrl').value = c.baseUrl || '';
+  caidQs('#cfgApiKey').value = c.apiKey || '';
+  caidQs('#cfgModel').value = c.model || '';
+  caidQs('#cfgTemp').value = c.temperature ?? 0.7;
+  caidQs('#cfgProvider').dispatchEvent(new Event('change'));
+  fillPageAgentForm();
+}
+// Page-Agent 表单填充
+function fillPageAgentForm() {
+  const pa = state.paCfg;
+  caidQs('#paMode').value = pa.mode || 'demo';
+  caidQs('#paProvider').value = pa.provider || 'dashscope';
+  caidQs('#paBaseUrl').value = pa.baseUrl || '';
+  caidQs('#paApiKey').value = pa.apiKey || '';
+  caidQs('#paModel').value = pa.model || '';
+  caidQs('#paLanguage').value = pa.language || 'zh-CN';
+  togglePaCustomCfg(pa.mode || 'demo');
+}
+// Demo / 自定义 模式切换
+function togglePaCustomCfg(mode) {
+  const customBlock = caidQs('#paCustomCfg');
+  const hint = caidQs('#paModeHint');
+  if (mode === 'custom') {
+    customBlock.style.display = '';
+    hint.textContent = '自定义模式：Page-Agent 将使用您配置的 LLM，需要重新加载页面生效。';
+  } else {
+    customBlock.style.display = 'none';
+    hint.textContent = 'Demo 模式无需任何配置，页面右下角已自动出现 Page-Agent 面板。';
+  }
+}
+caidQs('#paMode').addEventListener('change', (e) => togglePaCustomCfg(e.target.value));
+// Page-Agent Provider 预设
+caidQs('#paProvider').addEventListener('change', (e) => {
+  const p = e.target.value;
+  const presets = {
+    dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' },
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    ollama: { baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' },
+    custom: { baseUrl: '', model: '' },
+  };
+  const pr = presets[p];
+  if (!caidQs('#paBaseUrl').value) caidQs('#paBaseUrl').value = pr.baseUrl;
+  if (!caidQs('#paModel').value) caidQs('#paModel').value = pr.model;
+});
+caidQs('#cfgProvider').addEventListener('change', (e) => {
+  const p = e.target.value;
+  const presets = {
+    dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    ollama: { baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' },
+    custom: { baseUrl: '', model: '' },
+  };
+  const pr = presets[p];
+  if (!caidQs('#cfgBaseUrl').value) caidQs('#cfgBaseUrl').value = pr.baseUrl;
+  if (!caidQs('#cfgModel').value) caidQs('#cfgModel').value = pr.model;
+});
+caidQs('#saveSettingsBtn').addEventListener('click', () => {
+  // AI 回答 LLM 配置
+  state.llmCfg = {
+    provider: caidQs('#cfgProvider').value,
+    baseUrl: caidQs('#cfgBaseUrl').value.trim(),
+    apiKey: caidQs('#cfgApiKey').value.trim(),
+    model: caidQs('#cfgModel').value.trim(),
+    temperature: parseFloat(caidQs('#cfgTemp').value) || 0.7,
+  };
+  LS.set('llmCfg', state.llmCfg);
+  // Page-Agent 配置（独立保存）
+  state.paCfg = {
+    mode: caidQs('#paMode').value,
+    provider: caidQs('#paProvider').value,
+    baseUrl: caidQs('#paBaseUrl').value.trim(),
+    apiKey: caidQs('#paApiKey').value.trim(),
+    model: caidQs('#paModel').value.trim(),
+    language: caidQs('#paLanguage').value,
+  };
+  LS.set('paCfg', state.paCfg);
+  // 同步备份到 IndexedDB（防止 localStorage 丢失）
+  ConfigBackup.save('llmCfg', state.llmCfg);
+  ConfigBackup.save('paCfg', state.paCfg);
+  // 重新生成 Bookmarklet（携带自定义 LLM 配置 + 主网站跳转 systemPrompt）
+  regeneratePaBookmarklet();
+  // 立刻应用魔改版 Page-Agent（无条件：有 Key 走自定义、无 Key 走 free LLM 试重建/回落）
+  initModdedPageAgent();
+  closeModal('settingsModal');
+  toast('设置已保存','success');
+});
+caidQs('#testLLMBtn').addEventListener('click', async () => {
+  const c = {
+    provider: caidQs('#cfgProvider').value,
+    baseUrl: caidQs('#cfgBaseUrl').value.trim(),
+    apiKey: caidQs('#cfgApiKey').value.trim(),
+    model: caidQs('#cfgModel').value.trim(),
+  };
+  if (!c.apiKey) return toast('请先填入 API Key','warn');
+  const btn = caidQs('#testLLMBtn');
+  const orig = btn.innerHTML;
+  btn.innerHTML = `<i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>测试中…`;
+  refreshIcons();
+  try {
+    const resp = await fetch(c.baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+c.apiKey },
+      body: JSON.stringify({ model: c.model, messages: [{role:'user',content:'ping，用一个字回答'}], max_tokens: 10 }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    toast('连接成功！✅','success');
+  } catch (e) {
+    toast('连接失败：' + (e.message||String(e)), 'error', 4000);
+  } finally {
+    btn.innerHTML = orig;
+    refreshIcons();
+  }
+});
+
+// Export
+caidQs('#exportBtn').addEventListener('click', async () => {
+  const out = { exportedAt: new Date().toISOString(), version: 1, localStorage: {}, indexedDB: {} };
+  // localStorage
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && !k.startsWith('__bing_cb_')) out.localStorage[k] = localStorage.getItem(k);
+  }
+  // IndexedDB tables
+  const tables = ['snippets','history','config'];
+  for (const t of tables) {
+    try { out.indexedDB[t] = await db[t].toArray(); } catch(e){}
+  }
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `caid_workbench_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('导出完成','success');
+});
+caidQs('#importBtn').addEventListener('click', () => caidQs('#importFile').click());
+caidQs('#importFile').addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  if (!confirm('导入将覆盖当前所有数据，确定继续？')) { e.target.value = ''; return; }
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const data = JSON.parse(r.result);
+      if (data.localStorage) {
+        Object.entries(data.localStorage).forEach(([k,v]) => localStorage.setItem(k, v));
+      }
+      if (data.indexedDB) {
+        for (const [t, rows] of Object.entries(data.indexedDB)) {
+          if (db[t] && Array.isArray(rows)) {
+            await db[t].clear();
+            if (rows.length) await db[t].bulkAdd(rows);
+          }
+        }
+      }
+      // Reload state
+      state.shortcuts = LS.get('shortcuts', DEFAULT_SHORTCUTS);
+      state.searchHistory = LS.get('searchHistory', []);
+      state.todos = LS.get('todos', []);
+      state.uiPrefs = LS.get('uiPrefs', { collapsed: {} });
+      state.llmCfg = LS.get('llmCfg', DEFAULT_LLM_CFG);
+      // Apply collapse state
+      caidQsa('.comp-card').forEach(card => {
+        const id = card.dataset.comp;
+        card.classList.toggle('collapsed', !!state.uiPrefs.collapsed?.[id]);
+      });
+      renderShortcuts();
+      renderHistory();
+      renderTodos();
+      renderSnippets();
+      updateCounts();
+      toast('导入成功！','success');
+    } catch (err) {
+      toast('导入失败：' + (err.message||String(err)), 'error');
+    }
+    e.target.value = '';
+  };
+  r.readAsText(f);
+});
+caidQs('#resetBtn').addEventListener('click', async () => {
+  if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？')) return;
+  if (!confirm('⚠️ 再次确认：数据将被永久删除，不可恢复！')) return;
+  localStorage.clear();
+  try {
+    await db.snippets.clear();
+    await db.history.clear();
+  } catch(e){}
+  setTimeout(() => location.reload(), 400);
+  toast('正在重置…');
+});
+
+// ============ Init ============
+async function init() {
+  // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
+  state.llmCfg = await ConfigBackup.restoreIfMissing('llmCfg', state.llmCfg);
+  state.paCfg = await ConfigBackup.restoreIfMissing('paCfg', state.paCfg);
+
+  // Clock
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Render everything
+  renderShortcuts();
+  renderHistory();
+  renderTodos();
+  await renderSnippets();
+  updateCounts();
+
+  // Icons
+  if (window.lucide) lucide.createIcons();
+
+  // Marked options
+  if (window.marked) {
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+    });
+  }
+}
+
+// ============ Page-Agent 副驾（Headless） ============
+// 本地自托管 headless 产物：无 Shadow DOM 面板，只暴露 window.PageAgent 类。
+// UI 由自建侧边栏 #caidCopilot 承载，监听 4 事件渲染。
+
+/* ========== 全局防御：Object.keys/values/entries/getOwnPropertyNames 防 null/undefined ==========
+   Zod v4 toJSONSchema 内部会对 shape / def.shape / shapeValue._zod.def 递归做 Object.keys，
+   而 customTools.inputSchema 的鸭子类型虽然挂了 _zod.toJSONSchema()，但 MacroTool 包装对象
+   z.object({ toolName: duckSchema }) 外层是真 ZodObject，它的 processJSONSchema 会先遍历自己的 shape
+   （shape[toolName] = duckSchema），拿到 duckSchema 后 process 函数里再看是否有 _zod.toJSONSchema，
+   但是这个过程中 Zod v4 的某些分支会先对 schema._zod.def.shape 做 Object.keys，而鸭子类型的
+   _zod.def 只有 {type:'object'}，没有 shape 字段 → undefined → Object.keys(undefined) 崩溃。
+   这里直接 monkey-patch Object 反射方法：null/undefined 时返回空集合，避免 TypeError，这是最稳的兜底。 */
+(function () {
+  var _keys = Object.keys;
+  var _values = Object.values;
+  var _entries = Object.entries;
+  var _getPropNames = Object.getOwnPropertyNames;
+  Object.keys = function (o) {
+    if (o === null || o === undefined) return [];
+    return _keys.call(Object, o);
+  };
+  Object.values = function (o) {
+    if (o === null || o === undefined) return [];
+    return _values.call(Object, o);
+  };
+  Object.entries = function (o) {
+    if (o === null || o === undefined) return [];
+    return _entries.call(Object, o);
+  };
+  Object.getOwnPropertyNames = function (o) {
+    if (o === null || o === undefined) return [];
+    return _getPropNames.call(Object, o);
+  };
+})();
+
+// Page-Agent 本地 headless 源（?autoInit=false → 不自初始化，只暴露 window.PageAgent）
+const PA_SCRIPT_SOURCES = ['lib/page-agent.headless.js?autoInit=false'];
+function loadPaScript(onload, onerror) {
+  let i = 0;
+  (function next() {
+    if (i >= PA_SCRIPT_SOURCES.length) { if (onerror) onerror(); return; }
+    const s = document.createElement('script');
+    s.crossOrigin = 'anonymous';
+    s.src = PA_SCRIPT_SOURCES[i++];
+    s.onerror = next;
+    s.onload = () => { if (onload) onload(s); };
+    document.body.appendChild(s);
+  })();
+}
+
+/* ========== CAID 副驾（Headless） · 初始化入口 ==========
+   本地自托管 headless 产物加载后，window.PageAgent = PageAgent 类（无面板）。
+   new PageAgent(config) 创建实例，监听 4 事件渲染到自建侧边栏 #caidCopilot。
+*/
+function initModdedPageAgent() {
+  if (!window.PageAgent) { console.warn('[Copilot] window.PageAgent 未就绪，500ms 后重试'); setTimeout(initModdedPageAgent, 500); return; }
+  if (window.agent && !window.agent.disposed) { return; }
+  const paCfg = (state && state.paCfg) ? state.paCfg : {};
+  const language = paCfg.language || 'zh-CN';
+  /* 严格按 Page-Agent Tab 的配置走，与 AI 回答 Tab(llmCfg) 完全独立：
+     - mode='custom' 且填了 apiKey + model → 用用户配的 API
+     - 否则 → 走默认免费代理 */
+  const hasCustomModel = paCfg.mode === 'custom' && paCfg.apiKey && paCfg.model;
+  const sysPrompt = (typeof buildEnhancedSystemPrompt === 'function') ? buildEnhancedSystemPrompt(language) : '';
+  /* customTools 必须接入：否则 LLM 看不到 navigate_to_main_site/navigate_to_url/open_url_in_new_tab/execute_javascript
+     的工具声明，只能输出"跳转到js"这种纯文本。experimentalScriptExecutionTool 仅解锁内置 execute_javascript，
+     但我们用 customTools 显式覆盖它（双保险），并额外注入 3 个语义化导航工具。 */
+  const customTools = (typeof buildCaidCustomTools === 'function') ? buildCaidCustomTools() : {};
+  const baseCfg = { language, instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
+  const config = hasCustomModel
+    ? Object.assign({}, baseCfg, { model: paCfg.model, baseURL: paCfg.baseUrl || '', apiKey: paCfg.apiKey })
+    : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run', apiKey: 'NA' });
+  try {
+    window.agent = new window.PageAgent(config);
+    bindCopilotEvents(window.agent);
+    window.agent.onAskUser = (q) => Promise.resolve(window.prompt(q) || '');
+    const cpStatus = document.getElementById('cpStatus'); if (cpStatus) cpStatus.textContent = '空闲';
+    toast('✅ CAID 副驾（Headless）已启动', 'success', 2800);
+  } catch (err) {
+    console.error('[Copilot] 初始化失败:', err);
+    toast('副驾启动失败: ' + (err && err.message ? err.message : err), 'error');
+  }
+}
+
+/* ========== CAID 副驾 · 事件绑定 ==========
+   监听 PageAgentCore 的 4 个事件：statuschange / activity / historychange / dispose。
+   把 agent.status / activity.detail / agent.history 渲染到侧边栏。
+*/
+/* 全局副驾状态：模式 + AbortController + 工具调用历史 */
+let cpMode = 'auto';
+let cpAbortController = null;
+let cpToolCalls = [];
+
+function bindCopilotEvents(agent) {
+  const cpStatus = document.getElementById('cpStatus');
+  const cpActivity = document.getElementById('cpActivity');
+  const cpApiInfo = document.getElementById('cpApiInfo');
+  const cpLog = document.getElementById('cpLog');
+  const cpInput = document.getElementById('cpInput');
+  const cpSend = document.getElementById('cpSend');
+  const cpClose = document.getElementById('cpClose');
+  const cpModeAuto = document.getElementById('cpModeAuto');
+  const cpModeManual = document.getElementById('cpModeManual');
+  const cpManualActions = document.getElementById('cpManualActions');
+  const cpObserveBtn = document.getElementById('cpObserve');
+  const cpStepNextBtn = document.getElementById('cpStepNext');
+  const cpStopBtn = document.getElementById('cpStop');
+  const cpTools = document.getElementById('cpTools');
+  const cpCode = document.getElementById('cpCode');
+  const cpSearch = document.getElementById('cpSearch');
+  const STATUS_TEXT = { idle:'空闲', running:'运行中…', completed:'已完成', error:'出错', stopped:'已停止' };
+
+  /* 渲染 API 来源信息 + 累计 token */
+  function renderApiInfo(){
+    if(!cpApiInfo) return;
+    const cfg = agent.config || {};
+    const isCustom = cfg.model && cfg.model !== 'qwen3.5-plus';
+    const model = cfg.model || '未知';
+    let badge = '';
+    if(isCustom){
+      badge = '<span class="cp-api-badge custom">自定义</span>';
+    } else {
+      badge = '<span class="cp-api-badge free">免费代理</span>';
+    }
+    /* 累计所有 step 的 usage token */
+    let totalPrompt = 0, totalCompletion = 0, totalTotal = 0;
+    (agent.history || []).forEach(function(ev){
+      if(ev.usage){
+        totalPrompt += (ev.usage.prompt_tokens || 0);
+        totalCompletion += (ev.usage.completion_tokens || 0);
+        totalTotal += (ev.usage.total_tokens || 0);
+      }
+    });
+    let tokenHtml = '';
+    if(totalTotal > 0){
+      tokenHtml = '<span class="cp-token-total">Token: '+totalTotal+' (↑'+totalPrompt+' ↓'+totalCompletion+')</span>';
+    }
+    cpApiInfo.innerHTML = badge + '<span>'+escapeHtml(model)+'</span>' + tokenHtml;
+  }
+
+  function renderStatus(){
+    if(cpStatus) cpStatus.textContent = STATUS_TEXT[agent.status] || String(agent.status);
+    renderApiInfo();
+  }
+  function renderActivity(detail){
+    if(!cpActivity) return;
+    if(!detail){ cpActivity.textContent=''; return; }
+    if(detail.type==='thinking') cpActivity.textContent='🧠 思考中…';
+    else if(detail.type==='executing') cpActivity.textContent='⚙️ 执行 '+detail.tool;
+    else if(detail.type==='executed') cpActivity.textContent='✅ '+detail.tool+' ('+Math.round(detail.duration||0)+'ms)';
+    else if(detail.type==='retrying') cpActivity.textContent='🔁 重试 '+detail.attempt+'/'+detail.maxAttempts;
+    else if(detail.type==='error') cpActivity.textContent='❌ '+detail.message;
+  }
+  function renderHistory(){
+    if(!cpLog) return;
+    cpLog.innerHTML='';
+    (agent.history||[]).forEach(function(ev){
+      const div=document.createElement('div');
+      if(ev.type==='user'){
+        div.className='cp-evt cp-evt-user';
+        div.innerHTML='<div class="cp-bubble cp-bubble-user">'+escapeHtml(String(ev.content||'')).replace(/\n/g,'<br>')+'</div>';
+      } else if(ev.type==='assistant'){
+        div.className='cp-evt cp-evt-assistant';
+        div.innerHTML='<div class="cp-bubble cp-bubble-assistant">'+escapeHtml(String(ev.content||'')).replace(/\n/g,'<br>')+'</div>';
+      } else if(ev.type==='step'){
+        div.className='cp-evt cp-evt-step';
+        const ng = (ev.reflection && ev.reflection.next_goal) ? ev.reflection.next_goal : '';
+        const tn = (ev.action && ev.action.name) ? ev.action.name : '';
+        const out = String((ev.action && ev.action.output) || '');
+        // 每步 token 消耗
+        var usageHtml = '';
+        if(ev.usage && ev.usage.total_tokens){
+          usageHtml = '<span class="cp-step-usage" title="prompt:'+ev.usage.prompt_tokens+' completion:'+ev.usage.completion_tokens+'">'+ev.usage.total_tokens+' tok</span>';
+        }
+        // done 工具：真正的用户回复在 action.input.text / action.input.success（长文本，不截断）
+        if(tn === 'done'){
+          const doneText = String((ev.action && ev.action.input && ev.action.input.text) || '(无文本)');
+          const doneSuccess = ev.action && ev.action.input && ev.action.input.success;
+          div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small>'+usageHtml+'</summary>'
+            + '<div class="cp-bubble cp-bubble-assistant">'+escapeHtml(doneText).replace(/\n/g,'<br>')+'</div></details>';
+        } else {
+          const outShort = out.slice(0,240);
+          const outFull  = out.length > 240 ? out : '';
+          div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+escapeHtml(ng)+' <span class="cp-tool">['+escapeHtml(tn)+']</span>'+usageHtml+'</summary>'
+            + '<div class="cp-out">'+escapeHtml(outShort)+(outFull?' <span class="cp-more" title="点击展开全文">…点击展开</span>':'')+'</div>'
+            + (outFull?('<pre class="cp-out-full" style="display:none">'+escapeHtml(outFull)+'</pre>'):'')
+            + '</details>';
+          if(outFull){
+            const more=div.querySelector('.cp-more'); if(more){
+              more.addEventListener('click', function(){ const p=div.querySelector('.cp-out-full'); if(p){ p.style.display=(p.style.display==='none')?'block':'none'; more.textContent=(p.style.display==='none')?'…点击展开':'收起'; }});
+            }
+          }
+        }
+      } else if(ev.type==='observation'){
+        div.className='cp-evt cp-evt-observation';
+        div.innerHTML='👁 '+escapeHtml(String(ev.content).slice(0,300));
+      } else if(ev.type==='error'){
+        div.className='cp-evt cp-evt-error';
+        div.innerHTML='❌ '+escapeHtml(ev.message);
+      } else if(ev.type==='retry'){
+        div.className='cp-evt cp-evt-retry';
+        div.innerHTML='🔁 重试 '+ev.attempt+'/'+ev.maxAttempts;
+      } else {
+        div.className='cp-evt';
+        div.textContent=JSON.stringify(ev).slice(0,200);
+      }
+      cpLog.appendChild(div);
+    });
+    cpLog.scrollTop=cpLog.scrollHeight;
+  }
+  /* 工具调用历史渲染（手动模式） */
+  function renderToolCalls(){
+    if(!cpTools) return;
+    if(!cpToolCalls.length){ cpTools.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>'; return; }
+    cpTools.innerHTML='';
+    cpToolCalls.forEach(function(tc){
+      const div=document.createElement('div'); div.className='cp-tool-call';
+      div.innerHTML='<span class="cp-tool-call-name">'+escapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+escapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+        (tc.result?'<div class="cp-tool-call-result">'+escapeHtml(String(tc.result).slice(0,200))+'</div>':'');
+      cpTools.appendChild(div);
+    });
+    cpTools.scrollTop=cpTools.scrollHeight;
+  }
+  /* 代码输出区渲染（c6 完整实现，c2 先提供骨架） */
+  function renderCode(code, lang, desc){
+    /* 兼容对象传参: renderCode({code, lang, desc}) */
+    if (code && typeof code === 'object' && !Array.isArray(code)) {
+      lang = code.lang || code.language || '';
+      desc = code.desc || code.description || '';
+      code = code.code || '';
+    }
+    if(!cpCode) return;
+    const section=cpCode.closest('.cp-section');
+    if(!code){ cpCode.innerHTML='<div class="cp-empty">副驾生成的代码会显示在这里</div>'; if(section) section.classList.add('collapsed'); return; }
+    var langLabel = lang ? '<span class="cp-code-lang">'+escapeHtml(lang)+'</span>' : '';
+    var descHtml = desc ? '<div class="cp-code-desc">'+escapeHtml(desc)+'</div>' : '';
+    /* 语法高亮：如果 highlight.js 可用就 try，否则纯文本 */
+    var highlighted = escapeHtml(code);
+    try {
+      if (window.hljs && lang && window.hljs.getLanguage(lang)) {
+        highlighted = window.hljs.highlight(code, { language: lang }).value;
+      } else if (window.hljs) {
+        highlighted = window.hljs.highlightAuto(code).value;
+      }
+    } catch(_) {}
+    cpCode.innerHTML = descHtml +
+      '<div class="cp-code-actions">'+langLabel+'<button data-act="copy">复制</button><button data-act="run">执行</button></div>'+
+      '<pre><code>'+highlighted+'</code></pre>';
+    if(section) section.classList.remove('collapsed');
+    const copyBtn=cpCode.querySelector('[data-act="copy"]');
+    const runBtn=cpCode.querySelector('[data-act="run"]');
+    if(copyBtn) copyBtn.addEventListener('click', function(){ try{ navigator.clipboard.writeText(code); toast('已复制','success',1500); }catch(e){ toast('复制失败','error'); } });
+    if(runBtn) runBtn.addEventListener('click', function(){
+      if(agent && agent.pageController) agent.pageController.executeJavascript(code).then(function(r){ toast('执行完成','success',2000); }).catch(function(e){ toast('执行失败: '+(e.message||e),'error'); });
+      else { try { (0,eval)(code); toast('执行完成','success',2000); } catch(e) { toast('执行失败: '+(e.message||e),'error'); } }
+    });
+  }
+  /* 检索结果渲染（c5 完整实现，c2 先提供骨架） */
+  function renderSearch(results){
+    if(!cpSearch) return;
+    const section=cpSearch.closest('.cp-section');
+    if(!results || !results.length){ cpSearch.innerHTML='<div class="cp-empty">检索结果会显示在这里</div>'; if(section) section.classList.add('collapsed'); return; }
+    cpSearch.innerHTML='';
+    results.forEach(function(r){
+      const div=document.createElement('div'); div.className='cp-search-item';
+      div.innerHTML='<div class="cp-search-item-title">'+escapeHtml(r.title||'(无标题)')+'</div>'+
+        '<a class="cp-search-item-url" href="'+escapeHtml(r.url||'#')+'" target="_blank" rel="noopener">'+escapeHtml(r.url||'')+'</a>'+
+        (r.snippet?'<div class="cp-search-item-snippet">'+escapeHtml(r.snippet)+'</div>':'');
+      cpSearch.appendChild(div);
+    });
+    if(section) section.classList.remove('collapsed');
+  }
+  // 若 history 最后一条 step 是 done 工具，把 done.input.text 转成 assistant 气泡（带去重）。
+  // 这样无论 execute 是从 sendTask 触发，还是自动打招呼（bookmarklet/hook 触发，没经过 sendTask），
+  // AI 最终回复都会以标准 assistant 气泡出现在对话流里，而不是只显示成折叠的 step。
+  function preprocessDoneToAssistant(){
+    if (!agent.history || !Array.isArray(agent.history)) return false;
+    const hist = agent.history;
+    let lastStep = null;
+    for (let i = hist.length - 1; i >= 0; i--) { if (hist[i] && hist[i].type === 'step') { lastStep = hist[i]; break; } }
+    if (!lastStep || !lastStep.action || lastStep.action.name !== 'done') return false;
+    const input = lastStep.action.input;
+    if (!input || typeof input !== 'object') return false;
+    const doneText = String(input.text || '');
+    if (!doneText) return false;
+    // 去重：已经存在相同文本的 assistant 气泡则不再追加
+    for (let i = 0; i < hist.length; i++) {
+      const h = hist[i];
+      if (h && h.type === 'assistant' && String(h.content || '') === doneText) return false;
+    }
+    // 显式赋值，避免隐藏引用问题（某些框架内部的浅代理对象 push 可能失效）
+    agent.history = hist.concat([{ type: 'assistant', content: doneText }]);
+    return true;
+  }
+  function onHistoryChangeSafe(){
+    // 用微任务处理，确保同步 dispatchEvent 链上的其他 history 变更都 push 完后再补 assistant
+    queueMicrotask(function(){
+      const pushed = preprocessDoneToAssistant();
+      renderHistory();
+      renderApiInfo();
+      if (pushed) {
+        // 补了 assistant 后再 render 一次，确保 UI 同步更新
+        setTimeout(function(){ renderHistory(); renderApiInfo(); }, 0);
+      }
+    });
+  }
+  agent.addEventListener('statuschange', renderStatus);
+  agent.addEventListener('activity', function(e){ renderActivity(e.detail); });
+  agent.addEventListener('historychange', onHistoryChangeSafe);
+  agent.addEventListener('dispose', function(){ if(cpStatus) cpStatus.textContent='已销毁'; });
+  /* 模式切换 */
+  function setMode(mode){
+    cpMode = mode;
+    if(cpModeAuto) cpModeAuto.classList.toggle('active', mode==='auto');
+    if(cpModeManual) cpModeManual.classList.toggle('active', mode==='manual');
+    if(cpManualActions) cpManualActions.classList.toggle('visible', mode==='manual');
+    if(cpInput) cpInput.placeholder = mode==='manual' ? '手动模式：输入任务后用观察/单步按钮控制…' : '给副驾下任务，回车发送…';
+  }
+  if(cpModeAuto) cpModeAuto.addEventListener('click', function(){ setMode('auto'); });
+  if(cpModeManual) cpModeManual.addEventListener('click', function(){ setMode('manual'); });
+  /* 可折叠区块 toggle */
+  document.querySelectorAll('#caidCopilot .cp-section-head').forEach(function(head){
+    head.addEventListener('click', function(){ head.parentElement.classList.toggle('collapsed'); });
+  });
+  /* sendTask 分流：自动→agent.execute；手动→copilotManualRun */
+  async function sendTask(){
+    if(!cpInput) return; const t=cpInput.value.trim(); if(!t) return; cpInput.value='';
+    // 把用户输入 push 进 history，渲染成对话气泡
+    agent.history = agent.history || [];
+    agent.history.push({ type: 'user', content: t });
+    agent.dispatchEvent(new Event('historychange'));
+    if(cpMode==='manual'){
+      await copilotManualRun(agent, t);
+    } else {
+      try {
+        // 注意：result.data（done 文本）由 statuschange → completed 时统一提取 assistant 气泡，
+        // 这样既覆盖了 sendTask → execute 的场景，也覆盖了自动打招呼（非 sendTask）的场景。
+        const result = await agent.execute(t);
+        // 如果 execute 未抛错但没有生成任何 step（极端情况），兜底把 result.data 补进 history
+        if (result && typeof result.data !== 'undefined') {
+          const hist = agent.history || [];
+          const hasAnyStep = hist.some(function(h){ return h && h.type === 'step'; });
+          if (!hasAnyStep) {
+            hist.push({ type: 'assistant', content: String(result.data) });
+            agent.dispatchEvent(new Event('historychange'));
+          }
+        }
+      } catch(e){
+        console.error('[Copilot] execute error:',e);
+        agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) });
+        agent.dispatchEvent(new Event('historychange'));
+      }
+    }
+  }
+  if(cpSend) cpSend.addEventListener('click', sendTask);
+  if(cpInput) cpInput.addEventListener('keydown', function(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendTask(); } });
+  /* 手动模式控制按钮 */
+  if(cpObserveBtn) cpObserveBtn.addEventListener('click', function(){ copilotObserve(agent); });
+  if(cpStepNextBtn) cpStepNextBtn.addEventListener('click', function(){ copilotStepNext(agent); });
+  if(cpStopBtn) cpStopBtn.addEventListener('click', function(){ copilotStop(); });
+  if(cpClose) cpClose.addEventListener('click', function(){ const cp=document.getElementById('caidCopilot'); if(cp){ cp.classList.remove('open'); cp.setAttribute('aria-hidden','true'); } });
+  renderStatus(); renderHistory(); renderToolCalls(); renderActivity(null); renderApiInfo();
+  /* 暴露渲染函数给手动模式调用 */
+  agent.__cpRender = { renderToolCalls:renderToolCalls, renderCode:renderCode, renderSearch:renderSearch, renderHistory:renderHistory };
+}
+
+/* ===== 手动模式：副驾直接调 pageController + tools =====
+   c2 提供骨架（observe/invokeTool 占位），c4 实现完整 LLM.invoke 循环。 */
+
+/* 观察：调 pageController.getBrowserState()，把结果写入对话流 */
+async function copilotObserve(agent){
+  if(!agent || !agent.pageController){ toast('pageController 不可用','error'); return; }
+  try {
+    const state = await agent.pageController.getBrowserState();
+    const summary = '👁 页面观察：'+(state.url||'(未知URL)')+'\n标题: '+(state.title||'')+'\n内容片段: '+String(state.content||'').slice(0,300);
+    if(typeof agent.pushObservation === 'function') agent.pushObservation(summary);
+    else { agent.history = agent.history||[]; agent.history.push({type:'observation', content:summary}); }
+    agent.dispatchEvent(new Event('historychange'));
+    toast('观察完成，见对话流','success',2000);
+  } catch(e){ toast('观察失败: '+(e.message||e),'error'); }
+}
+
+/* 调用工具：agent.tools.get(name).execute.call(agent, args, {signal}) */
+async function copilotInvokeTool(agent, name, args){
+  if(!agent || !agent.tools){ toast('agent.tools 不可用','error'); return null; }
+  const tool = agent.tools.get(name);
+  if(!tool){ toast('工具不存在: '+name,'error'); return null; }
+  if(!cpAbortController) cpAbortController = new AbortController();
+  try {
+    const result = await tool.execute.call(agent, args||{}, { signal: cpAbortController.signal });
+    cpToolCalls.push({ name:name, args:args||{}, result:result, ts:Date.now() });
+    if(agent.__cpRender && agent.__cpRender.renderToolCalls) agent.__cpRender.renderToolCalls();
+    return result;
+  } catch(e){ toast('工具调用失败: '+(e.message||e),'error'); return null; }
+}
+
+/* ===== c4 手动模式完整实现：副驾自建 LLM 循环 =====
+   IIFE 不暴露 LLM 类，副驾用 fetch 直调 OpenAI 兼容 /chat/completions。
+   工具 schema 用预定义 JSON Schema（绕过 Zod→JSONSchema 转换）。 */
+
+/* 预定义工具 JSON Schema（与 agent.tools 内置 + customTools 对齐） */
+const CP_TOOL_SCHEMAS = {
+  done: { type:'object', properties:{ text:{type:'string',description:'Final response to user'}, success:{type:'boolean',default:true} } },
+  wait: { type:'object', properties:{ seconds:{type:'number',minimum:1,maximum:10,default:1} } },
+  ask_user: { type:'object', properties:{ question:{type:'string'} }, required:['question'] },
+  click_element_by_index: { type:'object', properties:{ index:{type:'integer',minimum:0} }, required:['index'] },
+  input_text: { type:'object', properties:{ index:{type:'integer',minimum:0}, text:{type:'string'} }, required:['index','text'] },
+  select_dropdown_option: { type:'object', properties:{ index:{type:'integer',minimum:0}, text:{type:'string'} }, required:['index','text'] },
+  scroll: { type:'object', properties:{ down:{type:'boolean',default:true}, num_pages:{type:'number',minimum:0,maximum:10}, pixels:{type:'integer',minimum:0}, index:{type:'integer',minimum:0} } },
+  scroll_horizontally: { type:'object', properties:{ right:{type:'boolean',default:true}, pixels:{type:'integer',minimum:0}, index:{type:'integer',minimum:0} } },
+  execute_javascript: { type:'object', properties:{ script:{type:'string',description:'JavaScript code to execute on the page'} }, required:['script'] },
+  navigate_to_url: { type:'object', properties:{ url:{type:'string',description:'Full URL starting with https:// or http://'} }, required:['url'] },
+  open_url_in_new_tab: { type:'object', properties:{ url:{type:'string',description:'Full URL'} }, required:['url'] },
+  navigate_to_main_site: { type:'object', properties:{} },
+  search_web: { type:'object', properties:{ query:{type:'string',description:'Search query text'} }, required:['query'] },
+  search_code: { type:'object', properties:{ query:{type:'string',description:'Code search query (GitHub)'} }, required:['query'] },
+  output_code: { type:'object', properties:{ code:{type:'string',description:'Code content to display'}, language:{type:'string',description:'Programming language (javascript/python/html/css)'}, description:{type:'string',description:'Brief description of the code'} }, required:['code'] },
+  auto_fill_form: { type:'object', properties:{ field_values:{type:'string',description:'JSON string mapping field names to values, e.g. {"username":"admin","password":"123"}'}, submit:{type:'string',description:'Set to "true" to submit the form after filling'}, form_selector:{type:'string',description:'Optional CSS selector for the form element'} }, required:['field_values'] },
+  extract_page_data: { type:'object', properties:{ type:{type:'string',enum:['table','links','text','images','meta','all'],description:'Type of data to extract'}, selector:{type:'string',description:'Optional CSS selector to limit extraction scope'} } }
+};
+
+/* mini LLM 客户端：fetch 调 OpenAI 兼容 /chat/completions，支持 function calling */
+async function copilotLLMInvoke(agent, messages, tools, signal){
+  const cfg = agent.config || {};
+  const base = String(cfg.baseURL || '').replace(/\/$/, '');
+  const endpoint = base.endsWith('/v1') ? base + '/chat/completions' : base + '/v1/chat/completions';
+  const body = {
+    model: cfg.model || 'qwen3.5-plus',
+    messages: messages,
+    tools: tools.map(function(t){ return { type:'function', function: t }; }),
+    tool_choice: 'auto',
+    temperature: cfg.temperature || 0.7,
+  };
+  const resp = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+(cfg.apiKey || 'NA') },
+    body: JSON.stringify(body),
+    signal: signal
+  });
+  if(!resp.ok){ const txt = await resp.text(); throw new Error('LLM HTTP '+resp.status+': '+txt.slice(0,300)); }
+  const data = await resp.json();
+  const msg = data.choices && data.choices[0] && data.choices[0].message;
+  if(!msg) throw new Error('LLM 返回无 message');
+  const toolCalls = (msg.tool_calls || []).map(function(tc){
+    let args = {};
+    try { args = tc.function && tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch(e){}
+    return { name: tc.function && tc.function.name, args: args };
+  }).filter(function(tc){ return tc.name; });
+  return { content: msg.content || '', toolCalls: toolCalls, usage: data.usage || {} };
+}
+
+/* 构建工具列表（OpenAI function calling 格式） */
+function copilotBuildTools(agent){
+  const tools = [];
+  if(!agent || !agent.tools) return tools;
+  for(const entry of agent.tools){
+    const name = entry[0], tool = entry[1];
+    if(!tool) continue;
+    tools.push({
+      name: name,
+      description: tool.description || ('Tool: ' + name),
+      parameters: CP_TOOL_SCHEMAS[name] || { type:'object', properties:{} }
+    });
+  }
+  return tools;
+}
+
+/* 拼装 LLM messages：system（复用 buildEnhancedSystemPrompt）+ user（任务+页面状态+最近步骤） */
+function copilotBuildMessages(agent, task, browserState){
+  const lang = (agent.config && agent.config.language) || 'zh-CN';
+  const sysPrompt = (typeof buildEnhancedSystemPrompt === 'function') ? buildEnhancedSystemPrompt(lang) : '';
+  const recent = (agent.history || []).slice(-6).map(function(ev){
+    if(ev.type === 'step'){
+      const ng = (ev.reflection && ev.reflection.next_goal) || '';
+      const tn = (ev.action && ev.action.name) || '';
+      const out = (ev.action && ev.action.output) || '';
+      return '步骤'+ev.stepIndex+': '+ng+' → ['+tn+'] '+String(out).slice(0,150);
+    }
+    if(ev.type === 'observation') return '观察: '+String(ev.content).slice(0,200);
+    return '';
+  }).filter(Boolean).join('\n');
+  const userContent = '任务: '+task+'\n\n当前页面:\nURL: '+(browserState.url||'(未知)')+'\n标题: '+(browserState.title||'')+'\n内容片段:\n'+String(browserState.content||'').slice(0,1500)+'\n\n最近步骤:\n'+(recent||'(无)');
+  return [
+    { role:'system', content: sysPrompt },
+    { role:'user', content: userContent }
+  ];
+}
+
+/* 单步：观察→LLM 决策→执行工具→记录 step event */
+async function copilotStepNext(agent){
+  if(!agent || !agent.pageController){ toast('agent 未就绪','error'); return; }
+  if(!agent.task){ toast('请先输入任务再单步','info',2000); return; }
+  if(!cpAbortController) cpAbortController = new AbortController();
+  const signal = cpAbortController.signal;
+  const stepIdx = (agent.history || []).filter(function(e){ return e.type==='step'; }).length + 1;
+  try {
+    toast('观察页面…','info',1200);
+    const state = await agent.pageController.getBrowserState();
+    const messages = copilotBuildMessages(agent, agent.task, state);
+    const tools = copilotBuildTools(agent);
+    if(agent.__cpRender && agent.__cpRender.renderHistory){}
+    toast('🧠 LLM 思考中…','info',1500);
+    const llmResult = await copilotLLMInvoke(agent, messages, tools, signal);
+    if(!llmResult.toolCalls.length){
+      agent.history = agent.history || [];
+      agent.history.push({ type:'observation', content:'LLM 回复: '+(llmResult.content||'(空)').slice(0,300) });
+      agent.dispatchEvent(new Event('historychange'));
+      toast('LLM 未调用工具，见对话流','info',2500);
+      return;
+    }
+    const tc = llmResult.toolCalls[0];
+    /* CAID fix: LLM 工具名别名映射（DeepSeek 等常记错名，如 script→execute_javascript） */
+    const _caidAliases = {script:'execute_javascript',js:'execute_javascript',javascript:'execute_javascript',run_code:'execute_javascript',click:'click_element_by_index',type:'input_text',fill:'auto_fill_form',open:'open_url_in_new_tab',goto:'navigate_to_url',search:'search_web',extract:'extract_page_data',code:'output_code'};
+    if(_caidAliases[tc.name]){ console.warn('[CAID-alias] LLM tool "'+tc.name+'" → "'+_caidAliases[tc.name]+'"'); tc.name = _caidAliases[tc.name]; }
+    const result = await copilotInvokeTool(agent, tc.name, tc.args);
+    agent.history = agent.history || [];
+    agent.history.push({
+      type: 'step',
+      stepIndex: stepIdx,
+      reflection: { next_goal: '调用 '+tc.name },
+      action: { name: tc.name, input: tc.args, output: String(result||'') },
+      usage: llmResult.usage || {}
+    });
+    agent.dispatchEvent(new Event('historychange'));
+    if(tc.name === 'done'){
+      cpAbortController = null;
+      const doneText = String(tc.args && (tc.args.text || tc.args.output) || '');
+      if(doneText){
+        agent.history.push({ type:'assistant', content: doneText });
+        agent.dispatchEvent(new Event('historychange'));
+      }
+      toast('✅ 任务完成','success',2500);
+    }
+  } catch(e){
+    if(e && e.name === 'AbortError') toast('已中断单步','info',1500);
+    else { console.error('[Copilot] stepNext error:', e); toast('单步失败: '+(e.message||e),'error'); }
+  }
+}
+
+/* 手动模式运行：启动任务上下文，可选择自动连续单步 */
+async function copilotManualRun(agent, task){
+  if(!agent){ toast('agent 未就绪','error'); return; }
+  cpAbortController = new AbortController();
+  cpToolCalls = [];
+  agent.task = task;
+  agent.history = agent.history || [];
+  agent.history.push({ type:'observation', content:'手动模式启动任务: '+task });
+  agent.dispatchEvent(new Event('historychange'));
+  toast('手动模式已启动，点「单步」逐步执行，或「停止」中断','info',3000);
+}
+
+/* 停止：中断当前任务 */
+function copilotStop(){
+  if(cpAbortController){ try{ cpAbortController.abort(); }catch(e){} cpAbortController=null; toast('已中断手动任务','info',2000); }
+  else if(window.agent && window.agent.status==='running'){ window.agent.stop(); toast('已中断自动任务','info',2000); }
+  else { toast('没有正在运行的任务','info',1500); }
+}
+
+function buildCaidCustomTools() {
+  const MAIN_URL = (typeof MAIN_SITE_URL !== 'undefined') ? MAIN_SITE_URL :
+                    (window.__MAIN_SITE_URL__ || 'https://graduate.dpdns.org/');
+  /* Zod v4 toJSONSchema 关键逃生口（见 IIFE 里的 process()）：
+       if (s = e._zod.toJSONSchema?.()) o.schema = s;
+     schema 自带 _zod.toJSONSchema() 方法时，Zod 直接用它返回的原生 JSONSchema，
+     不再递归走 objectProcessor → Object.keys(shape)，所以鸭子类型不会崩。
+     我们优先尝试用 Page-Agent IIFE 里的真 Zod（挂 window.PageAgent / 内部闭包），失败时自己写 _zod.toJSONSchema()。 */
+  function mkObj(fields, toJSONSchemaOverride) {
+    /* 优先用本地自托管 lib/zod-v4.umd.js 挂的真 Zod v4（全局 window.ZodV4.z）。
+       Page-Agent 内部正是 Zod v4，customTools 的 inputSchema 必须是对方认得的真实 Zod v4 schema
+       （自带完整的 _zod 命名空间 / _zod.def / _zod.run / toJSONSchema），
+       否则 v4 解析器 e_safeParse/_zod_parse 在读取 _zod.def 时会因结构不符读到 undefined.length 而崩溃。
+       次选 window.Zod.z（v3）兜底，最后才是手工鸭子类型。 */
+    try {
+      const z = (window.ZodV4 && window.ZodV4.z) || (window.Zod && window.Zod.z) || window.z || (window.PageAgent && window.PageAgent.zod) || null;
+      if (z && z.object && z.string) {
+        const schemaFields = {};
+        for (const k in fields) {
+          const f = fields[k];
+          if (f === 'string' || f === 'string:url') schemaFields[k] = z.string();
+        }
+        var realSchema = z.object(schemaFields);
+        /* Zod v3 schema 的原型属性是 ._def，而 Page-Agent (Zod v4) toJSONSchema 访问的是 ._zod。
+           手动把 _zod 做一个代理，把 def / run / parse / _parseSync / safeParse / toJSONSchema 都桥过去，
+           避免 Zod v4 走 `e._zod.processJSONSchema` 时找不到属性。 */
+        if (!realSchema._zod) {
+          var def = realSchema._def;
+          realSchema._zod = {
+            def: def,
+            version: { major: 3 },
+            get typeName() { return def && def.typeName; },
+            toJSONSchema: function(){
+              // 优先调用 zod3 自带的 toJSONSchema（如果全局有），否则手搓一个
+              try {
+                var props = {};
+                var req = [];
+                for (var k in (realSchema.shape || {})) {
+                  props[k] = { type: 'string' };
+                  req.push(k);
+                }
+                if (Object.keys(props).length === 0) return { type: 'object', properties: {}, additionalProperties: false };
+                return { type: 'object', properties: props, required: req, additionalProperties: false };
+              } catch (_) { return { type: 'object', properties: {}, additionalProperties: false }; }
+            },
+            traits: new Set(['$ZodType']),
+            run: function(ctx) {
+              try { return realSchema.parse(ctx && ctx.parsedInput !== undefined ? ctx.parsedInput : ctx && ctx.data); }
+              catch(e) { return { status: 'invalid' }; }
+            },
+            _parseSync: function(opts) {
+              var r = realSchema.safeParse(opts && opts.data);
+              return r.success ? { status: 'valid', value: r.data } : { status: 'invalid' };
+            },
+            parse: function(v){ return realSchema.parse(v); },
+            safeParse: function(v){ return realSchema.safeParse(v); },
+            processJSONSchema: function(){ /* Zod v4 会尝试调这个；返回 undefined 走 default objectProcessor，没关系 */ }
+          };
+        }
+        return realSchema;
+      }
+    } catch (_) {}
+    /* fallback: 手工构造鸭子类型。
+       Zod v4 的 parse() 流程会访问 shape 元素的 `_zod.run / _zod.parse / _zod._parseSync`。
+       不管有没有走到，我们都补一个"宽松校验"的实现：只要类型是 string/object 就 valid，不严格约束。
+       同时 `_zod.toJSONSchema()` 逃生口返回 JSONSchema，过 zodToOpenAITool 转换。 */
+    const properties = {};
+    const required = [];
+    const shape = {};
+    for (const k in fields) {
+      const typeHint = fields[k]; // "string" / "string:url"
+      properties[k] = { type: 'string' };
+      required.push(k);
+      shape[k] = (function(){
+        var validStatus = { status: 'valid', value: null };
+        var _zodProto = {
+          def: { type: 'string' },
+          toJSONSchema: function(){ return { type: 'string' }; },
+          traits: new Set(['$ZodType']),
+          run: function(ctx) {
+            return { status: 'valid', value: ctx && ctx.parsedInput !== undefined ? ctx.parsedInput : ctx };
+          },
+          _parseSync: function(opts) {
+            var data = opts && opts.data; return { status: 'valid', value: data };
+          },
+          parse: function(v) { return v; },
+          safeParse: function(v) { return { success: true, data: v }; },
+        };
+        return {
+          _zod: _zodProto,
+          parse: function(v){ return v; },
+          safeParse: function(v){ return { success: true, data: v }; },
+          parseAsync: function(v){ return Promise.resolve(v); },
+          optional: function(){ return this; },
+          nullable: function(){ return this; },
+          describe: function(){ return this; },
+        };
+      })();
+    }
+    var catchall = (function(){
+      var _zodProto = {
+        def: { type: 'never' },
+        toJSONSchema: function(){ return { not: {} }; },
+        traits: new Set(['$ZodType']),
+        run: function(){ return { status: 'invalid' }; },
+        _parseSync: function(opts){ return { status: 'aborted' }; },
+        parse: function(){ throw new Error('ZodNever'); },
+        safeParse: function(){ return { success: false, error: { issues:[] } }; },
+      };
+      return {
+        _zod: _zodProto,
+        parse: _zodProto.parse,
+        safeParse: _zodProto.safeParse,
+        optional: function(){ return this; },
+        describe: function(){ return this; },
+      };
+    })();
+    const _toJSONSchemaOverride = toJSONSchemaOverride || function(){
+      if (Object.keys(properties).length === 0) return { type: 'object', properties: {}, additionalProperties: false };
+      return { type: 'object', properties: properties, required: required, additionalProperties: false };
+    };
+    // 顶层 object 鸭子类型：补 _zod.run（normalizeShape/validate 可能用）、_parseSync、parse
+    var objectProto = {
+      def: { type: 'object', shape: shape },
+      toJSONSchema: _toJSONSchemaOverride,
+      traits: new Set(['$ZodType']),
+      run: function(ctx){
+        var data = (ctx && ctx.parsedInput !== undefined) ? ctx.parsedInput : (ctx && ctx.data);
+        return { status: 'valid', value: data || {} };
+      },
+      _parseSync: function(opts){
+        var data = opts && opts.data; return { status: 'valid', value: data || {} };
+      },
+      parse: function(v){ return v || {}; },
+      safeParse: function(v){
+        var data = v || {};
+        for (var k in fields) {
+          if (typeof data[k] !== 'string' && typeof data[k] !== 'undefined') {
+            return { success: false, error: { issues: [{ code: 'invalid_type', expected: 'string', path: [k] }] } };
+          }
+        }
+        return { success: true, data: data };
+      },
+    };
+    return {
+      _zod: objectProto,
+      shape: shape,
+      safeParse: objectProto.safeParse,
+      parse: objectProto.parse,
+      parseAsync: function(v){ return Promise.resolve(objectProto.parse(v)); },
+      describe: function(){ return this; },
+      optional: function(){ return this; },
+      nullable: function(){ return this; },
+      and: function(){ return this; },
+      or: function(){ return this; },
+    };
+  }
+  return {
+    /* 1) 强制覆盖/注入 execute_javascript，绕过 experimentalScriptExecutionTool 开关 */
+    execute_javascript: {
+      description:
+        'Execute arbitrary JavaScript code on the current page. Supports async/await syntax. ' +
+        'An AbortSignal named `signal` is available in scope for long-running tasks or fetches. ' +
+        'This is the most powerful tool — use it when no other tool fits. ' +
+        'Examples: navigate: window.location.href = "URL"; open tab: var a=document.createElement("a");a.href="URL";a.target="_blank";document.body.appendChild(a);a.click();',
+      inputSchema: mkObj({ script: 'string' }),
+      execute: async function(input, ctx){
+        const signal = ctx && ctx.signal;
+        if (!this || !this.pageController || typeof this.pageController.executeJavascript !== 'function') {
+          const result = (0, eval)(String(input && input.script));
+          return (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
+        }
+        const r = await this.pageController.executeJavascript(String(input && input.script), signal);
+        signal && signal.throwIfAborted && signal.throwIfAborted();
+        return (r && r.message) || String((r && r.result) ?? '');
+      }
+    },
+
+    /* 2) navigate_to_url — 当前页跳转到任意 URL */
+    navigate_to_url: {
+      description:
+        'Navigate the current browser page to a given URL (replaces current page). ' +
+        'Use this whenever the user says "打开 X 网页/去 X 网站/访问 X/jump to X/go to X".',
+      inputSchema: mkObj({ url: 'string:url' }),
+      execute: async function(input){
+        const url = String(input && input.url || '').trim();
+        if (!url) throw new Error('navigate_to_url: url is required');
+        try { (window.top || window).location.href = url; }
+        catch(e) { window.location.href = url; }
+        return `✅ Navigating to: ${url}`;
+      }
+    },
+
+    /* 3) open_url_in_new_tab — 新标签页打开任意 URL */
+    open_url_in_new_tab: {
+      description:
+        'Open a URL in a new browser tab (does not leave the current page). ' +
+        'Use this whenever the user says "在新标签打开 X / 新窗口打开 X / open X in new tab".',
+      inputSchema: mkObj({ url: 'string:url' }),
+      execute: async function(input){
+        const url = String(input && input.url || '').trim();
+        if (!url) throw new Error('open_url_in_new_tab: url is required');
+        const a = document.createElement('a');
+        a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        document.body.appendChild(a); a.click(); a.remove();
+        return `✅ Opened in new tab: ${url}`;
+      }
+    },
+
+    /* 4) navigate_to_main_site — 一键回 CAID 主工作台 */
+    navigate_to_main_site: {
+      description:
+        'Immediately navigate back to the CAID main workbench (home / main site). ' +
+        'Call this tool when the user says: ' +
+        '"返回主网站", "回工作台", "回首页", "去主页", "返回主工作台", "go home", "back to main site", or any similar phrase. ' +
+        'Takes NO parameters — just call it directly.',
+      inputSchema: mkObj({}),
+      execute: async function(){
+        try { (window.top || window).location.href = MAIN_URL; }
+        catch(e) { window.location.href = MAIN_URL; }
+        return `✅ Navigating back to CAID main workbench: ${MAIN_URL}`;
+      }
+    },
+
+    /* 5) search_web — 搜索网页（Wikipedia API + 搜索引擎链接） */
+    search_web: {
+      description:
+        'Search the web for information. Returns summaries from Wikipedia and links to full search results. ' +
+        'Use this when the user asks to "搜索 X", "查一下 X", "search for X", "look up X", or when you need factual information. ' +
+        'Results are automatically displayed in the copilot search panel.',
+      inputSchema: mkObj({ query: 'string' }),
+      execute: async function(input, ctx){
+        var query = String(input && input.query || '').trim();
+        if (!query) throw new Error('search_web: query is required');
+        var signal = ctx && ctx.signal;
+        var results = [];
+        try {
+          var wikiUrl = 'https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
+            encodeURIComponent(query) + '&format=json&origin=*&srlimit=5';
+          var resp = await fetch(wikiUrl, { signal: signal });
+          if (resp.ok) {
+            var data = await resp.json();
+            results = (data.query && data.query.search || []).map(function(r){
+              return {
+                title: r.title,
+                url: 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(String(r.title).replace(/ /g, '_')),
+                snippet: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : ''
+              };
+            });
+          }
+        } catch(e) { /* CORS 或网络失败，继续走搜索引擎链接 */ }
+        /* 补充英文维基 */
+        if (results.length < 3) {
+          try {
+            var wikiEnUrl = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
+              encodeURIComponent(query) + '&format=json&origin=*&srlimit=3';
+            var resp2 = await fetch(wikiEnUrl, { signal: signal });
+            if (resp2.ok) {
+              var data2 = await resp2.json();
+              var enResults = (data2.query && data2.query.search || []).map(function(r){
+                return {
+                  title: r.title + ' (EN)',
+                  url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(r.title).replace(/ /g, '_')),
+                  snippet: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : ''
+                };
+              });
+              results = results.concat(enResults);
+            }
+          } catch(e) {}
+        }
+        /* 生成搜索引擎链接 */
+        var googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent(query);
+        var bingUrl = 'https://www.bing.com/search?q=' + encodeURIComponent(query);
+        results.push({ title: '🔍 Google: ' + query, url: googleUrl, snippet: '点击查看完整搜索结果' });
+        results.push({ title: '🔍 Bing: ' + query, url: bingUrl, snippet: '点击查看完整搜索结果' });
+        /* 回填到检索面板 */
+        if (this && this.__cpRender && this.__cpRender.renderSearch) {
+          this.__cpRender.renderSearch(results);
+        }
+        var summary = results.filter(function(r){ return r.snippet && r.url.indexOf('google.com') < 0 && r.url.indexOf('bing.com') < 0; })
+          .map(function(r){ return r.title + ': ' + r.snippet; }).join('\n');
+        return '🔍 网页搜索 "' + query + '" 结果:\n' + (summary || '未找到维基百科条目') +
+          '\n\n完整搜索: Google ' + googleUrl + ' | Bing ' + bingUrl;
+      }
+    },
+
+    /* 6) search_code — 搜索代码（GitHub Search API） */
+    search_code: {
+      description:
+        'Search for code on GitHub. Returns matching files with repository and path info. ' +
+        'Use this when the user asks to "搜代码", "找代码", "search code", "find implementation", or when you need code examples. ' +
+        'Results are automatically displayed in the copilot search panel.',
+      inputSchema: mkObj({ query: 'string' }),
+      execute: async function(input, ctx){
+        var query = String(input && input.query || '').trim();
+        if (!query) throw new Error('search_code: query is required');
+        var signal = ctx && ctx.signal;
+        var results = [];
+        try {
+          var ghUrl = 'https://api.github.com/search/code?q=' + encodeURIComponent(query) + '&per_page=8';
+          var resp = await fetch(ghUrl, {
+            signal: signal,
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (resp.ok) {
+            var data = await resp.json();
+            results = (data.items || []).map(function(r){
+              return {
+                title: (r.repository && r.repository.full_name || '') + ' / ' + r.name,
+                url: r.html_url,
+                snippet: r.path || ''
+              };
+            });
+          }
+        } catch(e) { /* CORS 或速率限制 */ }
+        /* 回填到检索面板 */
+        if (this && this.__cpRender && this.__cpRender.renderSearch) {
+          this.__cpRender.renderSearch(results);
+        }
+        var summary = results.length ?
+          results.map(function(r){ return r.title + ' → ' + r.url + (r.snippet ? ' (' + r.snippet + ')' : ''); }).join('\n') :
+          '未找到代码结果（可能触发了 GitHub API 速率限制，请稍后重试）';
+        return '💻 代码搜索 "' + query + '" 结果:\n' + summary;
+      }
+    },
+
+    /* 7) output_code — 把代码推到副驾代码输出区（用户可查看/复制/执行） */
+    output_code: {
+      description:
+        'Display generated code in the copilot code output panel. The user can review, copy, or execute it. ' +
+        'Use this when the user asks you to "写代码", "生成代码", "写个脚本", "write code", "generate script", or when you produce code for the user to review. ' +
+        'Do NOT use execute_javascript for code generation — use output_code to show it, then let the user decide whether to run it.',
+      inputSchema: mkObj({ code: 'string', language: 'string', description: 'string' }),
+      execute: async function(input){
+        var code = String(input && input.code || '');
+        var lang = String(input && input.language || input && input.lang || '');
+        var desc = String(input && input.description || input && input.desc || '');
+        if (!code) throw new Error('output_code: code is required');
+        /* 回填到代码输出区 */
+        if (this && this.__cpRender && this.__cpRender.renderCode) {
+          this.__cpRender.renderCode(code, lang, desc);
+        }
+        return '✅ 代码已输出到代码区' + (lang ? ' (' + lang + ')' : '') + '。用户可复制或点击执行。';
+      }
+    },
+
+    /* 8) auto_fill_form — 自动填写表单（登录/注册/搜索等） */
+    auto_fill_form: {
+      description:
+        'Automatically fill form fields and optionally submit. Pass field_values as a JSON string mapping field names/selectors to values. ' +
+        'Use this when the user says "自动填写", "帮我登录", "填表", "auto login", "fill form", "submit form". ' +
+        'Example: field_values=\'{"用户名":"admin","密码":"123456"}\', submit=true',
+      inputSchema: mkObj({ field_values: 'string', submit: 'string', form_selector: 'string' }),
+      execute: async function(input){
+        var raw = String(input && input.field_values || '{}');
+        var fields;
+        try { fields = JSON.parse(raw); } catch(e) { throw new Error('auto_fill_form: field_values 必须是合法 JSON: ' + e.message); }
+        var doSubmit = String(input && input.submit || '').toLowerCase() === 'true';
+        var formSel = String(input && input.form_selector || '').trim();
+        var filled = 0, failed = [];
+        for (var key in fields) {
+          var val = String(fields[key]);
+          var el = null;
+          /* 尝试 CSS 选择器 → 关键词匹配 placeholder/name/id/type */
+          try { el = document.querySelector(key); } catch(e) {}
+          if (!el) {
+            var inputs = document.querySelectorAll('input, textarea, select');
+            for (var i = 0; i < inputs.length; i++) {
+              var inp = inputs[i];
+              var ph = inp.placeholder || '', nm = inp.name || '', id = inp.id || '', tp = inp.type || '';
+              if (ph.indexOf(key) >= 0 || nm.indexOf(key) >= 0 || id.indexOf(key) >= 0 ||
+                  (tp === 'email' && key.toLowerCase().indexOf('邮') >= 0) ||
+                  (tp === 'password' && (key.toLowerCase().indexOf('密') >= 0 || key.toLowerCase().indexOf('pass') >= 0)) ||
+                  (tp === 'search' && key.toLowerCase().indexOf('搜') >= 0)) {
+                el = inp; break;
+              }
+            }
+          }
+          if (el) {
+            try {
+              var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+              if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+              if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val);
+              else el.value = val;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              filled++;
+            } catch(e) { failed.push(key + ': ' + e.message); }
+          } else { failed.push(key + ': 未找到匹配的输入框'); }
+        }
+        var resultMsg = '填写了 ' + filled + ' 个字段';
+        if (failed.length) resultMsg += '，失败: ' + failed.join('; ');
+        if (doSubmit) {
+          var form = formSel ? document.querySelector(formSel) : null;
+          if (!form) {
+            var firstInput = document.querySelector('input, textarea');
+            if (firstInput && firstInput.form) form = firstInput.form;
+          }
+          if (form) {
+            try { form.submit(); resultMsg += '，已提交表单'; }
+            catch(e) {
+              try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); resultMsg += '，已触发 submit 事件'; }
+              catch(e2) { resultMsg += '，提交失败: ' + e2.message; }
+            }
+          } else {
+            var submitBtn = document.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+            if (submitBtn) { submitBtn.click(); resultMsg += '，已点击提交按钮'; }
+            else resultMsg += '，未找到提交按钮';
+          }
+        }
+        return '✅ ' + resultMsg;
+      }
+    },
+
+    /* 9) extract_page_data — 从页面提取结构化数据 */
+    extract_page_data: {
+      description:
+        'Extract structured data from the current page. Supports: "table" (HTML tables), "links" (all links), "text" (page text), "images" (image URLs), "meta" (page metadata). ' +
+        'Use this when the user says "提取数据", "抓取页面", "获取表格", "extract data", "scrape page", "get links". ' +
+        'Pass type and optional selector (CSS) to limit scope.',
+      inputSchema: mkObj({ type: 'string', selector: 'string' }),
+      execute: async function(input){
+        var type = String(input && input.type || 'all').toLowerCase().trim();
+        var sel = String(input && input.selector || '').trim();
+        var scope = sel ? null : document;
+        try { if (sel) scope = document.querySelector(sel); } catch(e) {}
+        if (!scope) scope = document;
+        var data = {};
+        if (type === 'table' || type === 'all') {
+          var tables = scope.querySelectorAll('table');
+          data.tables = [];
+          tables.forEach(function(t){
+            var rows = [];
+            t.querySelectorAll('tr').forEach(function(tr){
+              var cells = [];
+              tr.querySelectorAll('th, td').forEach(function(td){ cells.push(td.innerText.trim()); });
+              if (cells.length) rows.push(cells);
+            });
+            if (rows.length) data.tables.push(rows);
+          });
+        }
+        if (type === 'links' || type === 'all') {
+          data.links = [];
+          scope.querySelectorAll('a[href]').forEach(function(a){
+            data.links.push({ text: a.innerText.trim().slice(0, 100), href: a.href });
+          });
+        }
+        if (type === 'text' || type === 'all') {
+          data.text = scope.body ? scope.body.innerText.slice(0, 5000) : '';
+        }
+        if (type === 'images' || type === 'all') {
+          data.images = [];
+          scope.querySelectorAll('img[src]').forEach(function(img){
+            data.images.push({ src: img.src, alt: img.alt || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
+          });
+        }
+        if (type === 'meta' || type === 'all') {
+          data.meta = { title: document.title, url: location.href, description: '', keywords: '' };
+          var desc = document.querySelector('meta[name="description"]');
+          if (desc) data.meta.description = desc.content || '';
+          var kw = document.querySelector('meta[name="keywords"]');
+          if (kw) data.meta.keywords = kw.content || '';
+        }
+        var json = JSON.stringify(data, null, 2);
+        /* 如果数据量大，截断 */
+        if (json.length > 8000) json = json.slice(0, 8000) + '\n... (截断，共 ' + json.length + ' 字符)';
+        return '📋 页面数据提取 (' + type + '):\n' + json;
+      }
+    }
+  };
+}
+
+// 重新加载 CAID 副驾（Headless）：销毁旧 agent，重建新实例
+function reloadPageAgent(forceNew) {
+  if (window.agent && typeof window.agent.dispose === 'function') {
+    try { window.agent.dispose(); } catch(e){}
+  }
+  window.agent = null;
+  initModdedPageAgent();
+  return { ok: true, action: 'reloaded' };
+}
+
+// 切换副驾侧边栏显示/隐藏（首次打开时按需初始化 agent）
+function togglePageAgentPanel() {
+  let cp = document.getElementById('caidCopilot');
+  if (!cp) return;
+  const willOpen = !cp.classList.contains('open');
+  if (willOpen) {
+    cp.classList.add('open'); cp.setAttribute('aria-hidden','false');
+    if (!window.agent || window.agent.disposed) { initModdedPageAgent(); }
+    setTimeout(function(){ const i=document.getElementById('cpInput'); if(i) i.focus(); }, 120);
+  } else {
+    cp.classList.remove('open'); cp.setAttribute('aria-hidden','true');
+  }
+}
+
+// 快捷键 Ctrl+I+L 三键同时按下
+const _pressedKeys = new Set();
+document.addEventListener('keydown', (e) => {
+  _pressedKeys.add(e.code);
+  if ((_pressedKeys.has('ControlLeft') || _pressedKeys.has('ControlRight')) &&
+      _pressedKeys.has('KeyI') && _pressedKeys.has('KeyL')) {
+    e.preventDefault();
+    togglePageAgentPanel();
+    _pressedKeys.clear();
+  }
+});
+document.addEventListener('keyup', (e) => { _pressedKeys.delete(e.code); });
+window.addEventListener('blur', () => _pressedKeys.clear());
+
+// ============ Bookmarklet 注入：副驾 CSS/HTML/初始化 JS 字符串常量 ============
+// （精简版，直接嵌入 javascript: URI。与 index.html 主站 UI 保持相同视觉体系、相同 customTools、相同 done→assistant 转换）
+const BK_CSS_STR = JSON.stringify(`
+.caid-copilot{position:fixed;top:0;right:0;width:380px;height:100vh;max-height:100vh;background:#1e1e2e;color:#cdd6f4;z-index:2147483646;box-shadow:-8px 0 24px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column;font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;border-left:1px solid #313244;font-family:inherit;}
+.caid-copilot.open{transform:translateX(0);}
+.caid-copilot *{box-sizing:border-box;}
+.cp-head{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid #313244;background:#181825;}
+.cp-title{font-weight:600;flex:0 0 auto;color:#cdd6f4;}
+.cp-status{flex:1;text-align:right;font-size:12px;color:#7f849c;}
+.cp-close{flex:0 0 auto;width:28px;height:28px;border-radius:6px;color:#7f849c;font-size:14px;line-height:1;border:0;background:transparent;cursor:pointer;}
+.cp-close:hover{background:#313244;color:#cdd6f4;}
+.cp-api-info{padding:4px 12px;font-size:11px;color:#7f849c;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.6;}
+.cp-api-info .cp-api-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;}
+.cp-api-info .cp-api-badge.free{background:rgba(99,102,241,.12);color:#818cf8;}
+.cp-api-info .cp-api-badge.custom{background:rgba(34,197,94,.12);color:#4ade80;}
+.cp-api-info .cp-api-badge.nokey{background:rgba(248,81,73,.12);color:#f87171;}
+.cp-token-total{margin-left:auto;font-size:10px;color:#7f849c;white-space:nowrap;}
+.cp-mode-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #313244;background:#181825;}
+.cp-mode-btn{padding:4px 10px;border:0;border-radius:6px;background:#313244;color:#bac2de;font-size:11px;cursor:pointer;}
+.cp-mode-btn.active{background:#89b4fa;color:#1e1e2e;font-weight:600;}
+.cp-mode-actions{margin-left:auto;display:none;gap:4px;}
+.cp-mode-actions.visible{display:flex;}
+.cp-mode-actions button{padding:2px 8px;border:0;border-radius:4px;background:#45475a;color:#bac2de;font-size:11px;cursor:pointer;}
+.cp-activity{padding:4px 12px;font-size:11px;color:#bac2de;background:#181825;border-bottom:1px solid #313244;min-height:18px;}
+.cp-log{flex:1;overflow-y:auto;padding:8px;font-size:12px;line-height:1.5;}
+.cp-evt{margin-bottom:6px;padding:6px 8px;border-radius:6px;}
+.cp-evt-user{display:flex;justify-content:flex-end;background:transparent;}
+.cp-bubble{display:inline-block;padding:6px 10px;border-radius:10px;max-width:100%;word-wrap:break-word;white-space:pre-wrap;}
+.cp-bubble-user{background:#89b4fa;color:#1e1e2e;border-bottom-right-radius:2px;}
+.cp-bubble-assistant{background:#313244;color:#cdd6f4;border-bottom-left-radius:2px;}
+.cp-evt-assistant{background:transparent;}
+.cp-evt-step{background:#181825;border:1px solid #313244;}
+.cp-evt-step summary{cursor:pointer;user-select:none;color:#bac2de;font-size:11px;}
+.cp-evt-step summary b{color:#f9e2af;}
+.cp-evt-step .cp-tool{display:inline-block;padding:1px 5px;border-radius:3px;background:#585b70;color:#f5c2e7;font-size:10px;margin-left:4px;}
+.cp-step-usage{display:inline-block;margin-left:6px;font-size:10px;color:#7f849c;background:#313244;padding:1px 5px;border-radius:3px;}
+.cp-evt-observation{background:rgba(137,180,250,.08);color:#89b4fa;border:1px solid rgba(137,180,250,.2);}
+.cp-evt-error{background:rgba(248,81,73,.1);color:#f38ba8;border:1px solid rgba(248,81,73,.2);}
+.cp-evt-retry{background:rgba(250,179,135,.1);color:#fab387;}
+.cp-section{border-top:1px solid #313244;}
+.cp-section-head{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;cursor:pointer;background:#181825;user-select:none;font-size:11px;color:#7f849c;}
+.cp-section.collapsed .cp-section-head::after{content:'▸';}
+.cp-section-head::after{content:'▾';}
+.cp-section.collapsed > *:not(.cp-section-head){display:none;}
+.cp-tools,.cp-code,.cp-search{padding:6px 8px;max-height:200px;overflow-y:auto;font-size:11px;}
+.cp-tool-call{padding:4px 6px;margin-bottom:4px;background:#181825;border-radius:4px;border:1px solid #313244;}
+.cp-tool-call-name{color:#a6e3a1;font-weight:600;}
+.cp-tool-call-args{color:#7f849c;margin-left:4px;}
+.cp-tool-call-result{color:#cdd6f4;margin-top:2px;}
+.cp-empty{color:#585b70;font-style:italic;padding:4px;}
+.cp-input-bar{padding:8px 12px;border-top:1px solid #313244;background:#181825;display:flex;gap:6px;}
+.cp-input-bar textarea{flex:1;min-height:32px;max-height:120px;resize:vertical;background:#1e1e2e;color:#cdd6f4;border:1px solid #313244;border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;}
+.cp-input-bar textarea:focus{outline:none;border-color:#89b4fa;}
+.cp-input-bar button{padding:4px 14px;border:0;border-radius:6px;background:#89b4fa;color:#1e1e2e;font-weight:600;font-size:12px;cursor:pointer;}
+.cp-input-bar button:active{transform:translateY(1px);}
+`);
+
+const BK_HTML_STR = JSON.stringify(`
+<aside id="caidCopilot" class="caid-copilot open" aria-hidden="false">
+  <header class="cp-head">
+    <span class="cp-title">🤖 CAID 副驾</span>
+    <span class="cp-status" id="cpStatus">未启动</span>
+    <button class="cp-close" id="cpClose" title="收起">✕</button>
+  </header>
+  <div class="cp-api-info" id="cpApiInfo"></div>
+  <div class="cp-mode-bar">
+    <button class="cp-mode-btn active" id="cpModeAuto" data-mode="auto" title="让 Page-Agent 自主跑完整任务">自动</button>
+    <button class="cp-mode-btn" id="cpModeManual" data-mode="manual" title="副驾直接控制 pageController+tools，可单步介入">手动</button>
+    <div class="cp-mode-actions" id="cpManualActions">
+      <button id="cpObserve" title="调 pageController.getBrowserState() 观察当前页">👁 观察</button>
+      <button id="cpStepNext" title="让 LLM 决定下一步并执行（手动单步）">▶ 单步</button>
+      <button id="cpStop" title="中断当前任务（AbortController.abort）">⏹ 停止</button>
+    </div>
+  </div>
+  <div class="cp-activity" id="cpActivity"></div>
+  <div class="cp-log" id="cpLog"></div>
+  <div class="cp-section collapsed">
+    <div class="cp-section-head">工具调用</div>
+    <div class="cp-tools" id="cpTools"><div class="cp-empty">工具调用记录会显示在这里</div></div>
+  </div>
+  <div class="cp-section collapsed">
+    <div class="cp-section-head">代码输出</div>
+    <div class="cp-code" id="cpCode"><div class="cp-empty">AI 执行的代码会显示在这里</div></div>
+  </div>
+  <div class="cp-section collapsed">
+    <div class="cp-section-head">检索结果</div>
+    <div class="cp-search" id="cpSearch"><div class="cp-empty">检索结果会显示在这里</div></div>
+  </div>
+  <div class="cp-input-bar">
+    <textarea id="cpInput" placeholder="给副驾下任务，回车发送… (Shift+Enter换行)"></textarea>
+    <button id="cpSend">发送</button>
+  </div>
+</aside>
+`);
+
+// ============ Page-Agent Bookmarklet 生成 ============
+// 作用：生成可拖到书签栏的 <a href="javascript:...">，在任意网页点击即可注入"CAID 副驾"（与主站同套 UI/工具/渲染链路）
+function setupPaBookmarklet() {
+  const btn = document.getElementById('paBookmarklet');
+  if (!btn) return;
+  btn.href = buildPaBookmarkletCode();
+  // 当用户切换到自定义 LLM 模式并保存后，更新书签的 href（携带自定义配置）
+  btn.setAttribute('title', '拖到浏览器书签栏，点击在任意网页启动 Page-Agent');
+  // 防止点击直接跳转（书签栏用拖拽，而非点击打开）
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    toast('请把按钮拖到浏览器书签栏，然后在任意网页点击该书签', 'info', 3000);
+  });
+}
+
+// 根据当前 state.paCfg 重新生成 Bookmarklet 的 javascript: href
+function regeneratePaBookmarklet() {
+  const btn = document.getElementById('paBookmarklet');
+  if (btn) btn.href = buildPaBookmarkletCode();
+}
+
+// 跳转测试按钮绑定（在设置面板 Page-Agent Tab 里）
+function setupPaJumpBtns() {
+  const gh = document.getElementById('paTryGithubBtn');
+  const mdn = document.getElementById('paTryMdnBtn');
+  const jump = document.getElementById('paJumpBtn');
+  if (gh) gh.addEventListener('click', () => { window.open('https://github.com', '_blank'); toast('GitHub 已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500); });
+  if (mdn) mdn.addEventListener('click', () => { window.open('https://developer.mozilla.org/zh-CN/', '_blank'); toast('MDN 已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500); });
+  if (jump) jump.addEventListener('click', () => {
+    const url = prompt('请输入要跳转的网页地址（例如 https://example.com）：', 'https://');
+    if (url) {
+      let u = url.trim();
+      if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+      window.open(u, '_blank');
+      toast('已在新标签打开，点书签栏的 Page-Agent 启动', 'info', 3500);
+    }
+  });
+}
+
+function buildPaBookmarkletCode() {
+  let llmCfgJson = 'null';
+  const paCfg = state?.paCfg;
+  const lang = (paCfg && paCfg.language) || 'zh-CN';
+  if (paCfg && paCfg.mode === 'custom' && paCfg.provider && paCfg.apiKey && paCfg.model) {
+    const cfg = {
+      provider: paCfg.provider,
+      baseUrl: paCfg.baseUrl || '',
+      apiKey: paCfg.apiKey,
+      model: paCfg.model,
+      temperature: paCfg.temperature ?? 0.7
+    };
+    llmCfgJson = JSON.stringify(cfg).replace(/"/g, "'").replace(/</g, '\\x3c');
+  }
+  // 把增强 systemPrompt 在工作台上下文中转义成 JS 字面量，直接嵌入 Bookmarklet（JSON.stringify 自动处理换行/引号/反斜杠）
+  const enhSPJson = JSON.stringify(buildEnhancedSystemPrompt(lang));
+
+  const code = `
+(function(){
+  if (window.__PA_INJECTED__) { alert('Page-Agent 已在当前页面启动'); return; }
+  window.__PA_INJECTED__ = true;
+  var MAIN_URL = '${MAIN_SITE_URL}';
+  var MAIN_NAME = '${MAIN_SITE_NAME}';
+  var ENH_SP = ${enhSPJson};
+  window.navigateToMainSite = function() { try { (window.top || window).location.href = MAIN_URL; } catch(e) { window.location.href = MAIN_URL; } };
+  window.__MAIN_SITE_URL__ = MAIN_URL;
+  window.__MAIN_SITE_NAME__ = MAIN_NAME;
+  /* inject main-site meta for page-agent to read */
+  (function() {
+    try {
+      var m1 = document.createElement('meta'); m1.name = 'site-main-url'; m1.content = MAIN_URL; document.head.appendChild(m1);
+      var m2 = document.createElement('meta'); m2.name = 'site-name'; m2.content = MAIN_NAME; document.head.appendChild(m2);
+      var m3 = document.createElement('meta'); m3.name = 'agent-instructions'; m3.content = 'Default: answer user questions normally, do NOT navigate. ONLY when user explicitly says 返回主网站/回工作台/去主页/回首页/go home/back to workbench, call navigate_to_main_site tool. For opening other sites (GitHub/google/baidu), use open_url_in_new_tab or navigate_to_url tool. For arbitrary JS execution, use execute_javascript tool (script内部可用 paGoHome/paNavigate/paLinks/paText/paInfo/paFill/paScroll/paCopy/paSave/paInject/paInjectCSS). Full namespace: window.__PA_UTILS__.'; document.head.appendChild(m3);
+      if (!document.getElementById('__agent_instructions_block__')) {
+        var d = document.createElement('div');
+        d.id = '__agent_instructions_block__';
+        d.setAttribute('data-role', 'page-agent-instructions');
+        d.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+        d.textContent = '[ PAGE AGENT RULES ]\\nMain site (CAID Workbench): ' + MAIN_URL + '\\n\\nIMPORTANT: Default behavior is to answer the user question normally. Do NOT navigate unless explicitly asked.\\n\\nONLY WHEN user explicitly says: 返回主网站 / 回主网站 / 回工作台 / 去主页 / 打开主网站 / 回首页 / go home / back to workbench\\nThen call: paGoHome() or window.navigateToMainSite()\\n\\nFor opening other sites (e.g. open GitHub), use paNavigate(url, newTab).\\nFor all other questions (knowledge, chat, code), just answer normally. Do NOT navigate.\\n[ END RULES ]';
+        document.body.appendChild(d);
+      }
+    } catch(e) {}
+  })();
+  /* inject pa utilities (caid modded) */
+  (function(){
+    if (window.__PA_UTILS__ && window.__PA_UTILS__.__injected) return;
+    var U = {};
+    U.__injected = true;
+    U.__version = 'caid-modded-1.0';
+    U.navigateToMainSite = function() { try { (window.top || window).location.href = MAIN_URL; return 'OK navigating to ' + MAIN_URL; } catch(e) { window.location.href = MAIN_URL; return 'OK (fallback) navigating to ' + MAIN_URL; } };
+    U.navigateTo = function(url, newTab) {
+      if (!url) return 'ERROR: empty url';
+      var u = String(url).trim();
+      if (!/^[a-zA-Z][a-zA-Z0-9+\\-.]*:\\/\\//.test(u) && !u.startsWith('javascript:') && !u.startsWith('#')) { u = 'https://' + u; }
+      try {
+        if (newTab) {
+          var a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          document.body.appendChild(a); try { a.click(); } finally { setTimeout(function(){ if (a.parentNode) a.parentNode.removeChild(a); },0); }
+          return 'OK opened new tab: ' + u;
+        }
+        (window.top || window).location.href = u; return 'OK navigating to: ' + u;
+      } catch(e) {
+        try { window.location.href = u; return 'OK (fallback) navigating to: ' + u; } catch(err) { return 'ERROR navigateTo failed: ' + err.message; }
+      }
+    };
+    U.openInNewTab = function(url) { return U.navigateTo(url, true); };
+    U.extractAllLinks = function(max) {
+      max = max || 200; var arr = []; var seen = {}; var links = document.querySelectorAll('a[href]');
+      for (var i = 0; i < links.length && arr.length < max; i++) {
+        var a = links[i]; var h = (a.href || '').trim();
+        if (!h || seen[h] || h.startsWith('#') || h.startsWith('javascript:')) continue;
+        seen[h] = 1; arr.push({ text: (a.textContent || '').trim().slice(0,120), href: h });
+      }
+      return arr;
+    };
+    U.extractPageText = function(maxChars) {
+      maxChars = maxChars || 20000;
+      var el = document.body || document.documentElement;
+      return (el.innerText || el.textContent || '').slice(0, maxChars);
+    };
+    U.getPageInfo = function() {
+      var metas = {}; var ms = document.querySelectorAll('meta[name][content]');
+      for (var i = 0; i < ms.length; i++) { var m = ms[i]; metas[m.getAttribute('name')] = (m.getAttribute('content') || '').slice(0,300); }
+      return { title: document.title, url: location.href, mainSiteUrl: window.__MAIN_SITE_URL__ || '', metas: metas,
+        linkCount: document.querySelectorAll('a[href]').length,
+        formCount: document.querySelectorAll('form, input, textarea, select, button').length,
+        cookie: (document.cookie || '').slice(0,500) };
+    };
+    U.fillForm = function(selOrIdx, value, submit) {
+      var el = null;
+      if (typeof selOrIdx === 'number') { var all = document.querySelectorAll('input, textarea, select, [contenteditable=\"true\"]'); el = all[selOrIdx]; }
+      else {
+        try { el = document.querySelector(String(selOrIdx)); } catch(e){}
+        if (!el) {
+          var s = String(selOrIdx).toLowerCase();
+          var inps = document.querySelectorAll('input, textarea, [contenteditable]');
+          for (var i = 0; i < inps.length; i++) {
+            var inp = inps[i]; var ph = (inp.placeholder||'').toLowerCase(); var nm = (inp.name||'').toLowerCase(); var id = (inp.id||'').toLowerCase();
+            if ((ph && ph.indexOf(s) >= 0) || (nm && nm.indexOf(s) >= 0) || (id && id.indexOf(s) >= 0)) { el = inp; break; }
+          }
+        }
+      }
+      if (!el) return 'ERROR fillForm: element not found';
+      try {
+        if (el.isContentEditable) { el.focus(); el.textContent = String(value == null ? '' : value); }
+        else if (el.tagName === 'SELECT') { el.value = String(value == null ? '' : value); }
+        else { el.value = String(value == null ? '' : value); }
+        if (typeof Event === 'function') {
+          try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(_){}
+          try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(_){}
+        }
+        if (submit) { var f = el.closest ? el.closest('form') : null; if (f) f.submit(); else if (typeof el.blur === 'function') el.blur(); }
+        return 'OK filled';
+      } catch(err) { return 'ERROR fillForm: ' + err.message; }
+    };
+    U.scrollTo = function(target) {
+      try {
+        if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return 'OK scrolled top'; }
+        if (target === 'bottom') { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); return 'OK scrolled bottom'; }
+        var el = document.querySelector(String(target));
+        if (!el) return 'ERROR scrollTo: selector not found: ' + target;
+        if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return 'OK scrolled to element';
+      } catch(e) { return 'ERROR scrollTo: ' + e.message; }
+    };
+    U.copyToClipboard = function(text) {
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { try { navigator.clipboard.writeText(String(text == null ? '' : text)); } catch(_){} } return 'OK copy queued'; }
+      catch(e) { try {
+        var ta = document.createElement('textarea'); ta.value = String(text == null ? '' : text); ta.style.position = 'fixed'; ta.style.left = '-99999px';
+        document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch(_){} if (ta.parentNode) ta.parentNode.removeChild(ta); return 'OK copy fallback';
+      } catch(err) { return 'ERROR copy failed: ' + err.message; } }
+    };
+    U.downloadAsFile = function(filename, content, mime) {
+      try {
+        var m = mime || (String(filename).endsWith('.json') ? 'application/json' : String(filename).endsWith('.html') ? 'text/html' : 'text/plain');
+        var blob = new Blob([content == null ? '' : content], { type: m });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = String(filename || 'download.txt');
+        document.body.appendChild(a); a.click();
+        setTimeout(function() { try { URL.revokeObjectURL(a.href); } catch(_){} if (a.parentNode) a.parentNode.removeChild(a); }, 500);
+        return 'OK download started';
+      } catch(e) { return 'ERROR download failed: ' + e.message; }
+    };
+    U.injectScript = function(code) {
+      try {
+        var s = document.createElement('script'); s.type = 'text/javascript'; s.setAttribute('data-pa-inject', '1');
+        try { s.appendChild(document.createTextNode(String(code == null ? '' : code))); } catch(_ie) { s.text = String(code == null ? '' : code); }
+        (document.head || document.documentElement).appendChild(s);
+        setTimeout(function() { if (s.remove) s.remove(); }, 0); return 'OK script injected';
+      } catch(e) { return 'ERROR injectScript: ' + e.message; }
+    };
+    U.injectStyles = function(css) {
+      try {
+        var st = document.createElement('style'); st.setAttribute('data-pa-inject', '1'); st.textContent = String(css == null ? '' : css);
+        (document.head || document.documentElement).appendChild(st); return 'OK styles injected';
+      } catch(e) { return 'ERROR injectStyles: ' + e.message; }
+    };
+    U.getCookies = function() { return document.cookie || ''; };
+    U.setCookie = function(name, value, days) {
+      try {
+        var exp = ''; if (days) { var d = new Date(); d.setTime(d.getTime() + days*86400000); exp = '; expires=' + d.toUTCString(); }
+        document.cookie = encodeURIComponent(String(name)) + '=' + encodeURIComponent(String(value == null ? '' : value)) + exp + '; path=/';
+        return 'OK cookie set';
+      } catch(e) { return 'ERROR setCookie: ' + e.message; }
+    };
+    U.getLocalStorage = function(key) {
+      try { return key == null ? JSON.stringify(localStorage) : (localStorage.getItem(String(key)) || ''); }
+      catch(e) { return 'ERROR getLocalStorage: ' + e.message; }
+    };
+    U.setLocalStorage = function(key, value) {
+      try { localStorage.setItem(String(key), String(value == null ? '' : value)); return 'OK localStorage set'; }
+      catch(e) { return 'ERROR setLocalStorage: ' + e.message; }
+    };
+    window.__PA_UTILS__ = U;
+    window.paNavigate = function(u,n){ return U.navigateTo(u,n); };
+    window.paOpenTab = function(u){ return U.openInNewTab(u); };
+    window.paGoHome = function(){ return U.navigateToMainSite(); };
+    window.paLinks = function(m){ return U.extractAllLinks(m); };
+    window.paText = function(m){ return U.extractPageText(m); };
+    window.paInfo = function(){ return U.getPageInfo(); };
+    window.paFill = function(s,v,sb){ return U.fillForm(s,v,sb); };
+    window.paScroll = function(t){ return U.scrollTo(t); };
+    window.paCopy = function(t){ return U.copyToClipboard(t); };
+    window.paSave = function(f,c,m){ return U.downloadAsFile(f,c,m); };
+    window.paInject = function(c){ return U.injectScript(c); };
+    window.paInjectCSS = function(c){ return U.injectStyles(c); };
+    if (!window.navigateToMainSite) window.navigateToMainSite = function(){ return U.navigateToMainSite(); };
+    if (!window.__MAIN_SITE_URL__) window.__MAIN_SITE_URL__ = MAIN_URL;
+    if (!window.__MAIN_SITE_NAME__) window.__MAIN_SITE_NAME__ = MAIN_NAME;
+  })();
+  function cleanupDupPanels() {
+    try {
+      var cs = [];
+      var nodes = document.querySelectorAll ? document.querySelectorAll('body > div, body > section, body > aside') : [];
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var st = window.getComputedStyle(el);
+        if (!st) continue;
+        if (st.position !== 'fixed' && st.position !== 'absolute') continue;
+        if (st.display === 'none' || st.visibility === 'hidden') continue;
+        var z = parseInt(st.zIndex || '0', 10) || 0;
+        if (z < 9000) continue;
+        var feat = (el.shadowRoot ? 2 : 0) + (el.querySelector && el.querySelector('input, textarea') ? 1 : 0) + (el.querySelector && el.querySelector('button') ? 1 : 0) + ((el.querySelectorAll ? el.querySelectorAll('div').length : 0) > 5 ? 1 : 0);
+        if (feat >= 2) cs.push({ el: el, z: z, order: cs.length });
+      }
+      if (cs.length <= 1) return;
+      cs.sort(function(a, b) { return (b.z - a.z) || (b.order - a.order); });
+      for (var j = 1; j < cs.length; j++) {
+        try {
+          cs[j].el.style.setProperty('display', 'none', 'important');
+          cs[j].el.setAttribute('data-pa-removed-dup', '1');
+        } catch(_) {}
+      }
+    } catch(e) {}
+  }
+  var LLMCFG = ${llmCfgJson};
+  var BK_CSS = ${BK_CSS_STR};
+  var BK_HTML = ${BK_HTML_STR};
+  /* 如果已注入过，显示已存在的副驾，不新建 */
+  var __exist = document.getElementById('caidCopilot');
+  if (__exist) {
+    __exist.classList.add('open');
+    try { __exist.setAttribute('aria-hidden','false'); } catch(_) {}
+    showNote('CAID 副驾已启动（会话保持）');
+    return;
+  }
+  /* 清除旧版 demo 残留 */
+  try {
+    var __s = document.querySelector('script[src*="page-agent"]');
+    if (__s) try { __s.remove(); } catch(_) {}
+    var __r = document.getElementById('__page_agent_el__');
+    if (__r) try { __r.remove(); } catch(_) {}
+    var __p = document.getElementById('page-agent-runtime_agent-panel');
+    if (__p) try { __p.remove(); } catch(_) {}
+  } catch(_) {}
+  /* 注入全局防御：Object.keys/values/entries/getOwnPropertyNames 防 null/undefined（与主站 L3832 同构，须在 Page-Agent 加载前执行） */
+  (function(){
+    var _k=Object.keys,_v=Object.values,_e=Object.entries,_g=Object.getOwnPropertyNames;
+    Object.keys=function(o){if(o===null||o===undefined)return[];return _k.call(Object,o);};
+    Object.values=function(o){if(o===null||o===undefined)return[];return _v.call(Object,o);};
+    Object.entries=function(o){if(o===null||o===undefined)return[];return _e.call(Object,o);};
+    Object.getOwnPropertyNames=function(o){if(o===null||o===undefined)return[];return _g.call(Object,o);};
+  })();
+  /* 注入 CSS */
+  (function(){
+    var st = document.createElement('style');
+    st.id = '__caid_copilot_css__';
+    st.textContent = BK_CSS;
+    (document.head || document.documentElement).appendChild(st);
+  })();
+  /* 注入 HTML 侧边栏 */
+  (function(){
+    var wrap = document.createElement('div');
+    wrap.id = '__caid_cp_wrap__';
+    wrap.innerHTML = BK_HTML;
+    (document.body || document.documentElement).appendChild(wrap.firstElementChild || wrap);
+  })();
+  /* 折叠区切换 */
+  document.querySelectorAll('#caidCopilot .cp-section-head').forEach(function(h){
+    h.addEventListener('click', function(){ h.parentElement.classList.toggle('collapsed'); });
+  });
+  /* Zod 兼容：优先用真实 Zod v4（window.ZodV4.z，主站 lib/zod-v4.umd.js 注入），
+     不可用时退回与 Zod v4 _zod.def 同构的 duck-typed schema（type:'object'/'string'，无 v3 的 typeName）。 */
+  function _bkZodObj(shape,desc){
+    try{var z=window.ZodV4&&window.ZodV4.z||window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.object){var out=z.object(shape||{});if(desc&&out.describe)out=out.describe(String(desc));return out;}}catch(_e){}
+    var props={},req=[],_shape={};
+    for(var k in (shape||{})){var sk=shape[k];props[k]={type:'string'};req.push(k);if(sk&&sk._zod){_shape[k]=sk;}else{_shape[k]=(function(){var _zp={def:{type:'string'},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};})();}}
+    var catchall=(function(){var _zp={def:{type:'never'},toJSONSchema:function(){return{not:{}};},traits:new Set(['$ZodType']),run:function(){return{status:'invalid'};},_parseSync:function(){return{status:'aborted'};},parse:function(){throw new Error('ZodNever');},safeParse:function(){return{success:false,error:{issues:[]}};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,optional:function(){return this;},describe:function(){return this;}};})();
+    var _toJSONSchema=function(){if(Object.keys(props).length===0)return{type:'object',properties:{},additionalProperties:false};return{type:'object',properties:props,required:req,additionalProperties:false};};
+    var objectProto={def:{type:'object',shape:_shape},toJSONSchema:_toJSONSchema,traits:new Set(['$ZodType']),run:function(c){var d=(c&&c.parsedInput!==undefined)?c.parsedInput:(c&&c.data);return{status:'valid',value:d||{}};},_parseSync:function(o){var d=o&&o.data;return{status:'valid',value:d||{}};},parse:function(v){return v||{};},safeParse:function(v){var d=v||{};for(var k in (shape||{})){if(typeof d[k]!=='string'&&typeof d[k]!=='undefined'){return{success:false,error:{issues:[{code:'invalid_type',expected:'string',path:[k]}]}};}}return{success:true,data:d};}};
+    return{_zod:objectProto,shape:_shape,safeParse:objectProto.safeParse,parse:objectProto.parse,parseAsync:function(v){return Promise.resolve(objectProto.parse(v));},describe:function(){return this;},optional:function(){return this;},nullable:function(){return this;},and:function(){return this;},or:function(){return this;}};
+  }
+  function _bkZodStr(req){try{var z=window.ZodV4&&window.ZodV4.z||window.zod_v4||(window.PageAgent&&window.PageAgent.zod)||null;if(z&&z.string)return req?z.string():z.string().optional();}catch(_e){}var _zp={def:{type:'string'},toJSONSchema:function(){return{type:'string'};},traits:new Set(['$ZodType']),run:function(c){return{status:'valid',value:c&&c.parsedInput!==undefined?c.parsedInput:c};},_parseSync:function(o){return{status:'valid',value:o&&o.data};},parse:function(v){return v;},safeParse:function(v){return{success:true,data:v};}};return{_zod:_zp,parse:_zp.parse,safeParse:_zp.safeParse,parseAsync:function(v){return Promise.resolve(v);},optional:function(){return this;},nullable:function(){return this;},describe:function(){return this;}};}
+  /* customTools（与主站 buildCaidCustomTools 一致）。
+     注意：schema 必须在 Zod v4 注入完成后再构建（buildBkCustomTools），
+     否则站外拿到的还是 duck-typed 假 schema，v4 构建的 Page-Agent 解析时会崩溃。 */
+  function buildBkCustomTools(){
+  var BK_CT = {
+    navigate_to_main_site: {
+      description: 'Navigate back to CAID main workbench. Call this when user says: 返回主网站 / 回工作台 / 回首页 / go home / back to main site. NO parameters.',
+      inputSchema: _bkZodObj({}),
+      execute: async function(){
+        var mu=(window.__MAIN_SITE_URL__||MAIN_URL);
+        try{(window.top||window).location.href=mu;}catch(e){window.location.href=mu;}
+        return 'Navigating back to main site: '+mu;
+      }
+    },
+    navigate_to_url: {
+      description: 'Navigate current page (same tab) to a URL. Use when user says "访问 X / 去 X 网站 / 当前页跳转 X".',
+      inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
+      execute: async function(input){
+        var u=String(input.url||'').trim();if(!u)throw new Error('url required');
+        if(!/^[a-zA-Z][a-zA-Z0-9+\\-.]*:\\/\\//.test(u))u='https://'+u;
+        try{(window.top||window).location.href=u;}catch(e){window.location.href=u;}
+        return 'Navigating to: '+u;
+      }
+    },
+    open_url_in_new_tab: {
+      description: 'Open URL in new tab (keep current page). Use for "新标签打开 X".',
+      inputSchema: _bkZodObj({ url: _bkZodStr(true) }, 'Full https:// URL'),
+      execute: async function(input){
+        var u=String(input.url||'').trim();if(!u)throw new Error('url required');
+        if(!/^[a-zA-Z][a-zA-Z0-9+\\-.]*:\\/\\//.test(u))u='https://'+u;
+        var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();
+        return 'Opened new tab: '+u;
+      }
+    },
+    execute_javascript: {
+      description: 'Run arbitrary JS on page. Async/await supported. Available helpers: paGoHome/paNavigate/paLinks/paText/paInfo/paFill/paScroll/paCopy/paSave/paInject/paInjectCSS.',
+      inputSchema: _bkZodObj({ script: _bkZodStr(true) }),
+      execute: async function(input, ctx){
+        var sig=ctx&&ctx.signal;
+        var __util=window.__PA_UTILS__||{};
+        var paGoHome=__util.navigateToMainSite.bind(__util);
+        var paNavigate=__util.navigateTo.bind(__util);
+        var paLinks=__util.extractAllLinks.bind(__util);
+        var paText=__util.extractPageText.bind(__util);
+        var paInfo=__util.getPageInfo.bind(__util);
+        var paFill=__util.fillForm.bind(__util);
+        var paScroll=__util.scrollTo.bind(__util);
+        var paCopy=__util.copyToClipboard.bind(__util);
+        var paSave=__util.downloadAsFile.bind(__util);
+        var paInject=function(s){var t=document.createElement('script');t.textContent=String(s||'');(document.head||document.documentElement).appendChild(t);};
+        var paInjectCSS=function(c){var t=document.createElement('style');t.textContent=String(c||'');(document.head||document.documentElement).appendChild(t);};
+        var code=String(input.script||'');
+        try{
+          if(sig&&sig.throwIfAborted)sig.throwIfAborted();
+          if(window.PageAgent&&window.PageAgent.prototype&&window.PageAgent.prototype.pageController){
+            var res=window.PageAgent.prototype.pageController.executeJavascript(code,sig);
+            if(res&&typeof res.then==='function')res=await res;
+            return String(res==null?'':res);
+          }
+        }catch(_){}
+        var res=(0,eval)(code);
+        if(res&&typeof res.then==='function')res=await res;
+        return String(res==null?'':res);
+      }
+    }
+  };
+  return BK_CT;
+  }
+  var BK_CT = buildBkCustomTools();
+  var cpToolCalls = [];
+  var cpMode = 'auto';
+  var cpAbortController = null;
+  /* ===== 手动模式完整实现（与主站同构） ===== */
+  var CP_TOOL_SCHEMAS = {
+    done:{type:'object',properties:{text:{type:'string',description:'Final response to user'},success:{type:'boolean',default:true}}},
+    wait:{type:'object',properties:{seconds:{type:'number',minimum:1,maximum:10,default:1}}},
+    ask_user:{type:'object',properties:{question:{type:'string'}},required:['question']},
+    click_element_by_index:{type:'object',properties:{index:{type:'integer',minimum:0}},required:['index']},
+    input_text:{type:'object',properties:{index:{type:'integer',minimum:0},text:{type:'string'}},required:['index','text']},
+    select_dropdown_option:{type:'object',properties:{index:{type:'integer',minimum:0},text:{type:'string'}},required:['index','text']},
+    scroll:{type:'object',properties:{down:{type:'boolean',default:true},num_pages:{type:'number',minimum:0,maximum:10},pixels:{type:'integer',minimum:0},index:{type:'integer',minimum:0}}},
+    scroll_horizontally:{type:'object',properties:{right:{type:'boolean',default:true},pixels:{type:'integer',minimum:0},index:{type:'integer',minimum:0}}},
+    execute_javascript:{type:'object',properties:{script:{type:'string',description:'JavaScript code to execute on the page'}},required:['script']},
+    navigate_to_url:{type:'object',properties:{url:{type:'string',description:'Full URL starting with https://'}},required:['url']},
+    open_url_in_new_tab:{type:'object',properties:{url:{type:'string',description:'Full URL'}},required:['url']},
+    navigate_to_main_site:{type:'object',properties:{}},
+    search_web:{type:'object',properties:{query:{type:'string',description:'Search query text'}},required:['query']},
+    search_code:{type:'object',properties:{query:{type:'string',description:'Code search query'}},required:['query']},
+    output_code:{type:'object',properties:{code:{type:'string'},language:{type:'string'},description:{type:'string'}},required:['code']},
+    auto_fill_form:{type:'object',properties:{field_values:{type:'string'},submit:{type:'string'},form_selector:{type:'string'}},required:['field_values']},
+    extract_page_data:{type:'object',properties:{type:{type:'string',enum:['table','links','text','images','meta','all']},selector:{type:'string'}}}
+  };
+  function cpToast(txt,cls,dur){try{showNote(txt);}catch(e){}}
+  async function cpObserveFn(agent){
+    if(!agent||!agent.pageController){cpToast('pageController 不可用');return;}
+    try{
+      var state=await agent.pageController.getBrowserState();
+      var summary='👁 页面观察：'+(state.url||'(未知URL)')+'\\n标题: '+(state.title||'')+'\\n内容片段: '+String(state.content||'').slice(0,300);
+      agent.history=agent.history||[];agent.history.push({type:'observation',content:summary});
+      agent.dispatchEvent(new Event('historychange'));cpToast('观察完成');
+    }catch(e){cpToast('观察失败: '+(e.message||e));}
+  }
+  async function cpInvokeToolFn(agent,name,args){
+    if(!agent||!agent.tools){cpToast('agent.tools 不可用');return null;}
+    var tool=agent.tools.get(name);if(!tool){cpToast('工具不存在: '+name);return null;}
+    if(!cpAbortController)cpAbortController=new AbortController();
+    try{
+      var result=await tool.execute.call(agent,args||{},{signal:cpAbortController.signal});
+      cpToolCalls.push({name:name,args:args||{},result:result,ts:Date.now()});
+      var t=document.getElementById('cpTools');if(t){
+        if(!cpToolCalls.length){t.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>';}else{t.innerHTML='';
+        cpToolCalls.forEach(function(tc){var d=document.createElement('div');d.className='cp-tool-call';
+        d.innerHTML='<span class="cp-tool-call-name">'+cpEscapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+cpEscapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+          (tc.result?'<div class="cp-tool-call-result">'+cpEscapeHtml(String(tc.result).slice(0,200))+'</div>':'');t.appendChild(d);});
+        t.scrollTop=t.scrollHeight;}
+      }
+      return result;
+    }catch(e){cpToast('工具调用失败: '+(e.message||e));return null;}
+  }
+  async function cpLLMInvokeFn(agent,messages,tools,signal){
+    var cfg=agent.config||{};var base=String(cfg.baseURL||'').replace(/\\/$/,'');
+    var endpoint=base.endsWith('/v1')?base+'/chat/completions':base+'/v1/chat/completions';
+    var body={model:cfg.model||'qwen3.5-plus',messages:messages,tools:tools.map(function(t){return{type:'function',function:t};}),tool_choice:'auto',temperature:cfg.temperature||0.7};
+    var resp=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(cfg.apiKey||'NA')},body:JSON.stringify(body),signal:signal});
+    if(!resp.ok){var txt=await resp.text();throw new Error('LLM HTTP '+resp.status+': '+txt.slice(0,300));}
+    var data=await resp.json();var msg=data.choices&&data.choices[0]&&data.choices[0].message;if(!msg)throw new Error('LLM 返回无 message');
+    var toolCalls=(msg.tool_calls||[]).map(function(tc){var args={};try{args=tc.function&&tc.function.arguments?JSON.parse(tc.function.arguments):{};}catch(e){}return{name:tc.function&&tc.function.name,args:args};}).filter(function(tc){return tc.name;});
+    return{content:msg.content||'',toolCalls:toolCalls,usage:data.usage||{}};
+  }
+  function cpBuildToolsFn(agent){var tools=[];if(!agent||!agent.tools)return tools;
+    var iter=agent.tools.entries?agent.tools.entries():agent.tools;
+    if(Array.isArray(iter)){for(var i=0;i<iter.length;i++){var name=iter[i][0],tool=iter[i][1];if(!tool)continue;
+    tools.push({name:name,description:tool.description||('Tool: '+name),parameters:CP_TOOL_SCHEMAS[name]||{type:'object',properties:{}}});}}
+    else if(typeof iter.next==='function'){try{var r;while(!(r=iter.next()).done){var nm=r.value[0],tl=r.value[1];if(!tl)continue;tools.push({name:nm,description:tl.description||('Tool: '+nm),parameters:CP_TOOL_SCHEMAS[nm]||{type:'object',properties:{}}});}}catch(e){}}
+    return tools;
+  }
+  function cpBuildMessagesFn(agent,task,browserState){
+    var sysPrompt=ENH_SP||'';var recent=(agent.history||[]).slice(-6).map(function(ev){
+      if(ev.type==='step'){var ng=(ev.reflection&&ev.reflection.next_goal)||'';var tn=(ev.action&&ev.action.name)||'';var out=(ev.action&&ev.action.output)||'';return'步骤'+ev.stepIndex+': '+ng+' → ['+tn+'] '+String(out).slice(0,150);}
+      if(ev.type==='observation')return'观察: '+String(ev.content).slice(0,200);return'';}).filter(Boolean).join('\\n');
+    var userContent='任务: '+task+'\\n\\n当前页面:\\nURL: '+(browserState.url||'(未知)')+'\\n标题: '+(browserState.title||'')+'\\n内容片段:\\n'+String(browserState.content||'').slice(0,1500)+'\\n\\n最近步骤:\\n'+(recent||'(无)');
+    return[{role:'system',content:sysPrompt},{role:'user',content:userContent}];
+  }
+  async function cpStepNextFn(agent){
+    if(!agent||!agent.pageController){cpToast('agent 未就绪');return;}
+    if(!agent.task){cpToast('请先输入任务再单步');return;}
+    if(!cpAbortController)cpAbortController=new AbortController();
+    var signal=cpAbortController.signal;
+    var stepIdx=(agent.history||[]).filter(function(e){return e.type==='step';}).length+1;
+    try{
+      cpToast('观察页面…');var state=await agent.pageController.getBrowserState();
+      var messages=cpBuildMessagesFn(agent,agent.task,state);var tools=cpBuildToolsFn(agent);
+      cpToast('🧠 LLM 思考中…');var llmResult=await cpLLMInvokeFn(agent,messages,tools,signal);
+      if(!llmResult.toolCalls.length){
+        agent.history=agent.history||[];agent.history.push({type:'observation',content:'LLM 回复: '+(llmResult.content||'(空)').slice(0,300)});
+        agent.dispatchEvent(new Event('historychange'));cpToast('LLM 未调用工具，见对话流');return;}
+      var tc=llmResult.toolCalls[0];var result=await cpInvokeToolFn(agent,tc.name,tc.args);
+      agent.history=agent.history||[];agent.history.push({type:'step',stepIndex:stepIdx,reflection:{next_goal:'调用 '+tc.name},action:{name:tc.name,input:tc.args,output:String(result||'')},usage:llmResult.usage||{}});
+      agent.dispatchEvent(new Event('historychange'));
+      if(tc.name==='done'){cpAbortController=null;var doneText=String(tc.args&&(tc.args.text||tc.args.output)||'');
+        if(doneText){agent.history.push({type:'assistant',content:doneText});agent.dispatchEvent(new Event('historychange'));}
+        cpToast('✅ 任务完成');}
+    }catch(e){if(e&&e.name==='AbortError')cpToast('已中断单步');else{console.error('[BK cpStepNext]',e);cpToast('单步失败: '+(e.message||e));}}
+  }
+  function cpStopFn(){
+    if(cpAbortController){try{cpAbortController.abort();}catch(e){}cpAbortController=null;cpToast('已中断手动任务');}
+    else if(window.agent&&window.agent.status==='running'){window.agent.stop();cpToast('已中断自动任务');}
+    else{cpToast('没有正在运行的任务');}
+  }
+  function cpEscapeHtml(s){return String(s||'').replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[c];});}
+  /* 渲染链路：bindEvents */
+  function bindCpEvents(agent){
+    var cpStatus=document.getElementById('cpStatus');
+    var cpActivity=document.getElementById('cpActivity');
+    var cpApiInfo=document.getElementById('cpApiInfo');
+    var cpLog=document.getElementById('cpLog');
+    var cpInput=document.getElementById('cpInput');
+    var cpSend=document.getElementById('cpSend');
+    var cpClose=document.getElementById('cpClose');
+    var cpModeAuto=document.getElementById('cpModeAuto');
+    var cpModeManual=document.getElementById('cpModeManual');
+    var cpManualActions=document.getElementById('cpManualActions');
+    var cpTools=document.getElementById('cpTools');
+    var cpCode=document.getElementById('cpCode');
+    var cpSearch=document.getElementById('cpSearch');
+    var cpObserve=document.getElementById('cpObserve');
+    var cpStepNext=document.getElementById('cpStepNext');
+    var cpStopBtn=document.getElementById('cpStop');
+    var STATUS_TEXT={idle:'空闲',running:'运行中…',completed:'已完成',error:'出错',stopped:'已停止'};
+    function renderApiInfo(){
+      if(!cpApiInfo)return;
+      var cfg=agent.config||{};
+      var apiKey=String(cfg.apiKey||'').trim();
+      var hasKey=apiKey&&apiKey!=='NA'&&apiKey!=='null'&&apiKey!=='undefined';
+      var isCustom=cfg.model&&cfg.model!=='qwen3.5-plus';
+      var model=cfg.model||'未知';
+      var badge='';
+      if(isCustom&&hasKey)badge='<span class="cp-api-badge custom">自定义</span>';
+      else if(!hasKey)badge='<span class="cp-api-badge nokey">无 API Key</span>';
+      else badge='<span class="cp-api-badge free">免费代理</span>';
+      var totalPrompt=0,totalCompletion=0,totalTotal=0;
+      (agent.history||[]).forEach(function(ev){
+        if(ev.usage){totalPrompt+=ev.usage.prompt_tokens||0;totalCompletion+=ev.usage.completion_tokens||0;totalTotal+=ev.usage.total_tokens||0;}
+      });
+      var tokHtml='';
+      if(totalTotal>0)tokHtml='<span class="cp-token-total">Token: '+totalTotal+' (↑'+totalPrompt+' ↓'+totalCompletion+')</span>';
+      cpApiInfo.innerHTML=badge+'<span>'+cpEscapeHtml(model)+'</span>'+tokHtml;
+    }
+    function renderStatus(){if(cpStatus)cpStatus.textContent=STATUS_TEXT[agent.status]||String(agent.status);renderApiInfo();}
+    function renderActivity(detail){
+      if(!cpActivity)return;
+      if(!detail){cpActivity.textContent='';return;}
+      if(detail.type==='thinking')cpActivity.textContent='🧠 思考中…';
+      else if(detail.type==='executing')cpActivity.textContent='⚙️ 执行 '+detail.tool;
+      else if(detail.type==='executed')cpActivity.textContent='✅ '+detail.tool+' ('+Math.round(detail.duration||0)+'ms)';
+      else if(detail.type==='retrying')cpActivity.textContent='🔁 重试 '+detail.attempt+'/'+detail.maxAttempts;
+      else if(detail.type==='error')cpActivity.textContent='❌ '+detail.message;
+    }
+    function renderToolCalls(){
+      if(!cpTools)return;
+      if(!cpToolCalls.length){cpTools.innerHTML='<div class="cp-empty">工具调用记录会显示在这里</div>';return;}
+      cpTools.innerHTML='';
+      cpToolCalls.forEach(function(tc){
+        var div=document.createElement('div');div.className='cp-tool-call';
+        div.innerHTML='<span class="cp-tool-call-name">'+cpEscapeHtml(tc.name)+'</span> <span class="cp-tool-call-args">'+cpEscapeHtml(JSON.stringify(tc.args||{}).slice(0,120))+'</span>'+
+          (tc.result?'<div class="cp-tool-call-result">'+cpEscapeHtml(String(tc.result).slice(0,200))+'</div>':'');
+        cpTools.appendChild(div);
+      });
+      cpTools.scrollTop=cpTools.scrollHeight;
+    }
+    function renderCode(code){
+      if(!cpCode)return;
+      var sec=cpCode.closest('.cp-section');
+      if(!code){cpCode.innerHTML='<div class="cp-empty">AI 执行的代码会显示在这里</div>';if(sec)sec.classList.add('collapsed');return;}
+      cpCode.textContent=String(code);
+      if(sec)sec.classList.remove('collapsed');
+    }
+    function renderHistory(){
+      if(!cpLog)return;
+      cpLog.innerHTML='';
+      (agent.history||[]).forEach(function(ev){
+        var div=document.createElement('div');
+        if(ev.type==='user'){
+          div.className='cp-evt cp-evt-user';
+          div.innerHTML='<div class="cp-bubble cp-bubble-user">'+cpEscapeHtml(String(ev.content||'')).replace(/\\n/g,'<br>')+'</div>';
+        }else if(ev.type==='assistant'){
+          div.className='cp-evt cp-evt-assistant';
+          div.innerHTML='<div class="cp-bubble cp-bubble-assistant">'+cpEscapeHtml(String(ev.content||'')).replace(/\\n/g,'<br>')+'</div>';
+        }else if(ev.type==='step'){
+          div.className='cp-evt cp-evt-step';
+          var ng=ev.reflection&&ev.reflection.next_goal?ev.reflection.next_goal:'';
+          var tn=ev.action&&ev.action.name?ev.action.name:'';
+          var out=String(ev.action&&ev.action.output||'');
+          var usageHtml='';
+          if(ev.usage&&ev.usage.total_tokens){
+            usageHtml='<span class="cp-step-usage" title="prompt:'+ev.usage.prompt_tokens+' completion:'+ev.usage.completion_tokens+'">'+ev.usage.total_tokens+' tok</span>';
+          }
+          if(tn==='done'){
+            var doneText=String(ev.action&&ev.action.input&&ev.action.input.text||'(无文本)');
+            var doneSuccess=ev.action&&ev.action.input&&ev.action.input.success;
+            div.innerHTML='<details open><summary><b>步骤'+ev.stepIndex+'</b> '+cpEscapeHtml(ng)+' <span class="cp-tool">[done]</span> <small>'+(doneSuccess?'✅成功':'❌失败')+'</small>'+usageHtml+'</summary>'
+              +'<div class="cp-bubble cp-bubble-assistant">'+cpEscapeHtml(doneText).replace(/\\n/g,'<br>')+'</div></details>';
+          }else{
+            var outShort=out.slice(0,240);
+            var outFull=out.length>240?out:'';
+            div.innerHTML='<details><summary><b>步骤'+ev.stepIndex+'</b> '+cpEscapeHtml(ng)+' <span class="cp-tool">['+cpEscapeHtml(tn)+']</span>'+usageHtml+'</summary>'
+              +'<div class="cp-out">'+cpEscapeHtml(outShort)+(outFull?' <span class="cp-more">…点击展开</span>':'')+'</div>'
+              +(outFull?'<pre class="cp-out-full" style="display:none">'+cpEscapeHtml(outFull)+'</pre>':'')
+              +'</details>';
+            if(outFull){
+              var more=div.querySelector('.cp-more');if(more){
+                more.addEventListener('click',function(){var p=div.querySelector('.cp-out-full');if(p){p.style.display=(p.style.display==='none')?'block':'none';more.textContent=(p.style.display==='none')?'…点击展开':'收起';}});
+              }
+            }
+          }
+        }else if(ev.type==='observation'){
+          div.className='cp-evt cp-evt-observation';
+          div.innerHTML='👁 '+cpEscapeHtml(String(ev.content).slice(0,300));
+        }else if(ev.type==='error'){
+          div.className='cp-evt cp-evt-error';
+          div.innerHTML='❌ '+cpEscapeHtml(ev.message);
+        }else if(ev.type==='retry'){
+          div.className='cp-evt cp-evt-retry';
+          div.innerHTML='🔁 重试 '+ev.attempt+'/'+ev.maxAttempts;
+        }else{
+          div.className='cp-evt';div.textContent=JSON.stringify(ev).slice(0,200);
+        }
+        cpLog.appendChild(div);
+      });
+      cpLog.scrollTop=cpLog.scrollHeight;
+    }
+    function preprocessDoneToAssistant(){
+      if(!agent.history||!Array.isArray(agent.history))return false;
+      var hist=agent.history;var lastStep=null;
+      for(var i=hist.length-1;i>=0;i--){if(hist[i]&&hist[i].type==='step'){lastStep=hist[i];break;}}
+      if(!lastStep||!lastStep.action||lastStep.action.name!=='done')return false;
+      var input=lastStep.action.input;if(!input||typeof input!=='object')return false;
+      var doneText=String(input.text||'');if(!doneText)return false;
+      for(var j=0;j<hist.length;j++){var h=hist[j];if(h&&h.type==='assistant'&&String(h.content||'')===doneText)return false;}
+      agent.history=hist.concat([{type:'assistant',content:doneText}]);
+      return true;
+    }
+    function onHistoryChangeSafe(){
+      var mc=typeof queueMicrotask==='function'?queueMicrotask:function(f){setTimeout(f,0);};
+      mc(function(){
+        var pushed=preprocessDoneToAssistant();
+        renderHistory();renderApiInfo();
+        if(pushed)setTimeout(function(){renderHistory();renderApiInfo();},0);
+      });
+    }
+    agent.addEventListener('statuschange',renderStatus);
+    agent.addEventListener('activity',function(e){renderActivity(e.detail);});
+    agent.addEventListener('historychange',onHistoryChangeSafe);
+    agent.addEventListener('dispose',function(){if(cpStatus)cpStatus.textContent='已销毁';});
+    function setMode(mode){
+      cpMode=mode;
+      if(cpModeAuto)cpModeAuto.classList.toggle('active',mode==='auto');
+      if(cpModeManual)cpModeManual.classList.toggle('active',mode==='manual');
+      if(cpManualActions)cpManualActions.classList.toggle('visible',mode==='manual');
+    }
+    if(cpModeAuto)cpModeAuto.addEventListener('click',function(){setMode('auto');});
+    if(cpModeManual)cpModeManual.addEventListener('click',function(){setMode('manual');});
+    async function sendTask(){
+      if(!cpInput)return;var t=cpInput.value.trim();if(!t)return;cpInput.value='';
+      agent.history=agent.history||[];
+      agent.history.push({type:'user',content:t});
+      agent.dispatchEvent(new Event('historychange'));
+      if(cpMode==='auto'){
+        try{await agent.execute(t);}
+        catch(e){agent.history.push({type:'error',message:String(e&&e.message?e.message:e)});agent.dispatchEvent(new Event('historychange'));}
+      }else{
+        agent.task=t;
+        agent.history.push({type:'observation',content:'手动模式：已记录任务，请用单步按钮推进'});
+        agent.dispatchEvent(new Event('historychange'));
+      }
+    }
+    if(cpSend)cpSend.addEventListener('click',sendTask);
+    if(cpInput)cpInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendTask();}});
+    if(cpClose)cpClose.addEventListener('click',function(){var cp=document.getElementById('caidCopilot');if(cp){cp.classList.remove('open');cp.setAttribute('aria-hidden','true');}});
+    if(cpObserve)cpObserve.addEventListener('click',function(){cpObserveFn(agent);});
+    if(cpStepNext)cpStepNext.addEventListener('click',function(){cpStepNextFn(agent);});
+    if(cpStopBtn)cpStopBtn.addEventListener('click',function(){cpStopFn();});
+    renderStatus();renderHistory();renderToolCalls();renderActivity(null);renderApiInfo();
+  }
+  /* 脚本源：优先主站 headless（保证 core 与主站一致），失败 fallback 到 CDN */
+  var sources=[];
+  if(MAIN_URL){
+    if(MAIN_URL.slice(-1)!=='/')MAIN_URL=MAIN_URL+'/';
+    sources.push(MAIN_URL+'lib/page-agent.headless.js?autoInit=false');
+  }
+  sources.push('https://unpkg.com/page-agent@1.12.2/dist/iife/page-agent.demo.js');
+  sources.push('https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js');
+  var si=0;
+  /* 站外页面没有主站的 lib/zod-v4.umd.js，必须先注入真实 Zod v4：
+     Page-Agent 内部是 Zod v4，customTools 的 inputSchema 若是 duck-typed 假 schema，
+     v4 解析器（_zod_parse / e_safeParse）读内部结构时会 undefined.length 崩溃，
+     手搓 schema 无法模拟 v4 内部（bag/checks/run 链），只有真实 v4 schema 可靠。 */
+  function ensureZodV4(cb){
+    if((window.ZodV4&&window.ZodV4.z)||window.zod_v4){cb();return;}
+    if(!MAIN_URL){cb();return;}
+    var zs=document.createElement('script');
+    zs.crossOrigin='anonymous';
+    zs.src=MAIN_URL+'lib/zod-v4.umd.js';
+    zs.onload=function(){cb();};
+    zs.onerror=function(){console.warn('[BK CAID Copilot] zod-v4 注入失败，customTools 将退化为 duck-typed schema（v4 构建的 Page-Agent 可能报 length 错误）');cb();};
+    (document.head||document.documentElement).appendChild(zs);
+  }
+  function tryLoad(){
+    if(si>=sources.length){showNote('CAID 副驾核心脚本加载失败，请检查网络 / CSP');return;}
+    var s=document.createElement('script');
+    s.crossOrigin='anonymous';
+    s.src=sources[si];
+    s.onerror=function(){si++;tryLoad();};
+    s.onload=function(){
+      ensureZodV4(function(){
+      showNote('CAID 副驾已启动（魔改版）');
+      BK_CT = buildBkCustomTools(); /* Zod v4 就绪后用真实 schema 重建 customTools */
+      var paCfg_={language:${JSON.stringify(lang)},instructions:{system:ENH_SP||''},experimentalScriptExecutionTool:true,enableMask:true,customTools:BK_CT};
+      if(LLMCFG){
+        paCfg_.model=LLMCFG.model;
+        paCfg_.baseURL=LLMCFG.baseUrl||'';
+        paCfg_.apiKey=LLMCFG.apiKey;
+      }else{
+        paCfg_.model='qwen3.5-plus';
+        paCfg_.baseURL='https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
+        paCfg_.apiKey='NA';
+      }
+      try{
+        if(window.agent&&typeof window.agent.dispose==='function'){try{window.agent.dispose();}catch(_){}}
+        window.agent=new window.PageAgent(paCfg_);
+        bindCpEvents(window.agent);
+      }catch(err){
+        console.error('[BK CAID Copilot] new agent error:',err);
+        showNote('副驾初始化失败:'+err.message);
+      }
+      });
+    };
+    (document.head||document.documentElement).appendChild(s);
+  }
+  function showNote(text) {
+    setTimeout(function(){
+      var note = document.createElement('div');
+      note.style.cssText='position:fixed;left:50%;bottom:120px;transform:translateX(-50%);padding:10px 18px;background:rgba(22,25,38,.9);color:#e6e8f0;border:1px solid rgba(255,255,255,.1);border-radius:999px;font-size:13px;z-index:2147483645;backdrop-filter:blur(8px);box-shadow:0 10px 32px rgba(0,0,0,.35);animation:pa-popin .3s ease;';
+      var styleEl = document.createElement('style');
+      styleEl.textContent = '@keyframes pa-popin { from { opacity:0; transform:translateX(-50%) translateY(10px);} to { opacity:1; transform:translateX(-50%) translateY(0);} }';
+      document.head.appendChild(styleEl);
+      note.textContent = text;
+      document.body.appendChild(note);
+      setTimeout(function(){ if (note.parentNode) note.parentNode.removeChild(note); }, 3500);
+    }, 400);
+  }
+  tryLoad();
+})();
+  `.trim();
+  return 'javascript:' + encodeURIComponent(code);
+}
+
+init();
+
+// Add keyframes for spinner
+const ks = document.createElement('style');
+ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+document.head.appendChild(ks);
+// 动态加载 Page-Agent demo 脚本（多源 fallback，避免单个 CDN 不通）
+// 脚本加载完毕后，无条件走 Page-Agent 魔改版初始化路径（含 free LLM 试重建 + 回落保护）
+if (window.addEventListener) {
+  window.addEventListener('load', () => loadPaScript(initModdedPageAgent));
+} else {
+  loadPaScript(initModdedPageAgent);
+}
