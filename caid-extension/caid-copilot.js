@@ -31,25 +31,21 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function openOptions() {
-    console.log('[CAID] ⚙ 设置按钮被点击');
-    // MAIN world 注入脚本无 chrome.runtime API（MV3 限制），
-    // 通过自定义 DOM 事件桥接到 ISOLATED world 的 content.js，
-    // 由后者用 chrome.runtime.sendMessage 让 background 打开 options 页。
-    try {
-      console.log('[CAID] ⚙ 派发 __caid_open_options 事件 → content.js 桥接');
-      window.dispatchEvent(new CustomEvent('__caid_open_options'));
-      // 500ms 后若事件桥没弹窗，尝试 window.open 兜底（部分环境下 MAIN world 可直接开扩展页）
-      setTimeout(function () {
-        var url = (window.__CAID_OPTIONS_URL || '') || '';
-        if (!url) { console.warn('[CAID] ⚙ __CAID_OPTIONS_URL 未定义，无法 fallback'); return; }
-        console.log('[CAID] ⚙ fallback: window.open(', url, ')');
-        var w = window.open(url, '_blank');
-        if (!w) console.warn('[CAID] ⚙ window.open 返回 null（可能被浏览器拦截）');
-      }, 500);
-    } catch (e) {
-      console.error('[CAID] ⚙ openOptions 异常:', e);
-    }
+  // 内联设置面板：直接在主站 DOM 的副驾面板里展开，彻底绕开被拦截器拦的 chrome-extension://options.html 导航
+  function toggleSettings() {
+    var panel = document.getElementById('cpSettingsPanel');
+    if (!panel) return;
+    if (panel.classList.toggle('open')) fillSettings();
+  }
+  function fillSettings() {
+    var cfg = window.__CAID_LLM_CFG || {};
+    var hasKey = cfg.apiKey && cfg.apiKey !== 'NA' && cfg.apiKey !== 'null' && cfg.apiKey !== 'undefined';
+    var f = document.getElementById('cpUseFree'), m = document.getElementById('cpModel'),
+        u = document.getElementById('cpBaseUrl'), k = document.getElementById('cpApiKey');
+    if (f) f.checked = !hasKey;
+    if (m) m.value = cfg.model || 'qwen3.5-plus';
+    if (u) u.value = cfg.baseURL || 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
+    if (k) k.value = (cfg.apiKey && cfg.apiKey !== 'NA') ? cfg.apiKey : '';
   }
 
   // ---------- 面板 UI（自带样式，不依赖宿主页 CSS）----------
@@ -80,7 +76,7 @@
 #caidExtCopilot .cp-tools{padding:0 0 8px;}
 #caidExtCopilot .cp-input-row{padding:10px 12px;border-top:1px solid #1f3650;display:flex;gap:8px;}
 #caidExtCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
-#caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}
+#caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}\n#caidExtCopilot .cp-settings{padding:10px 14px;background:#0b1a2a;border-bottom:1px solid #1f3650;display:none;}\n#caidExtCopilot .cp-settings.open{display:block;}\n#caidExtCopilot .cp-settings label{display:block;margin:8px 0 3px;font-size:12px;color:#9fb6cf;}\n#caidExtCopilot .cp-settings input[type=text],#caidExtCopilot .cp-settings input[type=password]{width:100%;padding:6px 8px;border-radius:6px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;box-sizing:border-box;font-size:12px;}\n#caidExtCopilot .cp-settings .cp-row{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}\n#caidExtCopilot .cp-settings .cp-save{background:#185FA5;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px;}\n#caidExtCopilot .cp-settings .cp-hint{color:#7a8ba0;font-size:11px;margin-top:6px;line-height:1.5;}\n#caidExtCopilot .cp-settings .cp-saved{color:#2a9d5c;font-size:12px;margin-top:6px;min-height:14px;}
 `;
   function buildPanel() {
     const style = document.createElement('style');
@@ -98,6 +94,18 @@
         '<button class="cp-close" id="cpClose" title="关闭">×</button>' +
       '</div>' +
       '<div class="cp-api-info" id="cpApiInfo"></div>' +
+      '<div class="cp-settings" id="cpSettingsPanel">' +
+        '<div class="cp-row"><input type="checkbox" id="cpUseFree" checked /> <label style="margin:0" for="cpUseFree">使用 DashScope 免费代理</label></div>' +
+        '<label>模型 (model)</label>' +
+        '<input type="text" id="cpModel" placeholder="qwen3.5-plus" />' +
+        '<label>Base URL</label>' +
+        '<input type="text" id="cpBaseUrl" placeholder="https://..." />' +
+        '<label>API Key</label>' +
+        '<input type="password" id="cpApiKey" placeholder="留空则用免费代理" />' +
+        '<button class="cp-save" id="cpSave">保存</button>' +
+        '<div class="cp-saved" id="cpSaved"></div>' +
+        '<div class="cp-hint">默认走免费代理；填自己的 OpenAI / 兼容端点后自动切换。设置保存在本机扩展存储，并会同步回主站。</div>' +
+      '</div>' +
       '<div class="cp-activity" id="cpActivity"></div>' +
       '<div class="cp-log" id="cpLog"></div>' +
       '<div class="cp-search" id="cpSearch" style="display:none;"></div>' +
@@ -472,7 +480,7 @@
       : !hasKey ? '<span class="cp-api-badge nokey">无 API Key</span>'
       : '<span class="cp-api-badge free">免费代理</span>';
     apiInfoEl.innerHTML = badge + '<span>' + cpEscapeHtml(config.model || '未知') + '</span>';
-    if (!hasKey) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = openOptions; }
+    if (!hasKey) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
   function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); renderApiInfo(); }
@@ -570,7 +578,28 @@
   if (inputEl) inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); } });
   if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidExtCopilot'); if (cp) cp.classList.remove('open'); });
   var settingsEl = document.getElementById('cpSettings');
-  if (settingsEl) settingsEl.addEventListener('click', openOptions);
+  if (settingsEl) settingsEl.addEventListener('click', toggleSettings);
+
+  // 内联设置表单：保存经 content.js 事件桥接写入 chrome.storage.local（MAIN world 无 chrome.*）
+  var saveEl = document.getElementById('cpSave');
+  if (saveEl) saveEl.addEventListener('click', function () {
+    var f = document.getElementById('cpUseFree');
+    var m = document.getElementById('cpModel');
+    var u = document.getElementById('cpBaseUrl');
+    var k = document.getElementById('cpApiKey');
+    var useFree = f ? f.checked : true;
+    var apiKey = (k && k.value) ? k.value.trim() : '';
+    var model = (m && m.value) ? m.value.trim() : 'qwen3.5-plus';
+    var baseUrl = (u && u.value) ? u.value.trim() : '';
+    var cfg = { model: model, baseURL: baseUrl, apiKey: useFree ? 'NA' : apiKey, custom: !useFree };
+    try { window.dispatchEvent(new CustomEvent('__caid_save_settings', { detail: cfg })); } catch (e) {}
+    // 立即更新本会话配置，便于当前副驾恢复后使用
+    window.__CAID_LLM_CFG = cfg;
+    if (config) { config.model = cfg.model; config.baseURL = cfg.baseURL; config.apiKey = cfg.apiKey; }
+    renderApiInfo();
+    var saved = document.getElementById('cpSaved');
+    if (saved) { saved.textContent = '已保存 ✓ 重新发送消息即生效'; setTimeout(function () { if (saved) saved.textContent = ''; }, 2500); }
+  });
 
   // ---------- 断点续传：若本次启动携带上次跳转的上下文，恢复历史并自动继续 ----------
   (async function resumeIfNeeded() {

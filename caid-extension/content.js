@@ -58,6 +58,16 @@
     }
   });
 
+  // MAIN world 的副驾内联设置表单通过此事件把配置写入扩展存储
+  // （MAIN world 无 chrome.*，由 ISOLATED world 用 chrome.storage.local 写入；
+  //  caid-bridge.js 监听 storage.onChanged 会把扩展配置同步回主站，实现双向同步）
+  window.addEventListener('__caid_save_settings', function (e) {
+    var cfg = e && e.detail;
+    if (!cfg) return;
+    console.log('[CAID-content] 收到 __caid_save_settings，写入 chrome.storage.local.caidLlm');
+    try { chrome.storage.local.set({ caidLlm: cfg }); } catch (ex) {}
+  });
+
   // MAIN world 的 navigate_to_url 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
   window.addEventListener('__caid_store_handoff', function (e) {
     var h = e && e.detail;
