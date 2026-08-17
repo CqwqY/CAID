@@ -85,12 +85,45 @@
       // caid-copilot.js（MAIN world）设置的 window.__CAID_BOOTED 在这里永远读不到。
       // 改查 DOM（DOM 在两个 world 间共享）—— 面板已存在就直接打开，不再重复发 BOOT_COPILOT。
       var p = document.getElementById('caidExtCopilot');
-      if (p) { p.classList.add('open'); return; }
+      if (p) {
+        p.classList.add('open');
+        // 面板打开后隐藏 🤖 按钮（MAIN world 的保活 observer 通过 data-panel-open 识别这是有意隐藏，不会恢复）
+        btn.setAttribute('data-panel-open', '1');
+        btn.style.display = 'none';
+        return;
+      }
       chrome.runtime.sendMessage({ type: 'BOOT_COPILOT' });
     });
 
     document.body.appendChild(btn);
   }
+
+  // 🤖 按钮与面板的显隐同步（双向）：
+  // - 面板打开（含首次 BOOT_COPILOT 注入后默认 open）→ 隐藏按钮，避免盖在面板上；
+  // - 面板关闭 → 恢复按钮。
+  // DOM 在 ISOLATED/MAIN world 间共享，直接观察面板 class 变化即可，无需 MAIN world 额外派发事件。
+  // 用 data-panel-open 标记让 MAIN world 的保活 observer 识别这是有意隐藏，不会强行恢复。
+  var _panelWatch = null;
+  function watchPanel() {
+    var p = document.getElementById('caidExtCopilot');
+    if (!p) { setTimeout(watchPanel, 500); return; }
+    if (_panelWatch) return;
+    function syncBtn() {
+      var btn = document.getElementById('caidLauncher');
+      if (!btn) return;
+      if (p.classList.contains('open')) {
+        btn.setAttribute('data-panel-open', '1');
+        btn.style.display = 'none';
+      } else {
+        btn.removeAttribute('data-panel-open');
+        btn.style.display = '';
+      }
+    }
+    syncBtn(); // 初始同步：面板创建时可能已是 open 状态（首次注入后默认打开）
+    _panelWatch = new MutationObserver(syncBtn);
+    _panelWatch.observe(p, { attributes: true, attributeFilter: ['class'] });
+  }
+  watchPanel();
 
   addButton();
 

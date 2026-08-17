@@ -169,17 +169,25 @@
   // 注意 MAIN 与 ISOLATED world 的 window 是隔离的，但 DOM 共享，故用 getElementById 判定可靠。
   function ensureLauncher() {
     var existing = document.getElementById('caidLauncher');
+    // 面板开着时按钮应保持隐藏（与 content.js watchPanel 的 data-panel-open 语义一致）
+    var panelOpen = false;
+    try { var cpEl = document.getElementById('caidExtCopilot'); panelOpen = !!(cpEl && cpEl.classList.contains('open')); } catch (e) {}
     if (existing) {
       // 按钮已存在（通常由 content.js ISOLATED world 创建）—— 升级样式到最高优先级
       existing.style.setProperty('z-index', '2147483647', 'important');
       existing.style.setProperty('pointer-events', 'auto', 'important');
+      if (panelOpen) {
+        existing.setAttribute('data-panel-open', '1');
+        existing.style.setProperty('display', 'none', 'important');
+      }
       return;
     }
     var btn = document.createElement('div');
     btn.id = 'caidLauncher';
     btn.textContent = '🤖 CAID 副驾';
     btn.title = '在当前页面启动 CAID 智能体副驾';
-    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647!important;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;pointer-events:auto!important;';
+    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647!important;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;pointer-events:auto!important;' + (panelOpen ? 'display:none!important;' : '');
+    if (panelOpen) btn.setAttribute('data-panel-open', '1');
     btn.addEventListener('click', function () {
       var cp = document.getElementById('caidExtCopilot');
       if (cp) cp.classList.add('open');
@@ -939,6 +947,8 @@
       _launcherGuardTimer = null;
       var btn = document.getElementById('caidLauncher');
       if (!btn) { ensureLauncher(); return; }
+      // 面板打开时按钮是有意隐藏的（content.js 设置了 data-panel-open），保活逻辑必须跳过，否则按钮盖在面板上
+      if (btn.getAttribute('data-panel-open') === '1') return;
       // 确保按钮可见、可点击、z-index 最高
       var s = getComputedStyle(btn);
       if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') {
