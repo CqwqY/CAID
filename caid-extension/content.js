@@ -207,7 +207,24 @@
   }
   (async function () {
     const fired = await tryAutoResumeOnce();
-    // 兜底：若首轮未命中（旧页 store 尚未落库即发生跳转的竞态），700ms 后再查一次
-    if (!fired) setTimeout(function () { tryAutoResumeOnce(); }, 700);
+    // 兜底1：若首轮未命中（旧页 store 尚未落库即发生跳转的竞态），700ms 后再查一次
+    if (!fired) {
+      const fired2 = await new Promise(function (resolve) {
+        setTimeout(function () { tryAutoResumeOnce().then(resolve); }, 700);
+      });
+      // 兜底2：若 storage 两次都失败（"Access to storage is not allowed"），
+      // 直接发消息让 background（永远有完整权限）查 handoff 并注入副驾
+      if (!fired2) {
+        console.log('[CAID-R] tryAutoResume: storage 两次均失败，请求 background 代查并注入');
+        try {
+          chrome.runtime.sendMessage({ type: 'TRY_RESUME_FROM_BG' }, function (resp) {
+            if (resp && resp.ok) console.log('[CAID-R] tryAutoResume: background 已代为注入副驾');
+            else console.log('[CAID-R] tryAutoResume: background 也无有效 handoff');
+          });
+        } catch (e) {
+          console.warn('[CAID-R] tryAutoResume: TRY_RESUME_FROM_BG 消息发送失败', e);
+        }
+      }
+    }
   })();
 })();

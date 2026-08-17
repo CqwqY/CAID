@@ -173,7 +173,7 @@
     btn.id = 'caidLauncher';
     btn.textContent = '🤖 CAID 副驾';
     btn.title = '在当前页面启动 CAID 智能体副驾';
-    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483646;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;';
+    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647!important;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;pointer-events:auto!important;';
     btn.addEventListener('click', function () {
       var cp = document.getElementById('caidExtCopilot');
       if (cp) cp.classList.add('open');
@@ -309,6 +309,7 @@
         // 检查点已保存，新标签副驾会自动续跑（控制权转移到新标签，原页面保留）。
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
+        cleanupAgentOverlays();  // 清理残留覆盖层，避免遮挡原页 UI
         // 【关键修复】不再用 location.href 替换当前页，而是新开标签，保留用户原来的页面（含 CAID 工作台）。
         // MAIN world 下 chrome.tabs 不可用 → 改为发消息给 background，由 service worker 用特权 API chrome.tabs.create 打开
         // （可靠、不被弹窗拦截；新标签加载完成后 background 的 tabs.onUpdated 会自动注入副驾并续跑）。
@@ -769,6 +770,27 @@
     }
     if (statusEl) statusEl.textContent = '已停止';
     if (stopEl) stopEl.classList.remove('running');
+    // 清理 PageAgent 可能残留的高 z-index 覆盖层（观察/高亮/标注等），
+    // 防止它们遮挡 🤖 启动按钮导致"按钮点不开"。
+    cleanupAgentOverlays();
+    isHandingOff = false;
+  }
+
+  // 清理 PageAgent 运行期间可能创建的覆盖层 DOM，恢复页面可交互性
+  function cleanupAgentOverlays() {
+    try {
+      // PageAgent 常见残留选择器（观察框、高亮、标注等）
+      var selectors = [
+        '[data-page-agent]', '.pa-overlay', '.pa-highlight', '.pa-observation',
+        '#page-agent-root', '#page-agent-ui', '.page-agent-screenshot',
+        '[style*="z-index"][style*="2147483647"]', '[style*="z-index"][style*="2147483646"]'
+      ];
+      selectors.forEach(function (sel) {
+        try {
+          document.querySelectorAll(sel).forEach(function (el) { el.remove(); });
+        } catch (_) {}
+      });
+    } catch (_) {}
   }
   if (stopEl) stopEl.addEventListener('click', forceStop);
   // 全局快捷键：Ctrl+. (或 Cmd+.) 强行终止运行中任务

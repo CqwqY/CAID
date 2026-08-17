@@ -38,6 +38,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false; // 同步处理，无需异步 sendResponse
   }
 
+  // content.js 在目标页 storage 两次均失败时的终极兜底：
+  // 由 background（永远有完整权限）查 handoff，若有则直接 bootCopilot 注入副驾。
+  if (msg && msg.type === 'TRY_RESUME_FROM_BG') {
+    const tabId = sender.tab && sender.tab.id;
+    const tabUrl = sender.tab && sender.tab.url;
+    chrome.storage.session.get(['caidHandoff'], function (got) {
+      var h = got && got.caidHandoff;
+      var fresh = h && (!h.ts || Date.now() - h.ts <= 120000);
+      if (fresh && tabUrl && tabUrl !== (h.fromUrl || '') && /^https?:\/\//i.test(tabUrl)) {
+        chrome.storage.session.remove(['caidHandoff']);
+        console.log('[CAID-R] TRY_RESUME_FROM_BG: 检测到有效 handoff, goal=', h.goal, ' 注入副驾到', tabUrl);
+        bootCopilot(tabId, tabUrl, h);
+        sendResponse({ ok: true });
+      } else {
+        console.log('[CAID-R] TRY_RESUME_FROM_BG: 无有效 handoff 或不满足条件');
+        sendResponse({ ok: false });
+      }
+    });
+    return true; // 异步 sendResponse
+  }
+
   if (msg && msg.type === 'OPEN_OPTIONS') {
     console.log('[CAID-bg] 收到 OPEN_OPTIONS，由 background（特权上下文）打开 options 页');
     try {
