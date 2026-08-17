@@ -310,29 +310,18 @@
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
         // 【关键修复】不再用 location.href 替换当前页，而是新开标签，保留用户原来的页面（含 CAID 工作台）。
-        // 三级策略：① chrome.tabs.create（最可靠，扩展特权 API）；② window.open（标准 API）；③ anchor 点击（最后兜底）。
-        let opened = false;
+        // MAIN world 下 chrome.tabs 不可用 → 改为发消息给 background，由 service worker 用特权 API chrome.tabs.create 打开
+        // （可靠、不被弹窗拦截；新标签加载完成后 background 的 tabs.onUpdated 会自动注入副驾并续跑）。
         try {
-          if (typeof chrome !== 'undefined' && chrome.tabs && typeof chrome.tabs.create === 'function') {
-            chrome.tabs.create({ url: url, active: true });
-            opened = true;
-            console.log('[CAID-R] navigate_to_url: 通过 chrome.tabs.create 打开新标签');
-          } else { throw new Error('no-chrome-tabs'); }
+          if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: true });
+            console.log('[CAID-R] navigate_to_url: 已请求 background 经 chrome.tabs.create 打开新标签 (url=' + url + ')');
+          } else { throw new Error('no-chrome-runtime'); }
         } catch (e) {
-          console.warn('[CAID-R] navigate_to_url: chrome.tabs.create 失败, 回退 window.open:', e.message || e);
-          try {
-            window.open(url, '_blank', 'noopener,noreferrer');
-            opened = true;
-            console.log('[CAID-R] navigate_to_url: 通过 window.open 打开新标签');
-          } catch (e2) {
-            console.warn('[CAID-R] navigate_to_url: window.open 也失败, 最后用 anchor:', e2.message || e2);
-          }
-        }
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-          document.body.appendChild(a); a.click(); a.remove();
-          console.log('[CAID-R] navigate_to_url: 通过 anchor <a> 点击打开新标签（可能被弹窗拦截器拦）');
+          // 兜底：MAIN world 里 window.open 仍可用（仅当 runtime 消息失败时才走到这里）
+          console.warn('[CAID-R] navigate_to_url: 消息失败, 回退 window.open:', e.message || e);
+          try { window.open(url, '_blank', 'noopener,noreferrer'); }
+          catch (e2) { console.warn('[CAID-R] navigate_to_url: window.open 也失败:', e2.message || e2); }
         }
         return `✅ Opened in new tab (task continues there): ${url}`;
       }
@@ -351,15 +340,19 @@
           if (h) { console.log('[CAID-R] open_url_in_new_tab: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
           else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
         } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: 保存续传上下文失败', e); }
-        // 优先 chrome.tabs.create（扩展页/MAIN world 有 chrome.* 时可靠），否则用 anchor 新标签点击。
+        // MAIN world 下 chrome.tabs 不可用 → 改发消息给 background，由 service worker 用 chrome.tabs.create 打开
         try {
-          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
-            chrome.tabs.create({ url: url, active: true });
-          } else { throw new Error('no-chrome-tabs'); }
+          if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: false });
+            console.log('[CAID-R] open_url_in_new_tab: 已请求 background 经 chrome.tabs.create 打开新标签 (url=' + url + ')');
+          } else { throw new Error('no-chrome-runtime'); }
         } catch (e) {
-          const a = document.createElement('a');
-          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-          document.body.appendChild(a); a.click(); a.remove();
+          console.warn('[CAID-R] open_url_in_new_tab: 消息失败, 回退 anchor:', e.message || e);
+          try {
+            const a = document.createElement('a');
+            a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+            document.body.appendChild(a); a.click(); a.remove();
+          } catch (e2) { console.warn('[CAID-R] open_url_in_new_tab: anchor 也失败:', e2.message || e2); }
         }
         // 当前页 agent 无法操作新标签，立即终止本页 agent，使控制权转移到新标签续跑的副驾。
         isHandingOff = true;

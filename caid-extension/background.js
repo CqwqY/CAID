@@ -19,6 +19,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (tabId) bootCopilot(tabId, null, msg.handoff);
     return false;
   }
+  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具经此消息请求 background
+  // 用特权 API chrome.tabs.create 打开新标签（MAIN world 无 chrome.tabs，window.open 又易被拦截）。
+  // 新标签加载完成后，下方 tabs.onUpdated 会自动检测 caidHandoff 并注入副驾续跑。
+  if (msg && msg.type === 'NAVIGATE_TO_URL') {
+    try {
+      const opts = { url: msg.url, active: msg.active !== false };
+      chrome.tabs.create(opts, function (tab) {
+        if (chrome.runtime.lastError) {
+          console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
+        } else {
+          console.log('[CAID-R] NAVIGATE_TO_URL: background 已用 chrome.tabs.create 打开新标签, tabId=', tab && tab.id, ' url=', msg.url);
+        }
+      });
+    } catch (e) {
+      console.error('[CAID-R] NAVIGATE_TO_URL: 异常', e);
+    }
+    return false; // 同步处理，无需异步 sendResponse
+  }
+
   if (msg && msg.type === 'OPEN_OPTIONS') {
     console.log('[CAID-bg] 收到 OPEN_OPTIONS，由 background（特权上下文）打开 options 页');
     try {
