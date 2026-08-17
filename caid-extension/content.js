@@ -153,6 +153,21 @@
     }
   });
 
+  // 通用 background 消息桥：MAIN world（caid-copilot.js，无 chrome.*）通过 DOM 事件转发任意消息给 background。
+  // caidSendToBg 在扩展页直连 chrome.runtime.sendMessage（content.js 不运行），
+  // 在正则网页派发 __caid_bg_message 事件 → 本监听器转发。
+  // 消息类型：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等。
+  window.addEventListener('__caid_bg_message', function (e) {
+    var msg = e && e.detail;
+    if (!msg || !msg.type) return;
+    try {
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+      chrome.runtime.sendMessage(msg);
+    } catch (err) {
+      console.error('[CAID-content] 转发 bg_message 失败:', err.message || err);
+    }
+  });
+
   // MAIN world 的副驾在任务正常结束 / 被强行终止时派发此事件，清除续传上下文，避免误触发
   window.addEventListener('__caid_clear_handoff', function () {
     sessionRemove(['caidHandoff']).catch(function () {});

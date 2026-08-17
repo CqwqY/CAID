@@ -590,11 +590,16 @@
     _lastCpTs = now;
     try {
       var h = buildHandoff(null);         // toUrl=null：任何跳转目的地都可续跑
-      if (h) { console.log('[CAID-R] checkpoint: 续传快照已派发, goal=', h.goal); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
+      if (h) {
+        console.log('[CAID-R] checkpoint: 续传快照已派发, goal=', h.goal);
+        window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+        caidSendToBg({ type: 'CHECKPOINT', handoff: h });  // 扩展页直连 background（content.js 不运行时兜底）
+      }
     } catch (e) {}
   }
   function clearCheckpoint() {
     try { window.dispatchEvent(new CustomEvent('__caid_clear_handoff')); } catch (e) {}
+    caidSendToBg({ type: 'CLEAR_CHECKPOINT' });
   }
 
   // ---------- 导航请求桥接：MAIN world 无 chrome.*，统一经 DOM 事件交给 ISOLATED world 的 content.js 转发 ----------
@@ -628,6 +633,22 @@
     }
     // ③ 终极兜底：仅打开页面（无法续跑）
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e3) {}
+  }
+
+  // ---------- 通用 background 消息桥 ----------
+  // 与 caidRequestNavigate 同理：扩展页（MAIN world 有 chrome API）直接发消息；
+  // 正则网页（MAIN world 无 chrome API）改派发 __caid_bg_message DOM 事件，由 content.js（ISOLATED world）转发。
+  // 用途：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等消息。
+  function caidSendToBg(msg) {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        chrome.runtime.sendMessage(msg);
+        return;
+      }
+    } catch (e) {}
+    try {
+      window.dispatchEvent(new CustomEvent('__caid_bg_message', { detail: msg }));
+    } catch (e) {}
   }
 
   // ---------- 创建 agent ----------
@@ -676,7 +697,7 @@
     if (!hasKey && !isFreeProxy) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
-  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) clearCheckpoint(); } renderApiInfo(); }
+  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
@@ -762,6 +783,7 @@
     if (!inputEl || !agent) return;
     var t = inputEl.value.trim(); if (!t) return; inputEl.value = '';
     _currentGoal = t; // 【续传兜底】保存原始指令，buildHandoff 在 history/inputEl 均空时使用
+    caidSendToBg({ type: 'AGENT_ACTIVE', goal: t, fromUrl: location.href });  // 通知 background：本 tab 有活跃 agent，页面导航时自动跟随
     agent.history = agent.history || [];
     agent.history.push({ type: 'user', content: t });
     agent.dispatchEvent(new Event('historychange'));
@@ -791,6 +813,7 @@
     // 防止它们遮挡 🤖 启动按钮导致"按钮点不开"。
     cleanupAgentOverlays();
     isHandingOff = false;
+    caidSendToBg({ type: 'AGENT_INACTIVE' });  // 通知 background：本 tab agent 已停止，不再自动跟随
   }
 
   // 清理 PageAgent 运行期间可能创建的覆盖层 DOM，恢复页面可交互性
