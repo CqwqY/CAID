@@ -42,6 +42,37 @@
   });
   function caidNet(url, init) {
     return new Promise(function (resolve, reject) {
+      // 扩展页（如自己接管的 newtab）的 MAIN world 拥有完整 chrome.*：
+      // 直接经 runtime 转发 background 真正发起（复用 CAID_LLM_FETCH 分支），
+      // 绕过 ISOLATED world 的 postMessage 桥（content.js 不在该环境运行，桥无人接收）。
+      // 普通页注入的 MAIN world 没有 chrome.*，会落到下面的 postMessage 桥。
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        var cmethod = (init && init.method) || 'GET';
+        var cheaders = _normHeaders(init && init.headers);
+        var cbodyText = null, cbodyB64 = null;
+        if (init && init.body != null) {
+          if (typeof init.body === 'string') cbodyText = init.body;
+          else if (init.body instanceof ArrayBuffer) cbodyB64 = _b64enc(new Uint8Array(init.body));
+          else if (ArrayBuffer.isView(init.body)) cbodyB64 = _b64enc(new Uint8Array(init.body.buffer, init.body.byteOffset, init.body.byteLength));
+          else cbodyText = String(init.body);
+        }
+        try {
+          chrome.runtime.sendMessage(
+            { type: 'CAID_LLM_FETCH', url: String(url), method: cmethod, headers: cheaders, bodyText: cbodyText, bodyB64: cbodyB64 },
+            function (resp) {
+              if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message || 'runtime.lastError')); return; }
+              if (!resp) { reject(new Error('CAID_LLM_FETCH: 无响应')); return; }
+              if (resp.error) { reject(new Error(resp.error)); return; }
+              try {
+                var body = resp.bodyB64 ? _b64dec(resp.bodyB64) : (resp.bodyText || '');
+                resolve(new Response(body, { status: resp.status || 200, statusText: resp.statusText || '', headers: resp.headers || {} }));
+              } catch (e) { reject(e); }
+            }
+          );
+        } catch (e) { reject(e); }
+        return;
+      }
+      // 原 postMessage 桥（普通页 MAIN world，无 chrome.*，需 ISOLATED world 的 content.js 转发）
       var id = 'cf' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
       _fetchPending.set(id, function (resp) {
         if (resp.error) { reject(new Error(resp.error)); return; }
@@ -133,6 +164,23 @@
 #caidExtCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
 #caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}\n#caidExtCopilot .cp-settings{padding:10px 14px;background:#0b1a2a;border-bottom:1px solid #1f3650;display:none;}\n#caidExtCopilot .cp-settings.open{display:block;}\n#caidExtCopilot .cp-settings label{display:block;margin:8px 0 3px;font-size:12px;color:#9fb6cf;}\n#caidExtCopilot .cp-settings input[type=text],#caidExtCopilot .cp-settings input[type=password]{width:100%;padding:6px 8px;border-radius:6px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;box-sizing:border-box;font-size:12px;}\n#caidExtCopilot .cp-settings .cp-row{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}\n#caidExtCopilot .cp-settings .cp-save{background:#185FA5;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px;}\n#caidExtCopilot .cp-settings .cp-hint{color:#7a8ba0;font-size:11px;margin-top:6px;line-height:1.5;}\n#caidExtCopilot .cp-settings .cp-saved{color:#2a9d5c;font-size:12px;margin-top:6px;min-height:14px;}
 `;
+  // 自建启动按钮：仅当 content.js（ISOLATED world）未创建 #caidLauncher 时调用。
+  // 用于扩展页 / 自己接管的 newtab —— content script 不注入该环境，没有常驻启动按钮。
+  // 注意 MAIN 与 ISOLATED world 的 window 是隔离的，但 DOM 共享，故用 getElementById 判定可靠。
+  function ensureLauncher() {
+    if (document.getElementById('caidLauncher')) return;
+    var btn = document.createElement('div');
+    btn.id = 'caidLauncher';
+    btn.textContent = '🤖 CAID 副驾';
+    btn.title = '在当前页面启动 CAID 智能体副驾';
+    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483646;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;';
+    btn.addEventListener('click', function () {
+      var cp = document.getElementById('caidExtCopilot');
+      if (cp) cp.classList.add('open');
+    });
+    document.body.appendChild(btn);
+  }
+
   function buildPanel() {
     const style = document.createElement('style');
     style.textContent = STYLE;
@@ -175,6 +223,12 @@
     return aside;
   }
   buildPanel();
+  // content.js 不运行在扩展页 / 接管的 new标签页：这些环境没有 #caidLauncher，这里自建一个。
+  if (!document.getElementById('caidLauncher')) {
+    var _cpEl0 = document.getElementById('caidExtCopilot');
+    if (_cpEl0) _cpEl0.classList.remove('open'); // 扩展页默认收起，避免每次开新标签占满右栏
+    ensureLauncher();
+  }
 
   const logEl = document.getElementById('cpLog');
   const statusEl = document.getElementById('cpStatus');

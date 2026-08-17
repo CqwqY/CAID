@@ -72,6 +72,15 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) bootCopilot(tab.id, tab.url, null);
 });
 
+// 自己接管的 newtab（扩展页，content script 不注入）加载完成后自动启动副驾，
+// 使其自带 🤖 启动按钮（面板默认收起，由 caid-copilot 自建 launcher 打开）。
+// 复用 bootCopilot 链路：注入 zod-v4 + page-agent + LLM_CFG + caid-copilot。
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status !== 'complete') return;
+  const nt = chrome.runtime.getURL('newtab.html');
+  if (tab && tab.url && tab.url.indexOf(nt) === 0) bootCopilot(tabId, tab.url, null);
+});
+
 
 async function bootCopilot(tabId, tabUrl, handoff) {
   try {
