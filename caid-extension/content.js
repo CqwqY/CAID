@@ -81,11 +81,11 @@
       'user-select:none;';
 
     btn.addEventListener('click', function () {
-      if (window.__CAID_BOOTED) {
-        var p = document.getElementById('caidExtCopilot');
-        if (p) p.classList.add('open');
-        return;
-      }
+      // ⚠️ MV3 关键：ISOLATED world 和 MAIN world 的 window 属性是隔离的！
+      // caid-copilot.js（MAIN world）设置的 window.__CAID_BOOTED 在这里永远读不到。
+      // 改查 DOM（DOM 在两个 world 间共享）—— 面板已存在就直接打开，不再重复发 BOOT_COPILOT。
+      var p = document.getElementById('caidExtCopilot');
+      if (p) { p.classList.add('open'); return; }
       chrome.runtime.sendMessage({ type: 'BOOT_COPILOT' });
     });
 

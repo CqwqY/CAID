@@ -16,7 +16,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'BOOT_COPILOT') {
     const tabId = sender.tab && sender.tab.id;
     console.log('[CAID-R] BOOT_COPILOT 收到, tabId=', tabId, ' handoff?', !!(msg.handoff));
-    if (tabId) bootCopilot(tabId, null, msg.handoff);
+    if (tabId) {
+      if (msg.handoff) {
+        bootCopilot(tabId, null, msg.handoff);
+      } else {
+        // 先尝试直接打开已有面板（避免重复注入 zod-v4 / page-agent 可能出错）
+        ensureCopilotOpen(tabId);
+      }
+    }
     return false;
   }
   // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具经此消息请求 background
@@ -149,7 +156,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // 点击工具栏图标 → 在当前活动标签启动副驾
 chrome.action.onClicked.addListener((tab) => {
-  if (tab && tab.id) bootCopilot(tab.id, tab.url, null);
+  if (tab && tab.id) ensureCopilotOpen(tab.id);
 });
 
 // 关键改进：在任意标签页加载完成时检查是否有待续传上下文（caidHandoff）。
@@ -185,6 +192,29 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   });
 });
 
+
+// 轻量级"打开面板"：先检查面板是否已存在（已 boot 过），存在则直接 add('open')，
+// 不存在才走全量 bootCopilot（避免重复注入 zod-v4 / page-agent 导致潜在错误）。
+async function ensureCopilotOpen(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        var ex = document.getElementById('caidExtCopilot');
+        if (ex) { ex.classList.add('open'); return true; }
+        return false;
+      },
+      world: 'MAIN'
+    });
+    if (results && results[0] && results[0].result) {
+      console.log('[CAID-bg] 面板已存在，直接打开');
+      return;
+    }
+  } catch (e) {
+    console.warn('[CAID-bg] 检查面板失败，回退全量注入:', e.message || e);
+  }
+  bootCopilot(tabId, null, null);
+}
 
 async function bootCopilot(tabId, tabUrl, handoff) {
   try {

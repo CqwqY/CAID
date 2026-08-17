@@ -168,7 +168,13 @@
   // 用于扩展页 / 自己接管的 newtab —— content script 不注入该环境，没有常驻启动按钮。
   // 注意 MAIN 与 ISOLATED world 的 window 是隔离的，但 DOM 共享，故用 getElementById 判定可靠。
   function ensureLauncher() {
-    if (document.getElementById('caidLauncher')) return;
+    var existing = document.getElementById('caidLauncher');
+    if (existing) {
+      // 按钮已存在（通常由 content.js ISOLATED world 创建）—— 升级样式到最高优先级
+      existing.style.setProperty('z-index', '2147483647', 'important');
+      existing.style.setProperty('pointer-events', 'auto', 'important');
+      return;
+    }
     var btn = document.createElement('div');
     btn.id = 'caidLauncher';
     btn.textContent = '🤖 CAID 副驾';
@@ -802,11 +808,11 @@
       selectors.forEach(function (sel) {
         try { document.querySelectorAll(sel).forEach(function (el) { el.remove(); }); } catch (_) {}
       });
-      // 策略2：暴力清除所有 position:fixed 且 z-index > 1000000 的非 CAID 元素（PageAgent 常用超高 z-index）
+      // 策略2：暴力清除所有 position:fixed/absolute 且 z-index > 1000000 的非 CAID 元素（PageAgent 常用超高 z-index）
       document.querySelectorAll('*').forEach(function (el) {
         try {
           var s = getComputedStyle(el);
-          if (s.position === 'fixed' && parseInt(s.zIndex || '0', 10) > 1000000 &&
+          if ((s.position === 'fixed' || s.position === 'absolute') && parseInt(s.zIndex || '0', 10) > 1000000 &&
               el.id !== 'caidLauncher' && el.id !== 'caidExtCopilot' && !el.closest('#caidExtCopilot')) {
             console.log('[CAID] cleanupAgentOverlays: 移除残留高 z-index 元素', el.tagName, '#' + el.id, '.' + el.className);
             el.remove();
@@ -820,8 +826,12 @@
     if (btn) {
       btn.style.display = '';
       btn.style.visibility = 'visible';
-      btn.style.pointerEvents = 'auto';
-      btn.style.zIndex = '2147483647';
+      btn.style.setProperty('pointer-events', 'auto', 'important');
+      btn.style.setProperty('z-index', '2147483647', 'important');
+      // 移到 body 末尾，确保相同 z-index 时 DOM 顺序最后 → 始终在最上层
+      if (btn.parentNode && btn.parentNode.lastChild !== btn) {
+        btn.parentNode.appendChild(btn);
+      }
     }
   }
   if (stopEl) stopEl.addEventListener('click', forceStop);
@@ -894,13 +904,17 @@
       _launcherGuardTimer = null;
       var btn = document.getElementById('caidLauncher');
       if (!btn) { ensureLauncher(); return; }
-      // 检查按钮是否被隐藏或遮挡
+      // 确保按钮可见、可点击、z-index 最高
       var s = getComputedStyle(btn);
       if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') {
         btn.style.display = '';
         btn.style.visibility = 'visible';
-        btn.style.pointerEvents = 'auto';
-        btn.style.zIndex = '2147483647';
+      }
+      btn.style.setProperty('pointer-events', 'auto', 'important');
+      btn.style.setProperty('z-index', '2147483647', 'important');
+      // 将按钮移到 body 末尾：相同 z-index 时 DOM 顺序最后的元素在最上层
+      if (btn.parentNode && btn.parentNode.lastChild !== btn) {
+        btn.parentNode.appendChild(btn);
       }
     }, 300);
   });
