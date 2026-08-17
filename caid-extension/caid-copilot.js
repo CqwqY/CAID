@@ -9,9 +9,61 @@
   }
   window.__CAID_BOOTED = true;
 
-  // 后台代理 fetch：优先用扩展注入的 window.__CAID_FETCH（继承系统代理、绕过宿主页 CSP/CORS），
-  // 失败或不存在时退回原生 fetch。仅用于本扩展工具/LLM，不动宿主页其它请求。
-  const caidNet = window.__CAID_FETCH || (window.fetch ? window.fetch.bind(window) : null);
+  // ---------- 跨 world 网络代理（绕过宿主页 CSP/CORS）----------
+  // MAIN world 注入的副驾没有 chrome.* API，无法直接 fetch 受限域名
+  // （github.com / bilibili.com 等会拦截向 api.deepseek.com 等外部 LLM 的请求）。
+  // 因此把请求经 window.postMessage 转交 ISOLATED world 的 content.js，
+  // 由它再转发 background service worker 真正发起（扩展网络，不受页面 CSP 限制），
+  // 最后把响应（二进制安全）回传，重建为标准 Response 交给 Page-Agent。
+  function _b64enc(bytes) {
+    var bin = '', chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    return btoa(bin);
+  }
+  function _b64dec(b64) {
+    var bin = atob(b64), len = bin.length, bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function _normHeaders(h) {
+    var out = {};
+    if (!h) return out;
+    if (typeof Headers !== 'undefined' && h instanceof Headers) { h.forEach(function (v, k) { out[String(k).toLowerCase()] = v; }); return out; }
+    if (Array.isArray(h)) { h.forEach(function (p) { out[String(p[0]).toLowerCase()] = p[1]; }); return out; }
+    for (var k in h) out[String(k).toLowerCase()] = h[k];
+    return out;
+  }
+  var _fetchPending = new Map();
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.__caidType !== 'CAID_FETCH_RESP') return;
+    var p = _fetchPending.get(d.id);
+    if (p) { _fetchPending.delete(d.id); p(d); }
+  });
+  function caidNet(url, init) {
+    return new Promise(function (resolve, reject) {
+      var id = 'cf' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+      _fetchPending.set(id, function (resp) {
+        if (resp.error) { reject(new Error(resp.error)); return; }
+        try {
+          var body = resp.bodyB64 ? _b64dec(resp.bodyB64) : (resp.bodyText || '');
+          resolve(new Response(body, { status: resp.status || 200, statusText: resp.statusText || '', headers: resp.headers || {} }));
+        } catch (e) { reject(e); }
+      });
+      var method = (init && init.method) || 'GET';
+      var headers = _normHeaders(init && init.headers);
+      var bodyText = null, bodyB64 = null;
+      if (init && init.body != null) {
+        if (typeof init.body === 'string') bodyText = init.body;
+        else if (init.body instanceof ArrayBuffer) bodyB64 = _b64enc(new Uint8Array(init.body));
+        else if (ArrayBuffer.isView(init.body)) bodyB64 = _b64enc(new Uint8Array(init.body.buffer, init.body.byteOffset, init.body.byteLength));
+        else bodyText = String(init.body);
+      }
+      try {
+        window.postMessage({ __caidType: 'CAID_FETCH', id: id, url: String(url), method: method, headers: headers, bodyText: bodyText, bodyB64: bodyB64 }, '*');
+      } catch (e) { reject(e); }
+    });
+  }
 
   const MAIN_URL = 'https://graduate.dpdns.org/';
   const z = window.ZodV4 && window.ZodV4.z;
@@ -453,28 +505,11 @@
     ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseURL, apiKey: cfg.apiKey })
     : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: FREE_PROXY, apiKey: 'NA' });
 
-  // ---------- 只针对 LLM 域名劫持 window.fetch（在 new PageAgent 之前）----------
-  // Page-Agent 在调用时才取 globalThis.fetch，所以在这里换成后台代理即可让 LLM 请求
-  // 继承系统代理、并绕过宿主页 CSP。宿主页其它请求不受影响，也不会串 cookie。
-  (function installLlmProxy() {
-    let llmOrigin = null;
-    try { if (config.baseURL) llmOrigin = new URL(config.baseURL).origin; } catch (e) {}
-    if (!llmOrigin || !window.__CAID_FETCH) return;
-    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-    window.fetch = function (input, init) {
-      const url = typeof input === 'string' ? input : (input && input.url);
-      if (url && String(url).indexOf(llmOrigin) === 0) {
-        try {
-          return window.__CAID_FETCH(url, init).catch(function () {
-            return nativeFetch ? nativeFetch(input, init) : Promise.reject(new Error('CAID LLM 代理失败'));
-          });
-        } catch (e) {
-          if (nativeFetch) return nativeFetch(input, init);
-        }
-      }
-      return nativeFetch ? nativeFetch(input, init) : Promise.reject(new Error('fetch 不可用'));
-    };
-  })();
+  // 关键：Page-Agent 的 OpenAIClient 用 config.customFetch 发起 LLM 请求。
+  // 这里注入 caidNet——它把请求经 window.postMessage 转交 ISOLATED world 的 content.js，
+  // 再由 background service worker 真正发起（扩展网络，不受宿主页如 github.com 的 CSP 限制）。
+  // 这样无论用自定义 deepseek 还是内置免费代理，都不会再被页面 CSP 拦截。
+  config.customFetch = caidNet;
 
   function renderApiInfo() {
     if (!apiInfoEl) return;

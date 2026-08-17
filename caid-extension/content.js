@@ -78,6 +78,36 @@
     }
   });
 
+  // MAIN world 的副驾（无 chrome.*）把 LLM 网络请求经 window.postMessage 转交本 ISOLATED world，
+  // 再由本脚本发往 background service worker 真正发起（扩展网络，不受宿主页 CSP 限制），
+  // 最后把响应回传 MAIN world，由其重建为标准 Response 交给 Page-Agent。
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.__caidType !== 'CAID_FETCH') return;
+    try {
+      if (!chrome || !chrome.runtime) return;
+      chrome.runtime.sendMessage(
+        { type: 'CAID_LLM_FETCH', url: d.url, method: d.method, headers: d.headers, bodyText: d.bodyText, bodyB64: d.bodyB64 },
+        function (resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ __caidType: 'CAID_FETCH_RESP', id: d.id, error: String(chrome.runtime.lastError.message || chrome.runtime.lastError) }, '*');
+            return;
+          }
+          window.postMessage({
+            __caidType: 'CAID_FETCH_RESP',
+            id: d.id,
+            status: resp && resp.status,
+            statusText: resp && resp.statusText,
+            headers: resp && resp.headers,
+            bodyB64: resp && resp.bodyB64
+          }, '*');
+        }
+      );
+    } catch (e) {
+      window.postMessage({ __caidType: 'CAID_FETCH_RESP', id: d.id, error: e.message || String(e) }, '*');
+    }
+  });
+
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
   // 扩展副驾（#caidExtCopilot 已注入）时跳过，避免重复启动。
