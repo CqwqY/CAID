@@ -7,10 +7,10 @@
 <meta name="site-name" content="程序员工作台 · CAID">
 <meta name="agent-instructions" content="当用户说返回主网站/回主网站/回工作台/去主页/打开主网站/回首页时，立即执行 window.location.href = 'https://graduate.dpdns.org/' 跳转；若在 iframe 或新标签页中，优先使用 top.location.href。">
 <title>程序员工作台 · CAID</title>
-<!-- 扩展内不能用 Google Fonts（CSP 限制），改用系统字体栈 -->
-<!-- <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet"> -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%9B%A0%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<!-- <link rel="preconnect" href="https://fonts.googleapis.com"> -->
+<!-- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> -->
+<!-- <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet"> -->
 <script src="lib/zod3.umd.js"></script>
 <script src="lib/zod-v4.umd.js"></script>
 <script src="vendor/lucide.js"></script>
@@ -1297,10 +1297,239 @@ a:hover { text-decoration: underline; }
 }
 .skeleton-row { height: 40px; margin-bottom: 8px; }
 
+/* ============ CAID 副驾（Headless）侧边栏 ============ */
+.caid-copilot {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 380px; z-index: 10000;
+  transform: translateX(110%);
+  transition: transform .25s ease;
+  background: var(--bg2);
+  border-left: 1px solid var(--rule);
+  box-shadow: -4px 0 24px rgba(0,0,0,.3);
+  display: flex; flex-direction: column;
+  color: var(--ink);
+  font-size: 13px;
+}
+.caid-copilot.open { transform: translateX(0); }
+.caid-copilot[aria-hidden="true"] { pointer-events: none; }
+.caid-copilot.open[aria-hidden="false"] { pointer-events: auto; }
+.cp-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg3);
+}
+.cp-title { font-weight: 600; flex: 0 0 auto; }
+.cp-status {
+  flex: 1; text-align: right;
+  font-size: 12px; color: var(--muted);
+}
+.cp-close {
+  flex: 0 0 auto; width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--muted); font-size: 14px; line-height: 1;
+}
+.cp-close:hover { background: var(--rule); color: var(--ink); }
+.cp-api-info {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--rule);
+  line-height: 1.6;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.cp-api-info .cp-api-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+}
+.cp-api-info .cp-api-badge.free { background: rgba(99,102,241,0.12); color: #818cf8; }
+.cp-api-info .cp-api-badge.custom { background: rgba(34,197,94,0.12); color: #4ade80; }
+.cp-api-info .cp-api-badge.nokey { background: rgba(248,81,73,0.12); color: #f87171; }
+.cp-token-total {
+  margin-left: auto; font-size: 10px; color: var(--muted);
+  white-space: nowrap;
+}
+.cp-step-usage {
+  display: inline-block; margin-left: 6px; font-size: 10px; color: var(--muted);
+  background: var(--bg3); padding: 1px 5px; border-radius: 3px;
+}
+.cp-log {
+  flex: 1; overflow-y: auto;
+  padding: 8px;
+  font-size: 12px; line-height: 1.5;
+}
+.cp-evt {
+  margin-bottom: 6px; padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  border-left: 3px solid var(--rule);
+  word-break: break-word;
+}
+.cp-evt b { color: var(--accent); }
+.cp-evt-step { border-left-color: var(--accent); }
+.cp-evt-observation { border-left-color: var(--purple); }
+.cp-evt-error { border-left-color: var(--danger); }
+.cp-evt-retry { border-left-color: var(--warn); }
+.cp-evt .cp-tool { color: var(--accent-2); font-family: monospace; }
+.cp-evt .cp-out { color: var(--muted); font-family: monospace; font-size: 11px; }
+.cp-evt .cp-more { color: var(--accent); cursor: pointer; user-select: none; }
+.cp-evt .cp-out-full { background: var(--bg); border: 1px solid var(--rule); padding: 6px; border-radius: var(--radius-sm); font-size: 11px; color: var(--ink); white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow: auto; }
+.cp-evt details summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.cp-evt details summary::-webkit-details-marker { display: none; }
+.cp-evt details summary::before { content: '▸ '; color: var(--muted); font-size: 10px; }
+.cp-evt details[open] summary::before { content: '▾ '; }
+.cp-evt-user, .cp-evt-assistant { background: transparent; border: 0; padding: 2px 4px; }
+.cp-bubble { max-width: 92%; padding: 8px 10px; border-radius: 12px; line-height: 1.55; word-break: break-word; white-space: pre-wrap; font-size: 13px; }
+.cp-bubble-user { margin-left: auto; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+.cp-bubble-assistant { background: var(--bg2); color: var(--ink); border: 1px solid var(--rule); border-bottom-left-radius: 3px; }
+.cp-activity {
+  padding: 8px 12px;
+  font-size: 12px; color: var(--muted);
+  min-height: 24px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg2);
+}
+.cp-input-row {
+  display: flex; gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg3);
+}
+.cp-input {
+  flex: 1; padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--rule);
+  font-size: 13px;
+}
+.cp-input:focus { outline: none; border-color: var(--accent); }
+.cp-send {
+  flex: 0 0 auto; padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+.cp-send:hover { background: var(--accent-2); }
+
+/* ===== 副驾模式切换条 ===== */
+.cp-mode-bar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg2);
+}
+.cp-mode-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted);
+  font-size: 12px; font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.cp-mode-btn:hover { background: var(--bg3); }
+.cp-mode-btn.active {
+  background: var(--accent); color: #fff;
+}
+.cp-mode-actions {
+  display: none; gap: 4px; margin-left: auto;
+}
+.cp-mode-actions.visible { display: flex; }
+.cp-mode-actions button {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); color: var(--ink);
+  font-size: 11px;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+.cp-mode-actions button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ===== 可折叠区块 ===== */
+.cp-section {
+  border-bottom: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.cp-section[data-section="log"] { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; }
+.cp-section[data-section="log"] .cp-section-body { flex: 1; overflow-y: auto; }
+.cp-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg2);
+  font-size: 12px; font-weight: 600; color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+.cp-section-head:hover { background: var(--bg3); }
+.cp-section-head span { flex: 1; }
+.cp-toggle {
+  width: 20px; height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--muted); font-size: 10px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.cp-section-body {
+  max-height: 280px; overflow-y: auto;
+}
+.cp-section.collapsed .cp-section-body { display: none; }
+.cp-section.collapsed .cp-toggle::before { content: '▸'; }
+.cp-section:not(.collapsed) .cp-toggle::before { content: '▾'; }
+
+/* 代码输出区 */
+.cp-code {
+  padding: 8px;
+  font-family: monospace; font-size: 12px;
+}
+.cp-code pre {
+  margin: 0; padding: 8px;
+  background: var(--bg); border-radius: var(--radius-sm);
+  overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  color: var(--ink); font-size: 11px; line-height: 1.5;
+}
+.cp-code-actions {
+  display: flex; gap: 4px; margin-bottom: 6px;
+}
+.cp-code-actions button {
+  padding: 3px 10px; border-radius: var(--radius-sm);
+  background: var(--bg3); color: var(--muted);
+  font-size: 11px; border: 1px solid var(--rule); cursor: pointer;
+}
+.cp-code-actions button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cp-code-lang { font-size: 10px; color: var(--muted); padding: 2px 6px; background: var(--bg3); border-radius: var(--radius-sm); margin-right: auto; text-transform: uppercase; }
+.cp-code-desc { font-size: 11px; color: var(--muted); margin-bottom: 4px; padding: 4px 8px; background: var(--bg3); border-radius: var(--radius-sm); }
+.cp-code pre code { font-family: monospace; font-size: 11px; }
+
+/* 检索结果区 */
+.cp-search { padding: 8px; font-size: 12px; }
+.cp-search-item {
+  margin-bottom: 6px; padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); border-left: 3px solid var(--purple);
+}
+.cp-search-item-title { font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+.cp-search-item-url { color: var(--accent); font-size: 10px; word-break: break-all; }
+.cp-search-item-url:hover { text-decoration: underline; }
+.cp-search-item-snippet { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* 工具调用历史 */
+.cp-tools { padding: 8px; font-size: 12px; }
+.cp-tool-call {
+  margin-bottom: 4px; padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3); border-left: 3px solid var(--accent-2);
+  font-family: monospace; font-size: 11px;
+}
+.cp-tool-call-name { color: var(--accent-2); font-weight: 600; }
+.cp-tool-call-args { color: var(--muted); }
+.cp-tool-call-result { color: var(--ink); margin-top: 2px; }
+
+/* 空状态提示 */
+.cp-empty {
+  padding: 16px 12px; text-align: center;
+  color: var(--muted); font-size: 11px; font-style: italic;
+}
 </style>
-<script src="vendor/err-report.js"></script>
-</head>
-<body>
+
+</head><body>
 <div class="app">
   <!-- Top Bar -->
   <div class="topbar">
@@ -1522,14 +1751,13 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 回答</button>
-        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="llm">
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="cpu"></i>AI 回答 · LLM 配置</div>
-          <div class="setting-desc">用于搜索框的 AI 回答模式。支持 DashScope（通义千问）、OpenAI、或自定义 API。此配置仅用于搜索框 AI 回答。</div>
+          <div class="setting-desc">用于搜索框的 AI 回答模式。支持 DashScope（通义千问）、OpenAI、或自定义 API。</div>
           <div class="form-group">
             <label class="form-label">Provider</label>
             <select class="form-select" id="cfgProvider">
@@ -1564,8 +1792,6 @@ a:hover { text-decoration: underline; }
           <div class="setting-title"><i data-lucide="shield"></i>降级策略</div>
           <div class="setting-desc">当未配置 Key 或 Key 失效时，使用规则引擎 + Demo LLM。您的 Key 仅保存在本地浏览器 localStorage。</div>
         </div>
-      </div>
-
       </div>
 
       <div class="settings-panel" data-panel="data" style="display:none;">
@@ -1628,20 +1854,8 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<script src="newtab-main.js"></script>
 
-// ---- syntax error self-report (temporary debug hook, removed in production)
-(function(){
-  function caidErrRep(msg, url, line, col, err) {
-    try {
-      var payload = 'CAID_ERR|' + Date.now() + '|' + encodeURIComponent(String(msg||'')) +
-        '|L=' + (line||0) + '|C=' + (col||0);
-      if (err && err.stack) payload += '|S=' + encodeURIComponent(String(err.stack).slice(0,400));
-      location.hash = payload;
-    } catch(_) {}
-  }
-  window.addEventListener('error', function(e){ caidErrRep(e.message, e.filename, e.lineno, e.colno, e.error); });
-  window.addEventListener('unhandledrejection', function(e){
-    try { caidErrRep('UNHANDLED: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)), '', 0, 0, e.reason); } catch(_){}
-  });
-})();
+<script src="vendor/err-report.js"></script>
+<script src="newtab-main.js"></script>
+</body>
+</html>

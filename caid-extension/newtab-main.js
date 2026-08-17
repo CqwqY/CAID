@@ -1,3 +1,4 @@
+
 /* ======================================================================
    CAID Workbench · Single-file SPA
    Pure HTML/CSS/JS. All modules in one file for simple deployment.
@@ -42,7 +43,6 @@ function navigateToMainSite() {
 window.navigateToMainSite = navigateToMainSite;
 window.__MAIN_SITE_URL__ = MAIN_SITE_URL;
 window.__MAIN_SITE_NAME__ = MAIN_SITE_NAME;
-
 
 // ============ Local Storage Wrapper ============
 const LS = {
@@ -144,6 +144,11 @@ function updateClock() {
   caidQs('#clockGreeting').textContent = g;
 }
 
+// ============ Clock formatters (used by updateClock) ============
+function pad2(n){ return n<10 ? '0'+n : ''+n; }
+function fmtTime(d){ return pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); }
+function fmtDate(d){ var w=['日','一','二','三','四','五','六'][d.getDay()]; return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 周'+w; }
+
 // ============ Default Data ============
 const DEFAULT_SHORTCUTS = [];
 
@@ -157,7 +162,7 @@ const DEFAULT_LLM_CFG = {
   temperature: 0.7,
 };
 
-// LLM 配置（与 AI 回答共享存储 key，扩展副驾独立）
+// 默认配置（副驾相关字段已废弃，保留以防旧数据兼容）
 const DEFAULT_PA_CFG = {
   mode: 'demo',           // 'demo' = 免费 LLM | 'custom' = 自定义 Key
   provider: 'dashscope',
@@ -272,7 +277,7 @@ function renderShortcuts() {
   const ctrl = document.createElement('div');
   ctrl.className = 'topbar-controls';
   ctrl.innerHTML = `
-<button class="icon-btn" id="btnSetHome" title="设为首页"><i data-lucide="home"></i></button>
+    <button class="icon-btn" id="btnSetHome" title="设为首页"><i data-lucide="home"></i></button>
     <button class="icon-btn" id="btnSettings" title="设置"><i data-lucide="settings"></i></button>
   `;
   bar.appendChild(add);
@@ -281,7 +286,6 @@ function renderShortcuts() {
   if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
   const btnSetHome = ctrl.querySelector('#btnSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
-  setupPaJumpBtns();
   refreshIcons();
 }
 
@@ -1285,7 +1289,18 @@ function fillSettingsForm() {
   caidQs('#cfgTemp').value = c.temperature ?? 0.7;
   caidQs('#cfgProvider').dispatchEvent(new Event('change'));
 }
-
+caidQs('#cfgProvider').addEventListener('change', (e) => {
+  const p = e.target.value;
+  const presets = {
+    dashscope: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    ollama: { baseUrl: 'http://localhost:11434/v1', model: 'llama3.1' },
+    custom: { baseUrl: '', model: '' },
+  };
+  const pr = presets[p];
+  if (!caidQs('#cfgBaseUrl').value) caidQs('#cfgBaseUrl').value = pr.baseUrl;
+  if (!caidQs('#cfgModel').value) caidQs('#cfgModel').value = pr.model;
+});
 caidQs('#saveSettingsBtn').addEventListener('click', () => {
   // AI 回答 LLM 配置
   state.llmCfg = {
@@ -1296,12 +1311,10 @@ caidQs('#saveSettingsBtn').addEventListener('click', () => {
     temperature: parseFloat(caidQs('#cfgTemp').value) || 0.7,
   };
   LS.set('llmCfg', state.llmCfg);
-  // 同步备份到 IndexedDB（防止 localStorage 丢失）
   ConfigBackup.save('llmCfg', state.llmCfg);
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
-
 caidQs('#testLLMBtn').addEventListener('click', async () => {
   const c = {
     provider: caidQs('#cfgProvider').value,
@@ -1436,9 +1449,5 @@ async function init() {
   }
 }
 
-// Add keyframes for spinner
-const ks = document.createElement('style');
-ks.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
-document.head.appendChild(ks);
-
 init();
+

@@ -1,3 +1,4 @@
+
 // syntax error self-report (MUST run BEFORE any other <script> blocks)
 (function(){
   function caidErrRep(msg, url, line, col, err) {
