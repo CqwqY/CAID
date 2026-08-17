@@ -94,22 +94,36 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) bootCopilot(tab.id, tab.url, null);
 });
 
-// 自己接管的 newtab（扩展页，content script 不注入）加载完成后自动启动副驾，
-// 使其自带 🤖 启动按钮（面板默认收起，由 caid-copilot 自建 launcher 打开）。
-// 复用 bootCopilot 链路：注入 zod-v4 + page-agent + LLM_CFG + caid-copilot。
-// 关键：扩展页上 content.js 不运行，故 tryAutoResume 不会触发；这里必须自己消费
-// chrome.storage.session.caidHandoff，把跨站/站内跳转的续传上下文带进新页副驾。
+// 关键改进：在任意标签页加载完成时检查是否有待续传上下文（caidHandoff）。
+// background service worker 永远有完整 chrome.storage.session 权限，
+// 不再依赖 content.js（某些页面会报 "Access to storage is not allowed from this context"）。
+//
+// 触发场景：
+//   A) 扩展 newtab 页面 → 始终注入副驾（有 handoff 则续跑）
+//   B) 普通网站（如 bilibili.com）→ 仅当存在有效 handoff 时才注入副驾并续跑
+//   C) 无 handoff 的普通页 → 不注入（零干扰），用户可点 🤖 按钮手动启动
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status !== 'complete') return;
+  if (info.status !== 'complete' || !tab || !tab.url) return;
   const nt = chrome.runtime.getURL('newtab.html');
-  if (tab && tab.url && tab.url.indexOf(nt) === 0) {
-    chrome.storage.session.get(['caidHandoff'], (got) => {
-      const h = got && got.caidHandoff;
-      const fresh = h && (!h.ts || Date.now() - h.ts <= 120000);
-      if (fresh) chrome.storage.session.remove(['caidHandoff']);
+  const isNewTab = tab.url.indexOf(nt) === 0;
+
+  chrome.storage.session.get(['caidHandoff'], function (got) {
+    var h = got && got.caidHandoff;
+    var fresh = h && (!h.ts || Date.now() - h.ts <= 120000);
+
+    if (isNewTab) {
+      // A) newtab：始终启动副驾（有 handoff 则续跑）
+      if (fresh) { chrome.storage.session.remove(['caidHandoff']); }
+      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, handoff=', !!fresh);
       bootCopilot(tabId, tab.url, fresh ? h : null);
-    });
-  }
+    } else if (fresh && tab.url !== (h.fromUrl || '')) {
+      // B) 普通页面 + 有效 handoff + 非来源页 → 自动注入副驾并续跑
+      chrome.storage.session.remove(['caidHandoff']);
+      console.log('[CAID-R] tabs.onUpdated: 普通页面检测到续传, goal=', h.goal, ' url=', tab.url);
+      bootCopilot(tabId, tab.url, h);
+    }
+    // C) 无 handoff 或已过期或来源页本身 → 不操作（用户可手动点 🤖 启动）
+  });
 });
 
 
