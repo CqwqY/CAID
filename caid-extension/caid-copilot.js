@@ -273,7 +273,7 @@
       description:
         'Execute arbitrary JavaScript code on the current page. Supports async/await. ' +
         'An AbortSignal named `signal` is available in scope. ' +
-        'Examples: navigate: window.location.href = "URL"; open tab: var a=document.createElement("a");a.href="URL";a.target="_blank";document.body.appendChild(a);a.click();',
+        'Examples: open a new tab WITHOUT replacing current page: var a=document.createElement("a");a.href="URL";a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove(); (NEVER use window.location.href to replace the current page — that destroys the user original tab; prefer the navigate_to_url / open_url_in_new_tab tools which preserve the current page).',
       inputSchema: mkObj({ script: 'string' }),
       execute: async function (input, ctx) {
         const signal = ctx && ctx.signal;
@@ -288,7 +288,7 @@
     },
 
     navigate_to_url: {
-      description: 'Navigate the current browser page to a given URL (replaces current page).',
+      description: 'Open a given URL in a NEW browser tab, preserving the current page (the original page is never replaced). The agent continues on the new tab.',
       inputSchema: mkObj({ url: 'string:url' }),
       execute: async function (input) {
         const url = String(input && input.url || '').trim();
@@ -305,12 +305,21 @@
           }
         } catch (e) { console.warn('[CAID-R] navigate_to_url: 保存续传上下文失败', e); }
         // 立即终止当前页 agent，避免它在原页面继续空转输出；
-        // 检查点已保存，新页面副驾会自动续跑（控制权随焦点转移到新页面）。
+        // 检查点已保存，新标签副驾会自动续跑（控制权转移到新标签，原页面保留）。
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
-        try { (window.top || window).location.href = url; }
-        catch (e) { window.location.href = url; }
-        return `✅ Navigating to: ${url}`;
+        // 【关键修复】不再用 location.href 替换当前页，而是新开标签，保留用户原来的页面（含 CAID 工作台）。
+        // 优先 chrome.tabs.create（扩展页/MAIN world 有 chrome.* 时可靠），否则用 anchor 新标签点击。
+        try {
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+            chrome.tabs.create({ url: url, active: true });
+          } else { throw new Error('no-chrome-tabs'); }
+        } catch (e) {
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          document.body.appendChild(a); a.click(); a.remove();
+        }
+        return `✅ Opened in new tab (task continues there): ${url}`;
       }
     },
 
@@ -327,9 +336,16 @@
           if (h) { console.log('[CAID-R] open_url_in_new_tab: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
           else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
         } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: 保存续传上下文失败', e); }
-        const a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-        document.body.appendChild(a); a.click(); a.remove();
+        // 优先 chrome.tabs.create（扩展页/MAIN world 有 chrome.* 时可靠），否则用 anchor 新标签点击。
+        try {
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+            chrome.tabs.create({ url: url, active: true });
+          } else { throw new Error('no-chrome-tabs'); }
+        } catch (e) {
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          document.body.appendChild(a); a.click(); a.remove();
+        }
         // 当前页 agent 无法操作新标签，立即终止本页 agent，使控制权转移到新标签续跑的副驾。
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {}
@@ -595,7 +611,7 @@
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
     'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
-    '跳转其他网站时优先用 navigate_to_url（在当前标签打开、焦点跟随）；' +
+    '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +
     '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。';
   const customTools = tools;
   const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
