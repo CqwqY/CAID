@@ -109,6 +109,9 @@
 #caidExtCopilot .cp-status{font-size:11px;color:#7fb0e0;}
 #caidExtCopilot .cp-close{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:#9fb6cf;font-size:16px;cursor:pointer;}
 #caidExtCopilot .cp-close:hover{background:#1f3650;}
+#caidExtCopilot .cp-stop{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:#5b7187;font-size:14px;cursor:not-allowed;opacity:.4;}
+#caidExtCopilot .cp-stop.running{color:#ff6b6b;cursor:pointer;opacity:1;background:#2a1414;}
+#caidExtCopilot .cp-stop.running:hover{background:#3a1a1a;}
 #caidExtCopilot .cp-api-info{padding:4px 14px;font-size:11px;color:#9fb6cf;background:#10243b;border-bottom:1px solid #1f3650;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 #caidExtCopilot .cp-api-badge{padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;}
 #caidExtCopilot .cp-api-badge.custom{background:#1f6feb;color:#fff;}
@@ -142,6 +145,7 @@
       '<div class="cp-head">' +
         '<span class="cp-title">🤖 CAID 副驾</span>' +
         '<span class="cp-status" id="cpStatus">就绪</span>' +
+        '<button class="cp-stop" id="cpStop" title="强行终止当前任务 (Ctrl+.)">⏹</button>' +
         '<button class="cp-close" id="cpSettings" title="副驾设置（LLM / 模型）">⚙</button>' +
         '<button class="cp-close" id="cpClose" title="关闭">×</button>' +
       '</div>' +
@@ -182,6 +186,7 @@
   const inputEl = document.getElementById('cpInput');
   const sendEl = document.getElementById('cpSend');
   const closeEl = document.getElementById('cpClose');
+  const stopEl = document.getElementById('cpStop');
 
   function logBubble(role, text) {
     const div = document.createElement('div');
@@ -525,7 +530,7 @@
     if (!hasKey && !isFreeProxy) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
-  function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); renderApiInfo(); }
+  function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); if (stopEl) { if (agent.status === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } renderApiInfo(); }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
@@ -619,6 +624,31 @@
   if (sendEl) sendEl.addEventListener('click', sendTask);
   if (inputEl) inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); } });
   if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidExtCopilot'); if (cp) cp.classList.remove('open'); });
+
+  // ---------- 强行终止当前任务 ----------
+  // PageAgent 内置 agent.stop()：abort 内部 AbortController -> 循环中的 signal.throwIfAborted() 抛错 -> 结束 execute()。
+  function forceStop() {
+    if (!agent) { logBubble('assistant', '⏹ 没有可用的副驾实例。'); return; }
+    if (agent.status !== 'running') { logBubble('assistant', '⏹ 当前没有运行中的任务。'); return; }
+    try {
+      var p = agent.stop();
+      if (p && typeof p.catch === 'function') p.catch(function (e) { console.warn('[CAID] stop() rejected:', e); });
+      logBubble('assistant', '⏹ 已强行终止当前任务（快捷键 Ctrl+.）。');
+    } catch (e) {
+      console.warn('[CAID] forceStop error:', e);
+      logBubble('assistant', '⏹ 终止时出错：' + (e && e.message ? e.message : e));
+    }
+    if (statusEl) statusEl.textContent = '已停止';
+    if (stopEl) stopEl.classList.remove('running');
+  }
+  if (stopEl) stopEl.addEventListener('click', forceStop);
+  // 全局快捷键：Ctrl+. (或 Cmd+.) 强行终止运行中任务
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '.' || e.code === 'Period')) {
+      if (agent && agent.status === 'running') { e.preventDefault(); forceStop(); }
+    }
+  });
+
   var settingsEl = document.getElementById('cpSettings');
   if (settingsEl) settingsEl.addEventListener('click', toggleSettings);
 
