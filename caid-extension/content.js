@@ -3,6 +3,14 @@
 // 点击后通过 runtime 消息让 background 以 MAIN world 注入魔改 Page-Agent。
 (function () {
   if (window.__CAID_LAUNCHER) return;
+  // 主站自带副驾，扩展不在主站展示悬浮按钮 / 注入第二套副驾
+  function isMainSite(url) {
+    if (!url) return false;
+    if (url.indexOf('chrome-extension://') === 0) return true;
+    if (/^https?:\/\/graduate\.dpdns\.org\//.test(url)) return true;
+    return false;
+  }
+  if (isMainSite(location.href)) return;
   window.__CAID_LAUNCHER = true;
 
   function addButton() {

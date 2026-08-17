@@ -32,6 +32,14 @@
   }
 
   function openOptions() {
+    // 优先让 background（特权上下文）打开 options 页：MAIN world 下 window.open(chrome-extension://) 会被宿主页 CSP 拦
+    try {
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        var p = chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+        if (p && typeof p.catch === 'function') p.catch(function () {});
+        return;
+      }
+    } catch (e) {}
     try { if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) { chrome.runtime.openOptionsPage(); return; } } catch (e) {}
     try { window.open(chrome.runtime.getURL('options.html')); } catch (_) {}
   }

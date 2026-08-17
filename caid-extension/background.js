@@ -9,6 +9,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (tabId) bootCopilot(tabId, null, msg.handoff);
     return false;
   }
+  if (msg && msg.type === 'OPEN_OPTIONS') {
+    // 由 background（特权上下文）打开 options 页，规避 MAIN world 下 window.open 被宿主页 CSP 拦截
+    try { chrome.runtime.openOptionsPage(); } catch (e) {}
+    return false;
+  }
 });
 
 // 点击工具栏图标 → 在当前活动标签启动副驾
@@ -16,13 +21,19 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) bootCopilot(tab.id, tab.url, null);
 });
 
+// 主站（扩展自身 newtab 与线上 graduate.dpdns.org）自带副驾，扩展不再重复注入，避免双副驾
+function isMainSite(url) {
+  if (!url) return false;
+  if (url.indexOf('chrome-extension://') === 0) return true;
+  if (/^https?:\/\/graduate\.dpdns\.org\//.test(url)) return true;
+  return false;
+}
+
 async function bootCopilot(tabId, tabUrl, handoff) {
   try {
-    // 主页（扩展自身 newtab）不注入第二套副驾，直接切换页面自带面板
-    if (tabUrl && tabUrl.indexOf('chrome-extension://') === 0) {
-      try { chrome.runtime.sendMessage({ type: 'CAID_TOGGLE_PANEL' }); } catch (e) {}
-      return;
-    }
+    // 主站自带副驾，扩展不在主站注入第二套副驾
+    if (isMainSite(tabUrl)) return;
+
     const stored = await chrome.storage.local.get(['caidLlm']);
     const llm = stored.caidLlm || {};
 
