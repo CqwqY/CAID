@@ -16,9 +16,12 @@ function applyFree(useFree) {
 }
 
 async function load() {
-  const stored = await chrome.storage.local.get(['caidLlm']);
-  const llm = stored.caidLlm || {};
-  const useFree = !llm.custom;
+  const stored = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
+  // 扩展自身配置优先；若为空（用户从未在扩展里设过），回退主站（graduate.dpdns.org）已保存的 LLM 配置
+  const extLlm = stored.caidLlm || {};
+  const mainLlm = stored.caidLlmMain || {};
+  const llm = (!extLlm.apiKey && !extLlm.custom && mainLlm.apiKey) ? mainLlm : extLlm;
+  const useFree = !llm.custom && !llm.apiKey;
   $('useFree').checked = useFree;
   $('model').value = llm.model || FREE.model;
   $('baseUrl').value = llm.baseURL || FREE.baseURL;

@@ -32,16 +32,23 @@
   }
 
   function openOptions() {
-    // 优先让 background（特权上下文）打开 options 页：MAIN world 下 window.open(chrome-extension://) 会被宿主页 CSP 拦
+    console.log('[CAID] ⚙ 设置按钮被点击，尝试打开 options 页');
+    var extUrl = null;
+    try { if (chrome && chrome.runtime && chrome.runtime.getURL) extUrl = chrome.runtime.getURL('options.html'); } catch (e) {}
+    // 路径1：让 background（特权上下文）打开 options 页（MAIN world 下 window.open(chrome-extension://) 会被宿主页 CSP 拦）
     try {
       if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
         var p = chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
-        if (p && typeof p.catch === 'function') p.catch(function () {});
+        if (p && typeof p.catch === 'function') p.catch(function () { tryOpenDirect(); });
         return;
       }
     } catch (e) {}
-    try { if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) { chrome.runtime.openOptionsPage(); return; } } catch (e) {}
-    try { window.open(chrome.runtime.getURL('options.html')); } catch (_) {}
+    // 路径2：本上下文直接打开（部分环境下 MAIN world 也有权限）
+    tryOpenDirect();
+    function tryOpenDirect() {
+      try { if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) { chrome.runtime.openOptionsPage(); return; } } catch (e) {}
+      try { if (extUrl) { window.open(extUrl); return; } } catch (_) {}
+    }
   }
 
   // ---------- 面板 UI（自带样式，不依赖宿主页 CSS）----------

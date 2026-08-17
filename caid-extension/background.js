@@ -34,8 +34,13 @@ async function bootCopilot(tabId, tabUrl, handoff) {
     // 主站自带副驾，扩展不在主站注入第二套副驾
     if (isMainSite(tabUrl)) return;
 
-    const stored = await chrome.storage.local.get(['caidLlm']);
-    const llm = stored.caidLlm || {};
+    const stored = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
+    // 合并优先级：扩展自身设置（caidLlm，用户在 options 页显式配置）优先；
+    // 若扩展未配置，则回退主站（graduate.dpdns.org）已保存的 LLM 配置（caidLlmMain，由 caid-bridge.js 同步）。
+    const extLlm = stored.caidLlm || {};
+    const mainLlm = stored.caidLlmMain || {};
+    const extHasKey = extLlm.apiKey && extLlm.model;
+    const llm = extHasKey ? extLlm : (mainLlm.apiKey ? mainLlm : extLlm);
 
     // 0) 先注入 fetch 代理垫片（必须早于 PageAgent，使其内部 fetch 走后台代理）
     await chrome.scripting.executeScript({

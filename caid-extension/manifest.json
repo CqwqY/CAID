@@ -20,6 +20,12 @@
       "js": ["content.js"],
       "run_at": "document_idle",
       "world": "ISOLATED"
+    },
+    {
+      "matches": ["https://graduate.dpdns.org/*"],
+      "js": ["caid-bridge.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
     }
   ],
   "web_accessible_resources": [
