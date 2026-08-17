@@ -1751,7 +1751,7 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="llm">
@@ -1791,6 +1791,37 @@ a:hover { text-decoration: underline; }
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="shield"></i>降级策略</div>
           <div class="setting-desc">当未配置 Key 或 Key 失效时，使用规则引擎 + Demo LLM。您的 Key 仅保存在本地浏览器 localStorage。</div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="copilot" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="bot"></i>副驾 · LLM 配置</div>
+          <div class="setting-desc">用于页面上的 CAID 智能体副驾（站外注入的 agent）。<b>独立于上方 AI 回答配置，两套互不影响。</b>留空 API Key = 使用内置免费代理（qwen3.5-plus）。</div>
+          <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select class="form-select" id="cpProvider">
+              <option value="free">内置免费代理 (qwen3.5-plus)</option>
+              <option value="custom">自定义 OpenAI 兼容</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Base URL</label>
+            <input type="text" class="form-input" id="cpBaseUrl" placeholder="https://api.openai.com/v1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input type="password" class="form-input" id="cpApiKey" placeholder="sk-...（留空则用内置免费代理）">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Model</label>
+            <input type="text" class="form-input" id="cpModel" placeholder="qwen3.5-plus / deepseek-chat / ...">
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn primary" id="saveCopilotBtn"><i data-lucide="save"></i>保存副驾配置</button>
+            <button class="btn" id="cpTestBtn"><i data-lucide="zap"></i>测试连接</button>
+          </div>
+          <div class="setting-desc" style="margin-top:8px;font-size:12px;">保存后对已打开的页面下次注入生效；配置仅存于扩展本地 chrome.storage，与工作台 AI 回答配置无关。</div>
         </div>
       </div>
 

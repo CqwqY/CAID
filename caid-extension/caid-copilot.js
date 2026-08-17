@@ -287,17 +287,39 @@
       description:
         'Execute arbitrary JavaScript code on the current page. Supports async/await. ' +
         'An AbortSignal named `signal` is available in scope. ' +
-        'Examples: open a new tab WITHOUT replacing current page: var a=document.createElement("a");a.href="URL";a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove(); (NEVER use window.location.href to replace the current page — that destroys the user original tab; prefer the navigate_to_url / open_url_in_new_tab tools which preserve the current page).',
+        'RULES: this tool is ONLY for in-page actions — scroll, click non-navigating buttons, fill forms, mutate DOM, read data. ' +
+        'NEVER write navigation code in the script: location.href= / location.assign / location.replace, window.open, ' +
+        'clicking <a href> links, or form submit that navigates away. ' +
+        'If the goal is to open another page, read the full href first (execute_javascript can read it), ' +
+        'then use navigate_to_url or open_url_in_new_tab to navigate — the task continues automatically on the new page. ' +
+        'Scripts that change the page URL are detected: the tool returns a warning, and you must switch to the navigation tools.',
       inputSchema: mkObj({ script: 'string' }),
       execute: async function (input, ctx) {
         const signal = ctx && ctx.signal;
+        // 跳转护栏：执行前记录当前 URL（忽略 hash），执行后若地址变化则判定为脚本内跳转，
+        // 返回警告引导模型改用导航工具（提示词 + 运行时检测双保险）。
+        const stripHash = (u) => { try { const a = new URL(u); a.hash = ''; return a.href; } catch (e) { return String(u || ''); } };
+        let before = '';
+        try { before = stripHash(window.location.href); } catch (e) {}
+        let out;
         if (!this || !this.pageController || typeof this.pageController.executeJavascript !== 'function') {
           const result = (0, eval)(String(input && input.script));
-          return (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
+          out = (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
+        } else {
+          const r = await this.pageController.executeJavascript(String(input && input.script), signal);
+          signal && signal.throwIfAborted && signal.throwIfAborted();
+          out = (r && r.message) || String((r && r.result) ?? '');
         }
-        const r = await this.pageController.executeJavascript(String(input && input.script), signal);
-        signal && signal.throwIfAborted && signal.throwIfAborted();
-        return (r && r.message) || String((r && r.result) ?? '');
+        try {
+          const after = stripHash(window.location.href);
+          if (before && after && after !== before) {
+            out = '⚠️ 检测到脚本导致了页面导航（URL 从 ' + before + ' 变为 ' + after + '）。' +
+              '跳转必须由 navigate_to_url / open_url_in_new_tab 工具接管（任务会自动续跑），' +
+              '不要在 execute_javascript 里写跳转代码。如需进入该页面，请改用导航工具打开 ' + after + '。' +
+              '\n[脚本输出] ' + String(out);
+          }
+        } catch (e) {}
+        return out;
       }
     },
 
@@ -682,7 +704,11 @@
     '【跳转链接规则】页面观察结果中的链接会带 href=URL：当你的目标是"进入某链接/打开某页面"时，' +
     '不要用 click 点击链接（点击后页面切换无法控制），而是直接从 href 读取完整 URL，' +
     '用 open_url_in_new_tab 或 navigate_to_url 打开它，任务会自动在新页面续跑。' +
-    '若 href 显示被截断（以 ... 结尾），先用 execute_javascript 读取元素的完整 href 再跳转。';
+    '若 href 显示被截断（以 ... 结尾），先用 execute_javascript 读取元素的完整 href 再跳转。' +
+    '【行动 vs 跳转判断】execute_javascript 只做当前页面内的行动：滚动、点击不跳转的按钮、填表、修改 DOM、读取数据。' +
+    '凡是会让页面切换地址的操作——点击带 href 的链接、location.href= / location.assign / location.replace、' +
+    'window.open、表单提交跳转——都属于跳转，一律先读出完整 URL，改用 navigate_to_url / open_url_in_new_tab 打开。' +
+    'execute_javascript 脚本里禁止任何跳转语句；若脚本导致地址变化，工具会返回警告并要求改用导航工具。';
   const customTools = tools;
   // includeAttributes: ['href'] —— 让简化 HTML 里的链接带上 URL（默认白名单没有 href，
   // 模型看不到链接地址，才会"点了跳转链接但不知道去哪"。加上后模型能直接看到

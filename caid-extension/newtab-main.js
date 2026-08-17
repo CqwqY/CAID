@@ -293,7 +293,7 @@ function renderShortcuts() {
   bar.appendChild(add);
   bar.appendChild(ctrl);
   const btnSettings = ctrl.querySelector('#btnSettings');
-  if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', fillSettingsForm));
+  if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }));
   const btnSetHome = ctrl.querySelector('#btnSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
   refreshIcons();
@@ -1290,28 +1290,9 @@ async function updateCounts() {
 }
 
 // ============ Settings ============
+// AI 回答配置：只读/写 localStorage.llmCfg，与副驾配置（chrome.storage.local.caidLlm）完全独立。
 async function fillSettingsForm() {
-  let c = state.llmCfg;
-  // 用户从未在 newtab 保存过 LLM 配置时，从扩展副驾配置回退：
-  // chrome.storage.local.caidLlm（旧 options 页历史配置）> caidLlmMain（主站同步配置）
-  if (!c.apiKey && (!c.model || c.model === 'qwen-plus')) {
-    try {
-      const s = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
-      const extLlm = s.caidLlm || {};
-      const mainLlm = s.caidLlmMain || {};
-      const ext = (extLlm.apiKey && extLlm.model) ? extLlm : (mainLlm.apiKey ? mainLlm : null);
-      if (ext) {
-        const isFree = ext.apiKey === 'NA';
-        c = {
-          provider: isFree ? 'dashscope' : 'custom',
-          baseUrl: ext.baseURL || '',
-          apiKey: isFree ? '' : (ext.apiKey || ''),
-          model: ext.model || '',
-          temperature: state.llmCfg.temperature ?? 0.7,
-        };
-      }
-    } catch (e) {}
-  }
+  const c = state.llmCfg;
   caidQs('#cfgProvider').value = c.provider || 'dashscope';
   caidQs('#cfgBaseUrl').value = c.baseUrl || '';
   caidQs('#cfgApiKey').value = c.apiKey || '';
@@ -1332,7 +1313,7 @@ caidQs('#cfgProvider').addEventListener('change', (e) => {
   if (!caidQs('#cfgModel').value) caidQs('#cfgModel').value = pr.model;
 });
 caidQs('#saveSettingsBtn').addEventListener('click', async () => {
-  // AI 回答 LLM 配置（newtab 自身 + 副驾共用这一份表单）
+  // 仅保存 AI 回答配置（newtab 搜索框 AI 回答用），不再双写副驾配置。
   state.llmCfg = {
     provider: caidQs('#cfgProvider').value,
     baseUrl: caidQs('#cfgBaseUrl').value.trim(),
@@ -1342,18 +1323,69 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
   };
   LS.set('llmCfg', state.llmCfg);
   ConfigBackup.save('llmCfg', state.llmCfg);
-  // 双写副驾配置：chrome.storage.local.caidLlm（background 合并后注入 __CAID_LLM_CFG 给副驾）
-  // 语义同旧 options 页：无 API Key → apiKey='NA' 表示 DashScope 免费代理
-  const isFree = !state.llmCfg.apiKey;
-  const extCfg = {
-    model: state.llmCfg.model || 'qwen-plus',
-    baseURL: state.llmCfg.baseUrl || '',
-    apiKey: isFree ? 'NA' : state.llmCfg.apiKey,
-    custom: !isFree,
-  };
-  try { await chrome.storage.local.set({ caidLlm: extCfg }); } catch (e) {}
   closeModal('settingsModal');
   toast('设置已保存','success');
+});
+
+// ============ 副驾配置（独立于 AI 回答，存 chrome.storage.local.caidLlm）============
+async function fillCopilotForm() {
+  let ext = {};
+  try { ext = (await chrome.storage.local.get('caidLlm')).caidLlm || {}; } catch (e) {}
+  const isFree = !ext.apiKey || ext.apiKey === 'NA' || ext.apiKey === 'null' || ext.apiKey === 'undefined';
+  caidQs('#cpProvider').value = isFree ? 'free' : 'custom';
+  caidQs('#cpBaseUrl').value = ext.baseURL || '';
+  caidQs('#cpApiKey').value = isFree ? '' : (ext.apiKey || '');
+  caidQs('#cpModel').value = ext.model || '';
+  caidQs('#cpProvider').dispatchEvent(new Event('change'));
+}
+caidQs('#cpProvider').addEventListener('change', (e) => {
+  const free = e.target.value === 'free';
+  ['#cpBaseUrl', '#cpApiKey', '#cpModel'].forEach((sel) => {
+    const el = caidQs(sel);
+    el.disabled = free;
+    if (free) { el.style.opacity = '.45'; } else { el.style.opacity = ''; }
+  });
+});
+caidQs('#saveCopilotBtn').addEventListener('click', async () => {
+  const isFree = caidQs('#cpProvider').value === 'free';
+  const key = caidQs('#cpApiKey').value.trim();
+  // 语义与旧 options 页一致：无真实 Key → apiKey='NA' 表示内置免费代理
+  const extCfg = {
+    model: (isFree ? 'qwen3.5-plus' : caidQs('#cpModel').value.trim()) || 'qwen3.5-plus',
+    baseURL: caidQs('#cpBaseUrl').value.trim(),
+    apiKey: isFree ? 'NA' : (key || 'NA'),
+    custom: !isFree && !!key,
+  };
+  try { await chrome.storage.local.set({ caidLlm: extCfg }); }
+  catch (e) { return toast('保存失败：' + String(e), 'error', 4000); }
+  toast('副驾配置已保存（已打开的页面下次注入生效）','success');
+});
+caidQs('#cpTestBtn').addEventListener('click', async () => {
+  const isFree = caidQs('#cpProvider').value === 'free';
+  const key = caidQs('#cpApiKey').value.trim();
+  const baseUrl = caidQs('#cpBaseUrl').value.trim();
+  const model = caidQs('#cpModel').value.trim() || 'qwen3.5-plus';
+  if (isFree) { return toast('免费代理无需测试，直接保存即可','warn'); }
+  if (!key) { return toast('请先填入 API Key','warn'); }
+  if (!baseUrl) { return toast('请先填入 Base URL','warn'); }
+  const btn = caidQs('#cpTestBtn');
+  const orig = btn.innerHTML;
+  btn.innerHTML = `<i data-lucide="loader-2" style="animation:spin 1s linear infinite;"></i>测试中…`;
+  refreshIcons();
+  try {
+    const resp = await fetch(baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+      body: JSON.stringify({ model, messages: [{role:'user',content:'ping，用一个字回答'}], max_tokens: 10 }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    toast('连接成功！✅','success');
+  } catch (e) {
+    toast('连接失败：' + (e.message||String(e)), 'error', 4000);
+  } finally {
+    btn.innerHTML = orig;
+    refreshIcons();
+  }
 });
 caidQs('#testLLMBtn').addEventListener('click', async () => {
   const c = {
@@ -1490,7 +1522,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', fillSettingsForm), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }), 150);
   }
 }
 
