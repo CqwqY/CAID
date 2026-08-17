@@ -437,16 +437,21 @@
 
   // ---------- 创建 agent ----------
   const cfg = window.__CAID_LLM_CFG || {};
-  const hasCustom = cfg.apiKey && cfg.model;
+  // 注意：扩展配置 schema 的键是 baseURL（大写 URL），与内联保存（cpSave）和 caid-bridge 写入保持一致。
+  // 判定是否为"自定义 LLM"：必须填了可用的 baseURL + 真实 API Key（非占位 'NA'）。
+  // 否则一律走内置免费代理（qwen3.5-plus），避免因为 baseURL 缺失触发 PageAgent 的 config required 报错。
+  const hasRealKey = cfg.apiKey && cfg.apiKey !== 'NA' && cfg.apiKey !== 'null' && cfg.apiKey !== 'undefined';
+  const isCustom = !!(cfg.baseURL) && hasRealKey;
+  const FREE_PROXY = 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
   const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
     'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。';
   const customTools = tools;
   const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
-  const config = hasCustom
-    ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseUrl || '', apiKey: cfg.apiKey })
-    : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run', apiKey: 'NA' });
+  const config = isCustom
+    ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseURL, apiKey: cfg.apiKey })
+    : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: FREE_PROXY, apiKey: 'NA' });
 
   // ---------- 只针对 LLM 域名劫持 window.fetch（在 new PageAgent 之前）----------
   // Page-Agent 在调用时才取 globalThis.fetch，所以在这里换成后台代理即可让 LLM 请求
@@ -476,11 +481,13 @@
     var apiKey = String(config.apiKey || '').trim();
     var hasKey = apiKey && apiKey !== 'NA' && apiKey !== 'null' && apiKey !== 'undefined';
     var isCustom = config.model && config.model !== 'qwen3.5-plus';
+    var isFreeProxy = apiKey === 'NA';
     var badge = isCustom && hasKey ? '<span class="cp-api-badge custom">自定义</span>'
+      : isFreeProxy ? '<span class="cp-api-badge free">免费代理</span>'
       : !hasKey ? '<span class="cp-api-badge nokey">无 API Key</span>'
       : '<span class="cp-api-badge free">免费代理</span>';
     apiInfoEl.innerHTML = badge + '<span>' + cpEscapeHtml(config.model || '未知') + '</span>';
-    if (!hasKey) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
+    if (!hasKey && !isFreeProxy) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
   function renderStatus() { if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[agent.status] || String(agent.status); renderApiInfo(); }
