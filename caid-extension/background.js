@@ -21,20 +21,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具经此消息请求 background
   // 用特权 API chrome.tabs.create 打开新标签（MAIN world 无 chrome.tabs，window.open 又易被拦截）。
+  // 同时：若携带 handoff（续传上下文），由 background 直接写入 chrome.storage.session
+  // （永远有权限，不依赖 content.js 桥接 —— 修复扩展页/newtab 上 content.js 不运行导致 handoff 丢失的根因）。
   // 新标签加载完成后，下方 tabs.onUpdated 会自动检测 caidHandoff 并注入副驾续跑。
   if (msg && msg.type === 'NAVIGATE_TO_URL') {
-    try {
-      const opts = { url: msg.url, active: msg.active !== false };
-      chrome.tabs.create(opts, function (tab) {
-        if (chrome.runtime.lastError) {
-          console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
-        } else {
-          console.log('[CAID-R] NAVIGATE_TO_URL: background 已用 chrome.tabs.create 打开新标签, tabId=', tab && tab.id, ' url=', msg.url);
-        }
+    // 先存储 handoff（若有），再开标签 —— 确保 tabs.onUpdated 触发时 handoff 已在 storage 中
+    var storePromise = Promise.resolve();
+    if (msg.handoff) {
+      storePromise = new Promise(function (resolve) {
+        chrome.storage.session.set({ caidHandoff: msg.handoff }, function () {
+          if (chrome.runtime.lastError) {
+            console.warn('[CAID-R] NAVIGATE_TO_URL: handoff 存储失败:', chrome.runtime.lastError.message);
+          } else {
+            console.log('[CAID-R] NAVIGATE_TO_URL: handoff 已存入 storage.session, goal=', msg.handoff.goal);
+          }
+          resolve();
+        });
       });
-    } catch (e) {
-      console.error('[CAID-R] NAVIGATE_TO_URL: 异常', e);
     }
+    storePromise.then(function () {
+      try {
+        const opts = { url: msg.url, active: msg.active !== false };
+        chrome.tabs.create(opts, function (tab) {
+          if (chrome.runtime.lastError) {
+            console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
+          } else {
+            console.log('[CAID-R] NAVIGATE_TO_URL: background 已用 chrome.tabs.create 打开新标签, tabId=', tab && tab.id, ' url=', msg.url, ' handoff=', !!msg.handoff);
+          }
+        });
+      } catch (e) {
+        console.error('[CAID-R] NAVIGATE_TO_URL: 异常', e);
+      }
+    });
     return false; // 同步处理，无需异步 sendResponse
   }
 

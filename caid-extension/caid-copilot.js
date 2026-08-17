@@ -294,29 +294,31 @@
         const url = String(input && input.url || '').trim();
         console.log('[CAID-R] ★★★ navigate_to_url 工具被调用! input=', JSON.stringify(input), ' resolved url=', url);
         if (!url) throw new Error('navigate_to_url: url is required');
-        // 断点续传：跳转前保存任务上下文，供新页面副驾续传
-        // MAIN world 无 chrome.storage，通过 DOM 事件桥接到 ISOLATED world 的 content.js 写入
+        // 断点续传：构建 handoff 并随导航消息一起发给 background 存储。
+        // 不再依赖 DOM 事件 → content.js → storage 桥接链路（扩展页/newtab 上 content.js 不运行，
+        // 派发的事件无人监听，handoff 从未写入 storage —— 此前跨站续跑始终失败的根因）。
+        let handoff = null;
         try {
-          const h = buildHandoff(url);
-          if (h) {
-            console.log('[CAID-R] navigate_to_url: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl);
-            window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+          handoff = buildHandoff(url);
+          if (handoff) {
+            console.log('[CAID-R] navigate_to_url: buildHandoff goal=', handoff.goal, ' toUrl=', handoff.toUrl);
           } else {
             console.warn('[CAID-R] navigate_to_url: buildHandoff 返回 null（无历史/无 goal），不存续传');
           }
-        } catch (e) { console.warn('[CAID-R] navigate_to_url: 保存续传上下文失败', e); }
+        } catch (e) { console.warn('[CAID-R] navigate_to_url: buildHandoff 异常', e); }
         // 立即终止当前页 agent，避免它在原页面继续空转输出；
         // 检查点已保存，新标签副驾会自动续跑（控制权转移到新标签，原页面保留）。
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
         cleanupAgentOverlays();  // 清理残留覆盖层，避免遮挡原页 UI
-        // 【关键修复】不再用 location.href 替换当前页，而是新开标签，保留用户原来的页面（含 CAID 工作台）。
-        // MAIN world 下 chrome.tabs 不可用 → 改为发消息给 background，由 service worker 用特权 API chrome.tabs.create 打开
-        // （可靠、不被弹窗拦截；新标签加载完成后 background 的 tabs.onUpdated 会自动注入副驾并续跑）。
+        // 把「导航目标 + 续传上下文」打包一条消息发给 background：
+        //   ① background 用特权 API chrome.tabs.create 打开新标签（可靠、不被弹窗拦截）
+        //   ② background 同时把 handoff 写入 chrome.storage.session（永远有权限，不依赖 content.js）
+        //   ③ 新标签加载完成后 tabs.onUpdated 读 handoff → bootCopilot 注入副驾并续跑
         try {
           if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: true });
-            console.log('[CAID-R] navigate_to_url: 已请求 background 经 chrome.tabs.create 打开新标签 (url=' + url + ')');
+            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: true, handoff: handoff });
+            console.log('[CAID-R] navigate_to_url: 已请求 background 打开新标签+存储续传 (url=' + url + ', handoff=' + !!handoff + ')');
           } else { throw new Error('no-chrome-runtime'); }
         } catch (e) {
           // 兜底：MAIN world 里 window.open 仍可用（仅当 runtime 消息失败时才走到这里）
@@ -334,18 +336,18 @@
       execute: async function (input) {
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('open_url_in_new_tab: url is required');
-        // 断点续传：新标签会自动启动副驾并续跑（与 navigate_to_url 一致）。
-        // MAIN world 无 chrome.storage，经 DOM 事件桥接 ISOLATED world 的 content.js 写入 session。
+        // 断点续传：构建 handoff 并随导航消息发给 background（不再依赖 content.js 桥接，扩展页上 content.js 不运行）
+        let h2 = null;
         try {
-          const h = buildHandoff(url);
-          if (h) { console.log('[CAID-R] open_url_in_new_tab: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
+          h2 = buildHandoff(url);
+          if (h2) console.log('[CAID-R] open_url_in_new_tab: buildHandoff goal=', h2.goal);
           else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
-        } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: 保存续传上下文失败', e); }
-        // MAIN world 下 chrome.tabs 不可用 → 改发消息给 background，由 service worker 用 chrome.tabs.create 打开
+        } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 异常', e); }
+        // MAIN world 下 chrome.tabs 不可用 → 改发消息给 background
         try {
           if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: false });
-            console.log('[CAID-R] open_url_in_new_tab: 已请求 background 经 chrome.tabs.create 打开新标签 (url=' + url + ')');
+            chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: false, handoff: h2 });
+            console.log('[CAID-R] open_url_in_new_tab: 已请求 background 打开新标签+存储续传 (url=' + url + ', handoff=' + !!h2 + ')');
           } else { throw new Error('no-chrome-runtime'); }
         } catch (e) {
           console.warn('[CAID-R] open_url_in_new_tab: 消息失败, 回退 anchor:', e.message || e);
@@ -777,20 +779,41 @@
   }
 
   // 清理 PageAgent 运行期间可能创建的覆盖层 DOM，恢复页面可交互性
+  // PageAgent 会创建观察框、高亮标注、全屏 pointer-events 拦截层等，
+  // agent.stop() 后这些残留 DOM 会遮挡 🤖 启动按钮导致无法点击。
   function cleanupAgentOverlays() {
     try {
-      // PageAgent 常见残留选择器（观察框、高亮、标注等）
+      // 策略1：按已知选择器精确清除
       var selectors = [
         '[data-page-agent]', '.pa-overlay', '.pa-highlight', '.pa-observation',
         '#page-agent-root', '#page-agent-ui', '.page-agent-screenshot',
-        '[style*="z-index"][style*="2147483647"]', '[style*="z-index"][style*="2147483646"]'
+        '[style*="z-index"][style*="2147483647"]', '[style*="z-index"][style*="2147483646"]',
+        '.page-agent-shield', '.pa-modal', '.pa-backdrop'
       ];
       selectors.forEach(function (sel) {
+        try { document.querySelectorAll(sel).forEach(function (el) { el.remove(); }); } catch (_) {}
+      });
+      // 策略2：暴力清除所有 position:fixed 且 z-index > 1000000 的非 CAID 元素（PageAgent 常用超高 z-index）
+      document.querySelectorAll('*').forEach(function (el) {
         try {
-          document.querySelectorAll(sel).forEach(function (el) { el.remove(); });
+          var s = getComputedStyle(el);
+          if (s.position === 'fixed' && parseInt(s.zIndex || '0', 10) > 1000000 &&
+              el.id !== 'caidLauncher' && el.id !== 'caidExtCopilot' && !el.closest('#caidExtCopilot')) {
+            console.log('[CAID] cleanupAgentOverlays: 移除残留高 z-index 元素', el.tagName, '#' + el.id, '.' + el.className);
+            el.remove();
+          }
         } catch (_) {}
       });
     } catch (_) {}
+    // 策略3：确保 🤖 按钮存在且可点击
+    ensureLauncher();
+    var btn = document.getElementById('caidLauncher');
+    if (btn) {
+      btn.style.display = '';
+      btn.style.visibility = 'visible';
+      btn.style.pointerEvents = 'auto';
+      btn.style.zIndex = '2147483647';
+    }
   }
   if (stopEl) stopEl.addEventListener('click', forceStop);
   // 全局快捷键：Ctrl+. (或 Cmd+.) 强行终止运行中任务
@@ -851,4 +874,26 @@
       window.__CAID_HANDOFF = null;
     } catch (e) { console.warn('[CAID-R] resumeIfNeeded: 续传失败', e); isResuming = false; }
   })();
+
+  // 🛡️ MutationObserver：保活 🤖 启动按钮
+  // PageAgent 或其他脚本可能移除/遮挡按钮，此 observer 确保按钮始终存在、可见、可点击。
+  // 使用 debounce 避免短时间内大量 DOM 变更触发频繁重建。
+  var _launcherGuardTimer = null;
+  var _launcherGuard = new MutationObserver(function () {
+    if (_launcherGuardTimer) return;
+    _launcherGuardTimer = setTimeout(function () {
+      _launcherGuardTimer = null;
+      var btn = document.getElementById('caidLauncher');
+      if (!btn) { ensureLauncher(); return; }
+      // 检查按钮是否被隐藏或遮挡
+      var s = getComputedStyle(btn);
+      if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') {
+        btn.style.display = '';
+        btn.style.visibility = 'visible';
+        btn.style.pointerEvents = 'auto';
+        btn.style.zIndex = '2147483647';
+      }
+    }, 300);
+  });
+  _launcherGuard.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true });
 })();
