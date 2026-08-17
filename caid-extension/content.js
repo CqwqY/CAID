@@ -9,6 +9,63 @@
   // （MAIN world 无 chrome.runtime，无法自己 getURL；ISOLATED world 设的属性 MAIN world 可读）
   try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('options.html'); } catch (e) {}
 
+  // ---------- storage 双路径：直接访问优先，失败时经 background 代理 ----------
+  // 某些场景下（如扩展 context invalidated 后恢复、特定页面上下文）content script 的
+  // chrome.storage.session 会报 "Access to storage is not allowed from this context"，
+  // 此时回退到 sendMessage 让 background（service worker，永远有完整权限）代为读写。
+  function sessionGet(keys) {
+    return new Promise(function (resolve) {
+      try {
+        if (chrome && chrome.storage && chrome.storage.session) {
+          chrome.storage.session.get(keys, function (got) {
+            if (chrome.runtime.lastError) throw new Error(chrome.runtime.lastError.message);
+            resolve(got);
+          });
+        } else { throw new Error('no-session'); }
+      } catch (e) {
+        console.log('[CAID-content] session.get 直接访问失败, 回退 background 代理:', e.message || e);
+        try {
+          chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
+            resolve(resp && resp.data || {});
+          });
+        } catch (e2) { resolve({}); }
+      }
+    });
+  }
+  function sessionSet(data) {
+    return new Promise(function (resolve) {
+      try {
+        if (chrome && chrome.storage && chrome.storage.session) {
+          chrome.storage.session.set(data, function () {
+            if (chrome.runtime.lastError) throw new Error(chrome.runtime.lastError.message);
+            resolve(true);
+          });
+        } else { throw new Error('no-session'); }
+      } catch (e) {
+        console.log('[CAID-content] session.set 直接访问失败, 回退 background 代理:', e.message || e);
+        try {
+          chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+        } catch (e2) { resolve(false); }
+      }
+    });
+  }
+  function sessionRemove(keys) {
+    return new Promise(function (resolve) {
+      try {
+        if (chrome && chrome.storage && chrome.storage.session) {
+          chrome.storage.session.remove(keys, function () {
+            resolve(true);
+          });
+        } else { throw new Error('no-session'); }
+      } catch (e) {
+        console.log('[CAID-content] session.remove 直接访问失败, 回退 background 代理:', e.message || e);
+        try {
+          chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+        } catch (e2) { resolve(false); }
+      }
+    });
+  }
+
   function addButton() {
     if (!document.body) { setTimeout(addButton, 300); return; }
     if (document.getElementById('caidLauncher')) return;
@@ -69,26 +126,17 @@
   window.addEventListener('__caid_store_handoff', function (e) {
     var h = e && e.detail;
     if (!h) return;
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.session) { console.warn('[CAID-R] store_handoff: chrome.storage.session 不可用'); return; }
-      console.log('[CAID-R] store_handoff: 写入续传上下文, goal=', h.goal, ' toUrl=', h.toUrl);
-      chrome.storage.session.set({ caidHandoff: h }, function () {
-        if (chrome.runtime.lastError) { console.warn('[CAID-R] store_handoff 写入失败:', chrome.runtime.lastError.message); return; }
-        else console.log('[CAID-R] store_handoff: 写入成功');
-      });
-    } catch (ex) {
-      console.warn('[CAID-R] store_handoff failed:', ex.message || ex);
-    }
+    console.log('[CAID-R] store_handoff: 写入续传上下文, goal=', h.goal, ' toUrl=', h.toUrl);
+    sessionSet({ caidHandoff: h }).then(function () {
+      console.log('[CAID-R] store_handoff: 写入完成');
+    }).catch(function (err) {
+      console.warn('[CAID-R] store_handoff 写入失败:', err.message || err);
+    });
   });
 
   // MAIN world 的副驾在任务正常结束 / 被强行终止时派发此事件，清除续传上下文，避免误触发
   window.addEventListener('__caid_clear_handoff', function () {
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.session) return;
-      chrome.storage.session.remove(['caidHandoff'], function () {
-        if (chrome.runtime.lastError) { console.warn('[CAID-content] clear_handoff 失败:', chrome.runtime.lastError.message); }
-      });
-    } catch (ex) {}
+    sessionRemove(['caidHandoff']).catch(function () {});
   });
 
   // MAIN world 的副驾（无 chrome.*）把 LLM 网络请求经 window.postMessage 转交本 ISOLATED world，
@@ -127,14 +175,12 @@
   function tryAutoResumeOnce() {
     return new Promise(function (resolve) {
       try {
-        if (!chrome || !chrome.storage || !chrome.storage.session) { console.warn('[CAID-R] tryAutoResume: chrome.storage.session 不可用'); return resolve(false); }
         if (document.getElementById('caidExtCopilot')) { console.log('[CAID-R] tryAutoResume: 副驾已注入，跳过'); return resolve(false); }
-        chrome.storage.session.get(['caidHandoff'], function (got) {
-          if (chrome.runtime.lastError) { console.warn('[CAID-R] tryAutoResume: get 失败', chrome.runtime.lastError.message); return resolve(false); }
+        sessionGet(['caidHandoff']).then(function (got) {
           const h = got && got.caidHandoff;
           if (!h) { console.log('[CAID-R] tryAutoResume: 无续传上下文'); return resolve(false); }
           // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
-          if (h.ts && Date.now() - h.ts > 120000) { console.log('[CAID-R] tryAutoResume: 上下文已过期，作废'); chrome.storage.session.remove(['caidHandoff']); return resolve(false); }
+          if (h.ts && Date.now() - h.ts > 120000) { console.log('[CAID-R] tryAutoResume: 上下文已过期，作废'); sessionRemove(['caidHandoff']); return resolve(false); }
           // 来源页本身不续跑，避免同页循环
           if (location.href === (h.fromUrl || '')) { console.log('[CAID-R] tryAutoResume: 仍是来源页，跳过'); return resolve(false); }
           // 续跑判定：① 显式目的地命中（toUrl 主机 == 当前页）；或 ② 已离开检查点来源页（moved，覆盖站内表单提交等任意跳转）
@@ -144,15 +190,17 @@
           console.log('[CAID-R] tryAutoResume: 命中续传, from=', h.fromUrl, ' to=', h.toUrl, ' destMatch=', destMatch, ' moved=', moved);
           if (!destMatch && !moved) { console.log('[CAID-R] tryAutoResume: 未满足续跑条件，跳过'); return resolve(false); }
           // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
-          chrome.storage.session.remove(['caidHandoff'], function () {
-            if (chrome.runtime.lastError) { console.warn('[CAID-R] tryAutoResume: remove 失败', chrome.runtime.lastError.message); return resolve(false); }
+          sessionRemove(['caidHandoff']).then(function () {
             console.log('[CAID-R] tryAutoResume: 消费上下文并发送 BOOT_COPILOT');
             chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
             resolve(true);
-          });
+          }).catch(function () { resolve(false); });
+        }).catch(function (err) {
+          console.warn('[CAID-R] tryAutoResume: get 异常', err.message || err);
+          resolve(false);
         });
       } catch (e) {
-        console.warn('[CAID-R] tryAutoResume: 异常', e.message || e);
+        console.warn('[CAID-R] tryAutoResume: 外层异常', e.message || e);
         resolve(false);
       }
     });

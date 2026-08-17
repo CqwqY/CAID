@@ -292,6 +292,7 @@
       inputSchema: mkObj({ url: 'string:url' }),
       execute: async function (input) {
         const url = String(input && input.url || '').trim();
+        console.log('[CAID-R] ★★★ navigate_to_url 工具被调用! input=', JSON.stringify(input), ' resolved url=', url);
         if (!url) throw new Error('navigate_to_url: url is required');
         // 断点续传：跳转前保存任务上下文，供新页面副驾续传
         // MAIN world 无 chrome.storage，通过 DOM 事件桥接到 ISOLATED world 的 content.js 写入
@@ -309,15 +310,29 @@
         isHandingOff = true;
         try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
         // 【关键修复】不再用 location.href 替换当前页，而是新开标签，保留用户原来的页面（含 CAID 工作台）。
-        // 优先 chrome.tabs.create（扩展页/MAIN world 有 chrome.* 时可靠），否则用 anchor 新标签点击。
+        // 三级策略：① chrome.tabs.create（最可靠，扩展特权 API）；② window.open（标准 API）；③ anchor 点击（最后兜底）。
+        let opened = false;
         try {
-          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+          if (typeof chrome !== 'undefined' && chrome.tabs && typeof chrome.tabs.create === 'function') {
             chrome.tabs.create({ url: url, active: true });
+            opened = true;
+            console.log('[CAID-R] navigate_to_url: 通过 chrome.tabs.create 打开新标签');
           } else { throw new Error('no-chrome-tabs'); }
         } catch (e) {
+          console.warn('[CAID-R] navigate_to_url: chrome.tabs.create 失败, 回退 window.open:', e.message || e);
+          try {
+            window.open(url, '_blank', 'noopener,noreferrer');
+            opened = true;
+            console.log('[CAID-R] navigate_to_url: 通过 window.open 打开新标签');
+          } catch (e2) {
+            console.warn('[CAID-R] navigate_to_url: window.open 也失败, 最后用 anchor:', e2.message || e2);
+          }
+        }
+        if (!opened) {
           const a = document.createElement('a');
           a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
           document.body.appendChild(a); a.click(); a.remove();
+          console.log('[CAID-R] navigate_to_url: 通过 anchor <a> 点击打开新标签（可能被弹窗拦截器拦）');
         }
         return `✅ Opened in new tab (task continues there): ${url}`;
       }
@@ -561,14 +576,16 @@
 
   // ---------- 断点续传：跳转前序列化任务上下文 ----------
   function buildHandoff(targetUrl) {
-    if (!agent) return null;
+    if (!agent) { console.warn('[CAID-R] buildHandoff: agent 不存在'); return null; }
     const hist = agent.history || [];
-    if (!hist.length) return null;
+    // 提取目标（优先从历史找 user 消息，回退到输入框当前值）
     let goal = '';
     for (let i = hist.length - 1; i >= 0; i--) {
       if (hist[i] && hist[i].type === 'user') { goal = hist[i].content; break; }
     }
-    if (!goal) return null;
+    // 【关键修复】不再因"无历史/无 user 条目"就返回 null——回退 inputEl.value
+    if (!goal && inputEl) goal = String(inputEl.value || '').trim();
+    if (!goal) { console.warn('[CAID-R] buildHandoff: 无法提取 goal（history=', hist.length, ', inputEl.value=', inputEl ? inputEl.value : 'N/A', ')'); return null; }
     const recent = hist.slice(-12).map(function (ev) {
       if (ev.type === 'user') return { type: 'user', content: ev.content };
       if (ev.type === 'assistant') return { type: 'assistant', content: ev.content };
@@ -601,6 +618,12 @@
 
   // ---------- 创建 agent ----------
   const cfg = window.__CAID_LLM_CFG || {};
+  // 【诊断】打印实际配置，排查"面板显示与实际使用不一致"
+  console.log('[CAID-R] agent 创建配置 dump:', JSON.stringify({
+    model: cfg.model, baseURL: cfg.baseURL, hasKey: !!(cfg.apiKey && cfg.apiKey !== 'NA' && cfg.apiKey !== 'null' && cfg.apiKey !== 'undefined'),
+    isCustom: !!(cfg.baseURL) && !!(cfg.apiKey && cfg.apiKey !== 'NA' && cfg.apiKey !== 'null' && cfg.apiKey !== 'undefined'),
+    FREE_PROXY: 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run'
+  }));
   // 注意：扩展配置 schema 的键是 baseURL（大写 URL），与内联保存（cpSave）和 caid-bridge 写入保持一致。
   // 判定是否为"自定义 LLM"：必须填了可用的 baseURL + 真实 API Key（非占位 'NA'）。
   // 否则一律走内置免费代理（qwen3.5-plus），避免因为 baseURL 缺失触发 PageAgent 的 config required 报错。

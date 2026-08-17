@@ -35,6 +35,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     return false;
   }
+  // content.js 在某些页面上下文中 chrome.storage.session 直接访问会被拒
+  // （"Access to storage is not allowed from this context"），经消息让 background 代理读写
+  if (msg && msg.type === 'CAID_SESSION_GET') {
+    chrome.storage.session.get(msg.keys || [], function (got) {
+      sendResponse({ data: got || {} });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_SESSION_SET') {
+    chrome.storage.session.set(msg.data || {}, function () {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_SESSION_REMOVE') {
+    chrome.storage.session.remove(msg.keys || [], function () {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
   // MAIN world 的副驾（无 chrome.*）经 content.js 把 LLM 请求转交到这里，
   // 由 service worker 用扩展网络栈发起——不受宿主页（如 github.com）的 CSP 限制。
   if (msg && msg.type === 'CAID_LLM_FETCH') {
