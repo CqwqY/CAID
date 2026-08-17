@@ -173,6 +173,17 @@
     sessionRemove(['caidHandoff']).catch(function () {});
   });
 
+  // background 自动跟随进入新标签（target=_blank）后，经此消息让本（旧）标签的 agent 停止。
+  // ISOLATED world 收到 runtime 消息后派发 DOM 事件，MAIN world 的 caid-copilot.js 监听并 forceStop。
+  try {
+    chrome.runtime.onMessage.addListener(function (msg) {
+      if (msg && msg.type === 'CAID_STOP_AGENT') {
+        console.log('[CAID-content] 收到 CAID_STOP_AGENT，派发 __caid_force_stop 停止本页 agent');
+        try { window.dispatchEvent(new CustomEvent('__caid_force_stop')); } catch (e) {}
+      }
+    });
+  } catch (e) {}
+
   // MAIN world 的副驾（无 chrome.*）把 LLM 网络请求经 window.postMessage 转交本 ISOLATED world，
   // 再由本脚本发往 background service worker 真正发起（扩展网络，不受宿主页 CSP 限制），
   // 最后把响应回传 MAIN world，由其重建为标准 Response 交给 Page-Agent。
@@ -217,12 +228,14 @@
           if (h.ts && Date.now() - h.ts > 120000) { console.log('[CAID-R] tryAutoResume: 上下文已过期，作废'); sessionRemove(['caidHandoff']); return resolve(false); }
           // 来源页本身不续跑，避免同页循环
           if (location.href === (h.fromUrl || '')) { console.log('[CAID-R] tryAutoResume: 仍是来源页，跳过'); return resolve(false); }
-          // 续跑判定：① 显式目的地命中（toUrl 主机 == 当前页）；或 ② 已离开检查点来源页（moved，覆盖站内表单提交等任意跳转）
+          // 续跑判定：仅"显式目的地命中"（toUrl 主机 == 当前页，来自 navigate_to_url 的显式导航）。
+          // 任意同标签页跳转 / target=_blank 的跟随改由 background 的 tabs.onUpdated + caidAgentTabs 判定——
+          // 全局 caidHandoff 无法区分「agent 的 tab 跳转了」和「用户手动开了个不相关的新标签」，
+          // 此前 moved 裸条件（location.href !== toUrl）几乎恒真，会把不相关新标签也误续跑。
           let destMatch = false;
           try { if (h.toUrl) destMatch = location.host === new URL(h.toUrl).host; } catch (e) {}
-          let moved = (location.href !== (h.toUrl || ''));
-          console.log('[CAID-R] tryAutoResume: 命中续传, from=', h.fromUrl, ' to=', h.toUrl, ' destMatch=', destMatch, ' moved=', moved);
-          if (!destMatch && !moved) { console.log('[CAID-R] tryAutoResume: 未满足续跑条件，跳过'); return resolve(false); }
+          console.log('[CAID-R] tryAutoResume: from=', h.fromUrl, ' to=', h.toUrl, ' destMatch=', destMatch);
+          if (!destMatch) { console.log('[CAID-R] tryAutoResume: 非本页目的地的 handoff，跳过（交由 background 按 tab 状态判定）'); return resolve(false); }
           // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
           sessionRemove(['caidHandoff']).then(function () {
             console.log('[CAID-R] tryAutoResume: 消费上下文并发送 BOOT_COPILOT');

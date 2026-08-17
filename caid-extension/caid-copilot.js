@@ -816,6 +816,18 @@
     caidSendToBg({ type: 'AGENT_INACTIVE' });  // 通知 background：本 tab agent 已停止，不再自动跟随
   }
 
+  // background 自动跟随到新标签（target=_blank）后，经 content.js 派发此事件让本（旧）页 agent 停止，
+  // 避免旧页 agent 在原地空转（"发懵"）、两边上下文互相覆盖。
+  window.addEventListener('__caid_force_stop', function () {
+    try {
+      if (agent && agent.status === 'running') {
+        console.log('[CAID-R] 收到 __caid_force_stop：任务已在新页面续跑，停止本页 agent');
+        logBubble('assistant', '⏹ 任务已跳转到新页面继续，本页 agent 已停止。');
+        forceStop();
+      }
+    } catch (e) {}
+  });
+
   // 清理 PageAgent 运行期间可能创建的覆盖层 DOM，恢复页面可交互性
   // PageAgent 会创建观察框、高亮标注、全屏 pointer-events 拦截层等，
   // agent.stop() 后这些残留 DOM 会遮挡 🤖 启动按钮导致无法点击。

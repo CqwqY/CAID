@@ -130,10 +130,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // ---------- Agent 活跃状态通知（经 caidSendToBg 桥接，扩展页直连 / 正则网页走 content.js DOM 桥）----------
+  // 【关键】必须同步持久化到 chrome.storage.session：MV3 service worker 约 30s 空闲即被 Chrome 销毁，
+  // 内存 Map(activeAgentTabs) 会丢失 → 同标签页跳转时 tabs.onUpdated 查不到状态 → 自动跟随失效。
+  // storage.session 跨 SW 重启存活（浏览器会话内有效），是同标签页续跟的可靠载体。
   if (msg && msg.type === 'AGENT_ACTIVE') {
     const tabId = sender.tab && sender.tab.id;
     if (tabId) {
-      activeAgentTabs.set(tabId, { goal: msg.goal, fromUrl: msg.fromUrl || '', ts: Date.now() });
+      var stA = { goal: msg.goal, fromUrl: msg.fromUrl || '', ts: Date.now() };
+      activeAgentTabs.set(tabId, stA);
+      chrome.storage.session.get(['caidAgentTabs'], function (got) {
+        var tabs = (got && got.caidAgentTabs) || {};
+        tabs[tabId] = stA;
+        chrome.storage.session.set({ caidAgentTabs: tabs });
+      });
       console.log('[CAID-R] AGENT_ACTIVE tabId=', tabId, 'goal=', msg.goal);
     }
     return false;
@@ -142,6 +151,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = sender.tab && sender.tab.id;
     if (tabId) {
       activeAgentTabs.delete(tabId);
+      chrome.storage.session.get(['caidAgentTabs'], function (got) {
+        var tabs = (got && got.caidAgentTabs) || {};
+        if (tabs[tabId]) { delete tabs[tabId]; chrome.storage.session.set({ caidAgentTabs: tabs }); }
+      });
       console.log('[CAID-R] AGENT_INACTIVE tabId=', tabId);
     }
     return false;
@@ -211,53 +224,95 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   const nt = chrome.runtime.getURL('newtab.html');
   const isNewTab = tab.url.indexOf(nt) === 0;
 
-  chrome.storage.session.get(['caidHandoff'], function (got) {
+  // 同时读 handoff + 持久化的 agent 活跃表（caidAgentTabs 跨 SW 重启存活，内存 Map 只是加速缓存）
+  chrome.storage.session.get(['caidHandoff', 'caidAgentTabs'], function (got) {
     var h = got && got.caidHandoff;
     var fresh = h && (!h.ts || Date.now() - h.ts <= 120000);
+    var now = Date.now();
+
+    // 统一判别：本 tab（同标签页跳转）或其 opener（target=_blank 新标签）是否有活跃 agent。
+    // 这是"本次导航与 agent 相关"的可靠依据——全局 caidHandoff 无法区分
+    // 「agent 的 tab 跳转了」和「用户手动开了个不相关的新标签」（后者绝不能误续跑）。
+    var tabs = (got && got.caidAgentTabs) || {};
+    var st = tabs[tabId] || activeAgentTabs.get(tabId) || null;
+    var viaOpener = false;
+    if (!st && tab.openerTabId) {
+      st = tabs[tab.openerTabId] || activeAgentTabs.get(tab.openerTabId) || null;
+      viaOpener = !!st;
+    }
+    var linked = !!(st && now - st.ts < 300000);
 
     if (isNewTab) {
-      // A) newtab：始终启动副驾（有 handoff 则续跑）
-      if (fresh) { chrome.storage.session.remove(['caidHandoff']); }
-      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, handoff=', !!fresh);
-      bootCopilot(tabId, tab.url, fresh ? h : null);
-    } else if (fresh && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
-      // B) 普通页面 + 有效 handoff + 非来源页 + 真实 http(s) URL → 自动注入副驾并续跑
-      // （防 chrome.tabs.create 过程中的 about:blank 等中间态提前消耗 handoff）
+      // A) newtab：始终启动副驾；仅消费"显式导航意图"的 handoff（h.toUrl 非空，来自 navigate_to_url）。
+      // checkpoint/auto 类 handoff（toUrl=null）不消费——否则 agent 在别的 tab 运行时，
+      // 用户随手开个新标签页都会被误续跑。
+      var consumeA = fresh && h.toUrl;
+      if (consumeA) chrome.storage.session.remove(['caidHandoff']);
+      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, handoff=', !!consumeA);
+      bootCopilot(tabId, tab.url, consumeA ? h : null);
+    } else if (fresh && (h.toUrl || linked) && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
+      // B) 普通页面 + 有效 handoff + (显式导航意图 或 本 tab/opener 有活跃 agent) + 非来源页 → 续跑
       chrome.storage.session.remove(['caidHandoff']);
-      console.log('[CAID-R] tabs.onUpdated: 普通页面检测到续传, goal=', h.goal, ' url=', tab.url);
+      console.log('[CAID-R] tabs.onUpdated: 普通页面检测到续传, goal=', h.goal, ' url=', tab.url, ' linked=', linked, ' viaOpener=', viaOpener);
       bootCopilot(tabId, tab.url, h);
-    } else {
-      // C) 无显式 handoff → 检查本 tab（或 opener tab）是否有活跃 agent
-      // 场景：agent 用 execute_javascript 点击视频卡片 / 用户手动点链接 / 表单提交 →
-      // 页面导航但 agent 没调 navigate_to_url → checkpoint 可能没来得及写 →
-      // background 用 AGENT_ACTIVE 时存的 goal 直接创建 handoff 并续跑
-      var now = Date.now();
+      if (viaOpener && tab.openerTabId) stopAgentInTab(tab.openerTabId);
+      markFollowed(tabId, tab.url);
+    } else if (linked && tab.url !== st.fromUrl && /^https?:\/\//i.test(tab.url)) {
+      // C) 无可用 handoff，但本 tab（同页跳转：点链接/表单提交/execute_javascript 点击）或
+      // opener（target=_blank 新标签）有活跃 agent → 用跟踪的 goal 直接建 handoff 自动跟随。
+      // 这条路径不依赖 checkpoint 的写入时序（页面可能在步骤中途卸载，checkpoint 来不及写）。
       if (_autoFollowCooldown.has(tabId) && now - _autoFollowCooldown.get(tabId) < 5000) return;
-
-      // 同 tab 导航（点击链接导致同页跳转）或新 tab 导航（target=_blank 链接，openerTabId 指向源 tab）
-      var agentState = activeAgentTabs.get(tabId);
-      if (!agentState && tab.openerTabId) agentState = activeAgentTabs.get(tab.openerTabId);
-      if (agentState && now - agentState.ts < 300000 && tab.url !== agentState.fromUrl && /^https?:\/\//i.test(tab.url)) {
-        _autoFollowCooldown.set(tabId, now);
-        var autoHandoff = {
-          goal: agentState.goal,
-          fromUrl: agentState.fromUrl,
-          toUrl: tab.url,
-          ts: now,
-          recent: [],
-          source: 'auto-follow'
-        };
-        console.log('[CAID-R] ★ auto-follow: 页面导航时 agent 仍活跃, 自动续跑到新页面, goal=', agentState.goal, ' url=', tab.url, ' sameTab=', activeAgentTabs.has(tabId));
-        bootCopilot(tabId, tab.url, autoHandoff);
-      }
+      _autoFollowCooldown.set(tabId, now);
+      var autoHandoff = {
+        goal: st.goal,
+        fromUrl: st.fromUrl,
+        toUrl: tab.url,
+        ts: now,
+        recent: [],
+        source: 'auto-follow'
+      };
+      console.log('[CAID-R] ★ auto-follow: 页面导航时 agent 仍活跃, 自动续跑到新页面, goal=', st.goal, ' url=', tab.url, ' viaOpener=', viaOpener);
+      bootCopilot(tabId, tab.url, autoHandoff);
+      if (viaOpener && tab.openerTabId) stopAgentInTab(tab.openerTabId);
+      markFollowed(tabId, tab.url);
     }
   });
 });
+
+// 自动跟随后把该 tab 的跟踪状态 fromUrl 更新为新 URL，支持连续多跳（A→B→C 都能继续跟随）
+function markFollowed(tabId, url) {
+  var st = activeAgentTabs.get(tabId);
+  if (st) st.fromUrl = url;
+  chrome.storage.session.get(['caidAgentTabs'], function (got) {
+    var tabs = (got && got.caidAgentTabs) || {};
+    if (tabs[tabId]) { tabs[tabId].fromUrl = url; chrome.storage.session.set({ caidAgentTabs: tabs }); }
+  });
+}
+
+// 跟随进入新标签（target=_blank）后，通知旧标签的 agent 停止——
+// 否则旧标签的 agent 还在原地空转（"发懵"），两边的状态也会互相覆盖。
+function stopAgentInTab(tabId) {
+  try {
+    chrome.tabs.sendMessage(tabId, { type: 'CAID_STOP_AGENT' }, function () {
+      void chrome.runtime.lastError; // content.js 不在的页面（扩展页等）忽略
+    });
+  } catch (e) {}
+  // 双保险：旧页 forceStop 也会发 AGENT_INACTIVE 清理，这里先清跟踪状态
+  activeAgentTabs.delete(tabId);
+  chrome.storage.session.get(['caidAgentTabs'], function (got) {
+    var tabs = (got && got.caidAgentTabs) || {};
+    if (tabs[tabId]) { delete tabs[tabId]; chrome.storage.session.set({ caidAgentTabs: tabs }); }
+  });
+}
 
 // 清理已关闭 tab 的 agent 状态
 chrome.tabs.onRemoved.addListener((tabId) => {
   activeAgentTabs.delete(tabId);
   _autoFollowCooldown.delete(tabId);
+  chrome.storage.session.get(['caidAgentTabs'], function (got) {
+    var tabs = (got && got.caidAgentTabs) || {};
+    if (tabs[tabId]) { delete tabs[tabId]; chrome.storage.session.set({ caidAgentTabs: tabs }); }
+  });
 });
 
 
