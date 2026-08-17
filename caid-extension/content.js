@@ -41,6 +41,21 @@
 
   addButton();
 
+  // MAIN↔ISOLATED 桥：监听 MAIN world 派发的自定义事件，
+  // 用 ISOLATED world 的 chrome.* API 执行特权操作（如打开 options 页）。
+  window.addEventListener('__caid_open_options', function () {
+    console.log('[CAID-content] 收到 __caid_open_options 事件，转发 OPEN_OPTIONS 给 background');
+    chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+  });
+
+  // MAIN world 的 navigate_to_url 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
+  window.addEventListener('__caid_store_handoff', function (e) {
+    var h = e && e.detail;
+    if (!h) return;
+    console.log('[CAID-content] 收到续传上下文，写入 storage.session');
+    try { chrome.storage.session.set({ caidHandoff: h }); } catch (ex) {}
+  });
+
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
   // 主站自带副驾（#caidCopilot 存在）时跳过，避免双副驾。

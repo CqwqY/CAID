@@ -61,11 +61,11 @@ async function bootCopilot(tabId, tabUrl, handoff) {
       world: 'MAIN'
     });
 
-    // 2) 写入 LLM 配置，供 caid-copilot 读取
+    // 2) 写入 LLM 配置 + options 页 URL，供 caid-copilot 读取
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (cfg) => { window.__CAID_LLM_CFG = cfg; },
-      args: [llm],
+      func: (cfg, optsUrl) => { window.__CAID_LLM_CFG = cfg; window.__CAID_OPTIONS_URL = optsUrl; },
+      args: [llm, chrome.runtime.getURL('options.html')],
       world: 'MAIN'
     });
 

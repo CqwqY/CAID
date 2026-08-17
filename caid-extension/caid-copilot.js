@@ -33,47 +33,22 @@
 
   function openOptions() {
     console.log('[CAID] ⚙ 设置按钮被点击');
-    var extUrl = null;
-    try { extUrl = chrome.runtime.getURL('options.html'); console.log('[CAID] ⚙ extUrl =', extUrl); } catch (e) { console.warn('[CAID] ⚙ getURL 失败:', e); }
-
-    // 路径1：让 background（特权上下文）打开 options 页
+    // MAIN world 注入脚本无 chrome.runtime API（MV3 限制），
+    // 通过自定义 DOM 事件桥接到 ISOLATED world 的 content.js，
+    // 由后者用 chrome.runtime.sendMessage 让 background 打开 options 页。
     try {
-      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        console.log('[CAID] ⚙ 路径1: sendMessage OPEN_OPTIONS ...');
-        chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' }, function (resp) {
-          var err = chrome.runtime.lastError;
-          if (err) {
-            console.warn('[CAID] ⚙ 路径1 失败 (lastError):', err.message);
-            openFallback();
-          } else {
-            console.log('[CAID] ⚙ 路径1 已送达 background，等待 openOptionsPage ...');
-          }
-        });
-      }
-    } catch (e) { console.warn('[CAID] ⚙ 路径1 异常:', e); }
-
-    // 300ms 后若路径1没弹窗，自动走 fallback
-    setTimeout(openFallback, 300);
-
-    function openFallback() {
-      // 路径2：openOptionsPage
-      try {
-        if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
-          console.log('[CAID] ⚙ 路径2: openOptionsPage()');
-          chrome.runtime.openOptionsPage();
-          return;
-        }
-      } catch (e) { console.warn('[CAID] ⚙ 路径2 异常:', e); }
-      // 路径3：window.open
-      try {
-        if (extUrl) {
-          console.log('[CAID] ⚙ 路径3: window.open(', extUrl, ')');
-          var w = window.open(extUrl, '_blank');
-          if (w) { console.log('[CAID] ⚙ 路径3 成功'); return; }
-          else console.warn('[CAID] ⚙ 路径3 window.open 返回 null（可能被浏览器拦截）');
-        }
-      } catch (_) { console.warn('[CAID] ⚙ 路径3 异常'); }
-      console.error('[CAID] ⚙ 所有路径均失败，options 页无法打开');
+      console.log('[CAID] ⚙ 派发 __caid_open_options 事件 → content.js 桥接');
+      window.dispatchEvent(new CustomEvent('__caid_open_options'));
+      // 500ms 后若事件桥没弹窗，尝试 window.open 兜底（部分环境下 MAIN world 可直接开扩展页）
+      setTimeout(function () {
+        var url = (window.__CAID_OPTIONS_URL || '') || '';
+        if (!url) { console.warn('[CAID] ⚙ __CAID_OPTIONS_URL 未定义，无法 fallback'); return; }
+        console.log('[CAID] ⚙ fallback: window.open(', url, ')');
+        var w = window.open(url, '_blank');
+        if (!w) console.warn('[CAID] ⚙ window.open 返回 null（可能被浏览器拦截）');
+      }, 500);
+    } catch (e) {
+      console.error('[CAID] ⚙ openOptions 异常:', e);
     }
   }
 
@@ -200,10 +175,11 @@
         const url = String(input && input.url || '').trim();
         if (!url) throw new Error('navigate_to_url: url is required');
         // 断点续传：跳转前保存任务上下文，供新页面副驾续传
+        // MAIN world 无 chrome.storage，通过 DOM 事件桥接到 ISOLATED world 的 content.js 写入
         try {
           const h = buildHandoff(url);
-          if (h && chrome && chrome.storage && chrome.storage.session) {
-            await chrome.storage.session.set({ caidHandoff: h });
+          if (h) {
+            window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
           }
         } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
         try { (window.top || window).location.href = url; }
