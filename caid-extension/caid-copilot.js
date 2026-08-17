@@ -583,9 +583,11 @@
     for (let i = hist.length - 1; i >= 0; i--) {
       if (hist[i] && hist[i].type === 'user') { goal = hist[i].content; break; }
     }
-    // 【关键修复】不再因"无历史/无 user 条目"就返回 null——回退 inputEl.value
+    // 【关键修复】不再因"无历史/无 user 条目"就返回 null——三级回退：
+    // ① agent.history 里的 user 消息 → ② inputEl.value → ③ _currentGoal（sendTask 时存的原始指令）
     if (!goal && inputEl) goal = String(inputEl.value || '').trim();
-    if (!goal) { console.warn('[CAID-R] buildHandoff: 无法提取 goal（history=', hist.length, ', inputEl.value=', inputEl ? inputEl.value : 'N/A', ')'); return null; }
+    if (!goal && _currentGoal) goal = _currentGoal;
+    if (!goal) { console.warn('[CAID-R] buildHandoff: 无法提取 goal（history=', hist.length, ', inputEl=', inputEl ? '"' + inputEl.value + '"' : 'N/A', ', _currentGoal=', '"' + _currentGoal + '"', ')'); return null; }
     const recent = hist.slice(-12).map(function (ev) {
       if (ev.type === 'user') return { type: 'user', content: ev.content };
       if (ev.type === 'assistant') return { type: 'assistant', content: ev.content };
@@ -599,6 +601,7 @@
   // ---------- 持续检查点：任务运行期间不断把上下文快照写入 storage.session ----------
   // 这样无论跳转由哪个工具触发、还是站内表单提交/意外崩溃，新页面都能捡起续跑。
   var isHandingOff = false;     // 正在因跳转而终止当前页 agent（此时不要清除检查点）
+  var _currentGoal = '';         // 【续传兜底】sendTask 时存原始指令，buildHandoff 在 history/inputEl 均空时使用
   var isResuming = false;       // 正在恢复上次任务（此时不要重复检查点）
   var _lastCpTs = 0;
   function checkpoint() {
@@ -747,6 +750,7 @@
   async function sendTask() {
     if (!inputEl || !agent) return;
     var t = inputEl.value.trim(); if (!t) return; inputEl.value = '';
+    _currentGoal = t; // 【续传兜底】保存原始指令，buildHandoff 在 history/inputEl 均空时使用
     agent.history = agent.history || [];
     agent.history.push({ type: 'user', content: t });
     agent.dispatchEvent(new Event('historychange'));
