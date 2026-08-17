@@ -57,6 +57,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     storePromise.then(function () {
       try {
         const opts = { url: msg.url, active: msg.active !== false };
+        // 带 opener 关系：新标签加载后 tabs.onUpdated 的 viaOpener 判定才能命中
+        // （click 拦截等无 handoff 的站外导航，靠 opener 的活跃 agent 走 auto-follow 续跑）
+        if (sender && sender.tab && sender.tab.id) opts.openerTabId = sender.tab.id;
         chrome.tabs.create(opts, function (tab) {
           if (chrome.runtime.lastError) {
             console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
