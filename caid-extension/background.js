@@ -10,12 +10,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   if (msg && msg.type === 'OPEN_OPTIONS') {
-    console.log('[CAID-bg] 收到 OPEN_OPTIONS，调用 openOptionsPage() ...');
+    console.log('[CAID-bg] 收到 OPEN_OPTIONS，由 background（特权上下文）打开 options 页');
     try {
       chrome.runtime.openOptionsPage();
       console.log('[CAID-bg] openOptionsPage() 已调用');
     } catch (e) {
-      console.error('[CAID-bg] openOptionsPage() 异常:', e);
+      // 兜底：部分环境下 openOptionsPage 受限，改用 tabs.create 直接开扩展选项页
+      console.warn('[CAID-bg] openOptionsPage() 失败，兜底 tabs.create:', e);
+      try {
+        chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+      } catch (e2) {
+        console.error('[CAID-bg] 兜底 tabs.create 也失败:', e2);
+      }
     }
     return false;
   }
