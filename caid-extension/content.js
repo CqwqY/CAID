@@ -70,13 +70,14 @@
     var h = e && e.detail;
     if (!h) return;
     try {
-      if (!chrome || !chrome.storage || !chrome.storage.session) return;
-      console.log('[CAID-content] 收到续传上下文，写入 storage.session');
+      if (!chrome || !chrome.storage || !chrome.storage.session) { console.warn('[CAID-R] store_handoff: chrome.storage.session 不可用'); return; }
+      console.log('[CAID-R] store_handoff: 写入续传上下文, goal=', h.goal, ' toUrl=', h.toUrl);
       chrome.storage.session.set({ caidHandoff: h }, function () {
-        if (chrome.runtime.lastError) { console.warn('[CAID-content] store_handoff 写入失败:', chrome.runtime.lastError.message); return; }
+        if (chrome.runtime.lastError) { console.warn('[CAID-R] store_handoff 写入失败:', chrome.runtime.lastError.message); return; }
+        else console.log('[CAID-R] store_handoff: 写入成功');
       });
     } catch (ex) {
-      console.warn('[CAID-content] store_handoff failed:', ex.message || ex);
+      console.warn('[CAID-R] store_handoff failed:', ex.message || ex);
     }
   });
 
@@ -123,31 +124,42 @@
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
   // 扩展副驾（#caidExtCopilot 已注入）时跳过，避免重复启动。
-  (function tryAutoResume() {
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.session) return;
-      if (document.getElementById('caidExtCopilot')) return; // 扩展副驾已注入
-      chrome.storage.session.get(['caidHandoff'], function (got) {
-        if (chrome.runtime.lastError) return; // storage unavailable in this context
-        const h = got && got.caidHandoff;
-        if (!h) return;
-        // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
-        if (h.ts && Date.now() - h.ts > 120000) { chrome.storage.session.remove(['caidHandoff']); return; }
-        // 来源页本身不续跑，避免同页循环
-        if (location.href === (h.fromUrl || '')) return;
-        // 续跑判定：① 显式目的地命中（toUrl 主机 == 当前页）；或 ② 已离开检查点来源页（moved，覆盖站内表单提交等任意跳转）
-        let destMatch = false;
-        try { if (h.toUrl) destMatch = location.host === new URL(h.toUrl).host; } catch (e) {}
-        let moved = (location.href !== (h.toUrl || ''));
-        if (!destMatch && !moved) return;
-        // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
-        chrome.storage.session.remove(['caidHandoff'], function () {
-          if (chrome.runtime.lastError) return;
-          chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
+  function tryAutoResumeOnce() {
+    return new Promise(function (resolve) {
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.session) { console.warn('[CAID-R] tryAutoResume: chrome.storage.session 不可用'); return resolve(false); }
+        if (document.getElementById('caidExtCopilot')) { console.log('[CAID-R] tryAutoResume: 副驾已注入，跳过'); return resolve(false); }
+        chrome.storage.session.get(['caidHandoff'], function (got) {
+          if (chrome.runtime.lastError) { console.warn('[CAID-R] tryAutoResume: get 失败', chrome.runtime.lastError.message); return resolve(false); }
+          const h = got && got.caidHandoff;
+          if (!h) { console.log('[CAID-R] tryAutoResume: 无续传上下文'); return resolve(false); }
+          // 过期保护：超过 2 分钟未消费的续传上下文直接作废，避免误触发
+          if (h.ts && Date.now() - h.ts > 120000) { console.log('[CAID-R] tryAutoResume: 上下文已过期，作废'); chrome.storage.session.remove(['caidHandoff']); return resolve(false); }
+          // 来源页本身不续跑，避免同页循环
+          if (location.href === (h.fromUrl || '')) { console.log('[CAID-R] tryAutoResume: 仍是来源页，跳过'); return resolve(false); }
+          // 续跑判定：① 显式目的地命中（toUrl 主机 == 当前页）；或 ② 已离开检查点来源页（moved，覆盖站内表单提交等任意跳转）
+          let destMatch = false;
+          try { if (h.toUrl) destMatch = location.host === new URL(h.toUrl).host; } catch (e) {}
+          let moved = (location.href !== (h.toUrl || ''));
+          console.log('[CAID-R] tryAutoResume: 命中续传, from=', h.fromUrl, ' to=', h.toUrl, ' destMatch=', destMatch, ' moved=', moved);
+          if (!destMatch && !moved) { console.log('[CAID-R] tryAutoResume: 未满足续跑条件，跳过'); return resolve(false); }
+          // 一次性消费：清除存储并触发启动（context 经消息传给 background → window.__CAID_HANDOFF）
+          chrome.storage.session.remove(['caidHandoff'], function () {
+            if (chrome.runtime.lastError) { console.warn('[CAID-R] tryAutoResume: remove 失败', chrome.runtime.lastError.message); return resolve(false); }
+            console.log('[CAID-R] tryAutoResume: 消费上下文并发送 BOOT_COPILOT');
+            chrome.runtime.sendMessage({ type: 'BOOT_COPILOT', handoff: h });
+            resolve(true);
+          });
         });
-      });
-    } catch(e) {
-      console.warn('[CAID-content] auto-resume skipped:', e.message || e);
-    }
+      } catch (e) {
+        console.warn('[CAID-R] tryAutoResume: 异常', e.message || e);
+        resolve(false);
+      }
+    });
+  }
+  (async function () {
+    const fired = await tryAutoResumeOnce();
+    // 兜底：若首轮未命中（旧页 store 尚未落库即发生跳转的竞态），700ms 后再查一次
+    if (!fired) setTimeout(function () { tryAutoResumeOnce(); }, 700);
   })();
 })();

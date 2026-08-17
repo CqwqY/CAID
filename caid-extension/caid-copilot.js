@@ -298,9 +298,12 @@
         try {
           const h = buildHandoff(url);
           if (h) {
+            console.log('[CAID-R] navigate_to_url: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl);
             window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+          } else {
+            console.warn('[CAID-R] navigate_to_url: buildHandoff 返回 null（无历史/无 goal），不存续传');
           }
-        } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
+        } catch (e) { console.warn('[CAID-R] navigate_to_url: 保存续传上下文失败', e); }
         // 立即终止当前页 agent，避免它在原页面继续空转输出；
         // 检查点已保存，新页面副驾会自动续跑（控制权随焦点转移到新页面）。
         isHandingOff = true;
@@ -321,8 +324,9 @@
         // MAIN world 无 chrome.storage，经 DOM 事件桥接 ISOLATED world 的 content.js 写入 session。
         try {
           const h = buildHandoff(url);
-          if (h) window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
-        } catch (e) { console.warn('[CAID] 保存续传上下文失败', e); }
+          if (h) { console.log('[CAID-R] open_url_in_new_tab: 派发 __caid_store_handoff, goal=', h.goal, ' toUrl=', h.toUrl); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
+          else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
+        } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: 保存续传上下文失败', e); }
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
         document.body.appendChild(a); a.click(); a.remove();
@@ -572,7 +576,7 @@
     _lastCpTs = now;
     try {
       var h = buildHandoff(null);         // toUrl=null：任何跳转目的地都可续跑
-      if (h) window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+      if (h) { console.log('[CAID-R] checkpoint: 续传快照已派发, goal=', h.goal); window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h })); }
     } catch (e) {}
   }
   function clearCheckpoint() {
@@ -766,6 +770,7 @@
   (async function resumeIfNeeded() {
     try {
       const h = window.__CAID_HANDOFF;
+      console.log('[CAID-R] resumeIfNeeded: 启动, handoff?', !!h, ' agent?', !!agent, ' inputEl?', !!inputEl);
       if (!h || !agent) return;
       isResuming = true;
       isHandingOff = false;
@@ -779,11 +784,13 @@
           '\n此前你已离开 ' + (h.fromUrl || '上一页') + ' 并自动跳转到当前页面 ' + location.href +
           '。请先观察当前页面（URL 可能已变化），然后继续完成上述任务（例如执行搜索 / 操作 / 填表）。';
         logBubble('assistant', '⟳ 检测到任务续传：' + (h.goal || ''));
-        setTimeout(function () { inputEl.value = cont; sendTask(); isResuming = false; }, 500);
+        console.log('[CAID-R] resumeIfNeeded: 500ms 后自动 sendTask 续跑');
+        setTimeout(function () { console.log('[CAID-R] resumeIfNeeded: 调用 sendTask'); inputEl.value = cont; sendTask(); isResuming = false; }, 500);
       } else {
+        console.warn('[CAID-R] resumeIfNeeded: inputEl 或 sendTask 不可用，放弃自动续跑');
         isResuming = false;
       }
       window.__CAID_HANDOFF = null;
-    } catch (e) { console.warn('[CAID] 续传失败', e); isResuming = false; }
+    } catch (e) { console.warn('[CAID-R] resumeIfNeeded: 续传失败', e); isResuming = false; }
   })();
 })();

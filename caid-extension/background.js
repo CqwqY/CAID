@@ -15,6 +15,7 @@ function bytesToBase64(bytes) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'BOOT_COPILOT') {
     const tabId = sender.tab && sender.tab.id;
+    console.log('[CAID-R] BOOT_COPILOT 收到, tabId=', tabId, ' handoff?', !!(msg.handoff));
     if (tabId) bootCopilot(tabId, null, msg.handoff);
     return false;
   }
@@ -75,10 +76,19 @@ chrome.action.onClicked.addListener((tab) => {
 // 自己接管的 newtab（扩展页，content script 不注入）加载完成后自动启动副驾，
 // 使其自带 🤖 启动按钮（面板默认收起，由 caid-copilot 自建 launcher 打开）。
 // 复用 bootCopilot 链路：注入 zod-v4 + page-agent + LLM_CFG + caid-copilot。
+// 关键：扩展页上 content.js 不运行，故 tryAutoResume 不会触发；这里必须自己消费
+// chrome.storage.session.caidHandoff，把跨站/站内跳转的续传上下文带进新页副驾。
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status !== 'complete') return;
   const nt = chrome.runtime.getURL('newtab.html');
-  if (tab && tab.url && tab.url.indexOf(nt) === 0) bootCopilot(tabId, tab.url, null);
+  if (tab && tab.url && tab.url.indexOf(nt) === 0) {
+    chrome.storage.session.get(['caidHandoff'], (got) => {
+      const h = got && got.caidHandoff;
+      const fresh = h && (!h.ts || Date.now() - h.ts <= 120000);
+      if (fresh) chrome.storage.session.remove(['caidHandoff']);
+      bootCopilot(tabId, tab.url, fresh ? h : null);
+    });
+  }
 });
 
 
@@ -110,6 +120,7 @@ async function bootCopilot(tabId, tabUrl, handoff) {
 
     // 3) 若携带断点续传上下文，先落地到 window，供 caid-copilot 恢复
     if (handoff) {
+      console.log('[CAID-R] bootCopilot: 落地 window.__CAID_HANDOFF, goal=', handoff.goal);
       await chrome.scripting.executeScript({
         target: { tabId },
         func: (h) => { window.__CAID_HANDOFF = h; },
