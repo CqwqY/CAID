@@ -678,9 +678,16 @@
     'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
     '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +
-    '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。';
+    '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。' +
+    '【跳转链接规则】页面观察结果中的链接会带 href=URL：当你的目标是"进入某链接/打开某页面"时，' +
+    '不要用 click 点击链接（点击后页面切换无法控制），而是直接从 href 读取完整 URL，' +
+    '用 open_url_in_new_tab 或 navigate_to_url 打开它，任务会自动在新页面续跑。' +
+    '若 href 显示被截断（以 ... 结尾），先用 execute_javascript 读取元素的完整 href 再跳转。';
   const customTools = tools;
-  const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools };
+  // includeAttributes: ['href'] —— 让简化 HTML 里的链接带上 URL（默认白名单没有 href，
+  // 模型看不到链接地址，才会"点了跳转链接但不知道去哪"。加上后模型能直接看到
+  // [12]<a href=https://...>视频标题</a>，从而用 navigate 工具接管跳转）。
+  const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools, includeAttributes: ['href'] };
   const config = isCustom
     ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseURL, apiKey: cfg.apiKey })
     : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: FREE_PROXY, apiKey: 'NA' });
