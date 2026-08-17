@@ -32,22 +32,48 @@
   }
 
   function openOptions() {
-    console.log('[CAID] ⚙ 设置按钮被点击，尝试打开 options 页');
+    console.log('[CAID] ⚙ 设置按钮被点击');
     var extUrl = null;
-    try { if (chrome && chrome.runtime && chrome.runtime.getURL) extUrl = chrome.runtime.getURL('options.html'); } catch (e) {}
-    // 路径1：让 background（特权上下文）打开 options 页（MAIN world 下 window.open(chrome-extension://) 会被宿主页 CSP 拦）
+    try { extUrl = chrome.runtime.getURL('options.html'); console.log('[CAID] ⚙ extUrl =', extUrl); } catch (e) { console.warn('[CAID] ⚙ getURL 失败:', e); }
+
+    // 路径1：让 background（特权上下文）打开 options 页
     try {
       if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        var p = chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
-        if (p && typeof p.catch === 'function') p.catch(function () { tryOpenDirect(); });
-        return;
+        console.log('[CAID] ⚙ 路径1: sendMessage OPEN_OPTIONS ...');
+        chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' }, function (resp) {
+          var err = chrome.runtime.lastError;
+          if (err) {
+            console.warn('[CAID] ⚙ 路径1 失败 (lastError):', err.message);
+            openFallback();
+          } else {
+            console.log('[CAID] ⚙ 路径1 已送达 background，等待 openOptionsPage ...');
+          }
+        });
       }
-    } catch (e) {}
-    // 路径2：本上下文直接打开（部分环境下 MAIN world 也有权限）
-    tryOpenDirect();
-    function tryOpenDirect() {
-      try { if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) { chrome.runtime.openOptionsPage(); return; } } catch (e) {}
-      try { if (extUrl) { window.open(extUrl); return; } } catch (_) {}
+    } catch (e) { console.warn('[CAID] ⚙ 路径1 异常:', e); }
+
+    // 300ms 后若路径1没弹窗，自动走 fallback
+    setTimeout(openFallback, 300);
+
+    function openFallback() {
+      // 路径2：openOptionsPage
+      try {
+        if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
+          console.log('[CAID] ⚙ 路径2: openOptionsPage()');
+          chrome.runtime.openOptionsPage();
+          return;
+        }
+      } catch (e) { console.warn('[CAID] ⚙ 路径2 异常:', e); }
+      // 路径3：window.open
+      try {
+        if (extUrl) {
+          console.log('[CAID] ⚙ 路径3: window.open(', extUrl, ')');
+          var w = window.open(extUrl, '_blank');
+          if (w) { console.log('[CAID] ⚙ 路径3 成功'); return; }
+          else console.warn('[CAID] ⚙ 路径3 window.open 返回 null（可能被浏览器拦截）');
+        }
+      } catch (_) { console.warn('[CAID] ⚙ 路径3 异常'); }
+      console.error('[CAID] ⚙ 所有路径均失败，options 页无法打开');
     }
   }
 

@@ -10,8 +10,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   if (msg && msg.type === 'OPEN_OPTIONS') {
-    // 由 background（特权上下文）打开 options 页，规避 MAIN world 下 window.open 被宿主页 CSP 拦截
-    try { chrome.runtime.openOptionsPage(); } catch (e) {}
+    console.log('[CAID-bg] 收到 OPEN_OPTIONS，调用 openOptionsPage() ...');
+    try {
+      chrome.runtime.openOptionsPage();
+      console.log('[CAID-bg] openOptionsPage() 已调用');
+    } catch (e) {
+      console.error('[CAID-bg] openOptionsPage() 异常:', e);
+    }
     return false;
   }
 });
