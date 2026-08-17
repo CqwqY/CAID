@@ -148,6 +148,16 @@ function updateClock() {
 function pad2(n){ return n<10 ? '0'+n : ''+n; }
 function fmtTime(d){ return pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); }
 function fmtDate(d){ var w=['日','一','二','三','四','五','六'][d.getDay()]; return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 周'+w; }
+function fmtHistoryTime(ts){
+  if(!ts) return '';
+  var d=new Date(ts), now=Date.now(), diff=now-d.getTime();
+  if(diff<60000) return '刚刚';
+  if(diff<3600000) return Math.floor(diff/60000)+'分钟前';
+  if(diff<86400000) return Math.floor(diff/3600000)+'小时前';
+  if(diff<172800000) return '昨天 '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+  var y=d.getFullYear(), ny=new Date().getFullYear();
+  return (y===ny?'':'y+')+(d.getMonth()+1)+'/'+d.getDate()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+}
 
 // ============ Default Data ============
 const DEFAULT_SHORTCUTS = [];

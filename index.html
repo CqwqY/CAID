@@ -1856,7 +1856,7 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
       <div class="setting-block">
-        <div class="setting-title"><i data-lucide="chrome"></i>如何设置</div>
+        <div class="setting-title"><i data-lucide="globe"></i>如何设置</div>
         <ol id="homeSteps" class="setting-desc" style="margin:6px 0 0;padding-left:18px;line-height:1.9;">
           <li>打开浏览器 <b>设置</b>（地址栏输入 <code>chrome://settings</code>）</li>
           <li><b>外观</b> → 开启「显示主页按钮」，并把主页设为上面的地址</li>
@@ -2021,6 +2021,16 @@ function updateClock() {
 function pad2(n){ return n<10 ? '0'+n : ''+n; }
 function fmtTime(d){ return pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); }
 function fmtDate(d){ var w=['日','一','二','三','四','五','六'][d.getDay()]; return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 周'+w; }
+function fmtHistoryTime(ts){
+  if(!ts) return '';
+  var d=new Date(ts), now=Date.now(), diff=now-d.getTime();
+  if(diff<60000) return '刚刚';
+  if(diff<3600000) return Math.floor(diff/60000)+'分钟前';
+  if(diff<86400000) return Math.floor(diff/3600000)+'小时前';
+  if(diff<172800000) return '昨天 '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+  var y=d.getFullYear(), ny=new Date().getFullYear();
+  return (y===ny?'':'y+')+(d.getMonth()+1)+'/'+d.getDate()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+}
 
 // ============ Default Data ============
 const DEFAULT_SHORTCUTS = [];
