@@ -3,14 +3,6 @@
 // 点击后通过 runtime 消息让 background 以 MAIN world 注入魔改 Page-Agent。
 (function () {
   if (window.__CAID_LAUNCHER) return;
-  // 主站自带副驾，扩展不在主站展示悬浮按钮 / 注入第二套副驾
-  function isMainSite(url) {
-    if (!url) return false;
-    if (url.indexOf('chrome-extension://') === 0) return true;
-    if (/^https?:\/\/graduate\.dpdns\.org\//.test(url)) return true;
-    return false;
-  }
-  if (isMainSite(location.href)) return;
   window.__CAID_LAUNCHER = true;
 
   // 把扩展内部 URL 写到共享 window 上，供 MAIN world 的 caid-copilot.js 读取
@@ -78,10 +70,10 @@
 
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
-  // 主站自带副驾（#caidCopilot 存在）时跳过，避免双副驾。
+  // 扩展副驾（#caidExtCopilot 已注入）时跳过，避免重复启动。
   (function tryAutoResume() {
     if (!chrome || !chrome.storage || !chrome.storage.session) return;
-    if (document.getElementById('caidCopilot')) return; // 主站自带副驾
+    if (document.getElementById('caidExtCopilot')) return; // 扩展副驾已注入
     chrome.storage.session.get(['caidHandoff'], function (got) {
       const h = got && got.caidHandoff;
       if (!h || !h.toUrl) return;

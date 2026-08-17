@@ -32,18 +32,9 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) bootCopilot(tab.id, tab.url, null);
 });
 
-// 主站（扩展自身 newtab 与线上 graduate.dpdns.org）自带副驾，扩展不再重复注入，避免双副驾
-function isMainSite(url) {
-  if (!url) return false;
-  if (url.indexOf('chrome-extension://') === 0) return true;
-  if (/^https?:\/\/graduate\.dpdns\.org\//.test(url)) return true;
-  return false;
-}
 
 async function bootCopilot(tabId, tabUrl, handoff) {
   try {
-    // 主站自带副驾，扩展不在主站注入第二套副驾
-    if (isMainSite(tabUrl)) return;
 
     const stored = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
     // 合并优先级：扩展自身设置（caidLlm，用户在 options 页显式配置）优先；
