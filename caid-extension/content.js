@@ -13,6 +13,10 @@
   if (isMainSite(location.href)) return;
   window.__CAID_LAUNCHER = true;
 
+  // 把扩展内部 URL 写到共享 window 上，供 MAIN world 的 caid-copilot.js 读取
+  // （MAIN world 无 chrome.runtime，无法自己 getURL；ISOLATED world 设的属性 MAIN world 可读）
+  try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('options.html'); } catch (e) {}
+
   function addButton() {
     if (!document.body) { setTimeout(addButton, 300); return; }
     if (document.getElementById('caidLauncher')) return;
@@ -44,8 +48,14 @@
   // MAIN↔ISOLATED 桥：监听 MAIN world 派发的自定义事件，
   // 用 ISOLATED world 的 chrome.* API 执行特权操作（如打开 options 页）。
   window.addEventListener('__caid_open_options', function () {
-    console.log('[CAID-content] 收到 __caid_open_options 事件，转发 OPEN_OPTIONS 给 background');
-    chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+    console.log('[CAID-content] 收到 __caid_open_options 事件，直接 openOptionsPage()');
+    try {
+      chrome.runtime.openOptionsPage();
+      console.log('[CAID-content] openOptionsPage() 已调用');
+    } catch (e) {
+      console.warn('[CAID-content] openOptionsPage() 异常，改发 OPEN_OPTIONS 给 background:', e);
+      chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+    }
   });
 
   // MAIN world 的 navigate_to_url 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
