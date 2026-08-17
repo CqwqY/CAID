@@ -114,7 +114,7 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  // 内联设置面板：直接在主站 DOM 的副驾面板里展开，彻底绕开被拦截器拦的 chrome-extension://options.html 导航
+  // 内联设置面板：直接在主站 DOM 的副驾面板里展开，彻底绕开被拦截器拦的 chrome-extension://newtab.html 导航
   function toggleSettings() {
     var panel = document.getElementById('cpSettingsPanel');
     if (!panel) return;

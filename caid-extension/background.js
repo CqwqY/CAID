@@ -101,7 +101,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // 兜底：部分环境下 openOptionsPage 受限，改用 tabs.create 直接开扩展选项页
       console.warn('[CAID-bg] openOptionsPage() 失败，兜底 tabs.create:', e);
       try {
-        chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+        chrome.tabs.create({ url: chrome.runtime.getURL('newtab.html#settings') });
       } catch (e2) {
         console.error('[CAID-bg] 兜底 tabs.create 也失败:', e2);
       }
@@ -372,7 +372,7 @@ async function bootCopilot(tabId, tabUrl, handoff) {
     await chrome.scripting.executeScript({
       target: { tabId },
       func: (cfg, optsUrl) => { window.__CAID_LLM_CFG = cfg; window.__CAID_OPTIONS_URL = optsUrl; },
-      args: [llm, chrome.runtime.getURL('options.html')],
+      args: [llm, chrome.runtime.getURL('newtab.html#settings')],
       world: 'MAIN'
     });
 

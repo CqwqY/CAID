@@ -7,7 +7,8 @@
 
   // 把扩展内部 URL 写到共享 window 上，供 MAIN world 的 caid-copilot.js 读取
   // （MAIN world 无 chrome.runtime，无法自己 getURL；ISOLATED world 设的属性 MAIN world 可读）
-  try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('options.html'); } catch (e) {}
+  // 设置入口已并入 newtab 工作台（#settings 锚点自动弹出设置 Modal）
+  try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('newtab.html#settings'); } catch (e) {}
 
   // ---------- storage 双路径：直接访问优先，失败时经 background 代理 ----------
   // 某些场景下（如扩展 context invalidated 后恢复、特定页面上下文）content script 的

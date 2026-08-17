@@ -1290,8 +1290,28 @@ async function updateCounts() {
 }
 
 // ============ Settings ============
-function fillSettingsForm() {
-  const c = state.llmCfg;
+async function fillSettingsForm() {
+  let c = state.llmCfg;
+  // 用户从未在 newtab 保存过 LLM 配置时，从扩展副驾配置回退：
+  // chrome.storage.local.caidLlm（旧 options 页历史配置）> caidLlmMain（主站同步配置）
+  if (!c.apiKey && (!c.model || c.model === 'qwen-plus')) {
+    try {
+      const s = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
+      const extLlm = s.caidLlm || {};
+      const mainLlm = s.caidLlmMain || {};
+      const ext = (extLlm.apiKey && extLlm.model) ? extLlm : (mainLlm.apiKey ? mainLlm : null);
+      if (ext) {
+        const isFree = ext.apiKey === 'NA';
+        c = {
+          provider: isFree ? 'dashscope' : 'custom',
+          baseUrl: ext.baseURL || '',
+          apiKey: isFree ? '' : (ext.apiKey || ''),
+          model: ext.model || '',
+          temperature: state.llmCfg.temperature ?? 0.7,
+        };
+      }
+    } catch (e) {}
+  }
   caidQs('#cfgProvider').value = c.provider || 'dashscope';
   caidQs('#cfgBaseUrl').value = c.baseUrl || '';
   caidQs('#cfgApiKey').value = c.apiKey || '';
@@ -1311,8 +1331,8 @@ caidQs('#cfgProvider').addEventListener('change', (e) => {
   if (!caidQs('#cfgBaseUrl').value) caidQs('#cfgBaseUrl').value = pr.baseUrl;
   if (!caidQs('#cfgModel').value) caidQs('#cfgModel').value = pr.model;
 });
-caidQs('#saveSettingsBtn').addEventListener('click', () => {
-  // AI 回答 LLM 配置
+caidQs('#saveSettingsBtn').addEventListener('click', async () => {
+  // AI 回答 LLM 配置（newtab 自身 + 副驾共用这一份表单）
   state.llmCfg = {
     provider: caidQs('#cfgProvider').value,
     baseUrl: caidQs('#cfgBaseUrl').value.trim(),
@@ -1322,6 +1342,16 @@ caidQs('#saveSettingsBtn').addEventListener('click', () => {
   };
   LS.set('llmCfg', state.llmCfg);
   ConfigBackup.save('llmCfg', state.llmCfg);
+  // 双写副驾配置：chrome.storage.local.caidLlm（background 合并后注入 __CAID_LLM_CFG 给副驾）
+  // 语义同旧 options 页：无 API Key → apiKey='NA' 表示 DashScope 免费代理
+  const isFree = !state.llmCfg.apiKey;
+  const extCfg = {
+    model: state.llmCfg.model || 'qwen-plus',
+    baseURL: state.llmCfg.baseUrl || '',
+    apiKey: isFree ? 'NA' : state.llmCfg.apiKey,
+    custom: !isFree,
+  };
+  try { await chrome.storage.local.set({ caidLlm: extCfg }); } catch (e) {}
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
@@ -1456,6 +1486,11 @@ async function init() {
       breaks: true,
       gfm: true,
     });
+  }
+
+  // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
+  if (location.hash === '#settings') {
+    setTimeout(() => openModal('settingsModal', fillSettingsForm), 150);
   }
 }
 
