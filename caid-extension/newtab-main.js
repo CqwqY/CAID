@@ -1269,41 +1269,93 @@ caidQsa('.sidebar-section').forEach(sec => {
 });
 
 // ============ Agent Tasks ============
-const agentTasks = LS.get('agentTasks', []);
-function renderAgentTasks() {
+// 数据源：chrome.storage.local.caidMemory.history —— 副驾在任意页面完成任务后经 background 写入，
+// 本页（扩展页）直接读 storage 并监听 onChanged 实时刷新；旧版 localStorage.agentTasks 做一次性迁移。
+function storageAvailable() {
+  try { return !!(chrome && chrome.storage && chrome.storage.local); } catch (e) { return false; }
+}
+async function loadAgentTasks() {
+  let history = [];
+  try {
+    if (storageAvailable()) {
+      const { caidMemory } = await chrome.storage.local.get('caidMemory');
+      history = (caidMemory && Array.isArray(caidMemory.history)) ? caidMemory.history : [];
+    }
+  } catch (e) {}
+  // 一次性迁移旧版 localStorage.agentTasks（合并去重后写入 storage，随后清除）
+  try {
+    const legacy = LS.get('agentTasks', []);
+    if (Array.isArray(legacy) && legacy.length) {
+      const seen = new Set(history.map(h => (h.goal || '') + '|' + (h.ts || 0)));
+      let changed = false;
+      const merged = history.slice();
+      legacy.forEach(t => {
+        if (!t) return;
+        const goal = t.goal || t.text || '未命名任务';
+        const ts = t.ts || Date.now();
+        const key = goal + '|' + ts;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({ goal, result: t.result || '', url: t.url || '', ts });
+        changed = true;
+      });
+      if (storageAvailable()) {
+        if (changed) {
+          merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+          while (merged.length > 20) merged.shift();
+          const { caidMemory: cur } = await chrome.storage.local.get('caidMemory');
+          await chrome.storage.local.set({ caidMemory: Object.assign({}, cur || {}, { history: merged }) });
+          history = merged;  // 同步局部变量，保证本次渲染即含迁移数据
+        }
+        LS.del('agentTasks');  // 迁移完成才清理旧数据（storage 不可用时保留，避免丢失）
+      }
+    }
+  } catch (e) {}
+  renderAgentTasks(history);
+  updateCounts();
+}
+function renderAgentTasks(tasks) {
   const list = caidQs('#agentTaskList');
   if (!list) return;
   list.innerHTML = '';
-  const tasks = LS.get('agentTasks', []);
-  if (!tasks.length) {
-    list.innerHTML = `<div class="empty-state"><i data-lucide="bot"></i><div>暂无副驾任务记录</div></div>`;
+  const arr = (tasks || []).slice().reverse();
+  if (!arr.length) {
+    list.innerHTML = `<div class="empty-state"><i data-lucide="bot"></i><div>暂无副驾任务记录</div><div class="agent-task-empty-tip">在任意网页打开副驾完成任务后，记录会自动出现在这里</div></div>`;
     refreshIcons();
     return;
   }
-  tasks.slice().reverse().forEach((t, idx) => {
+  arr.forEach(t => {
     const el = document.createElement('div');
     el.className = 'agent-task-item';
     const time = fmtHistoryTime(t.ts);
-    const text = t.text || t.goal || '未命名任务';
+    const text = t.goal || t.text || '未命名任务';
+    const result = String(t.result || '').replace(/\s+/g, ' ').trim();
     el.innerHTML = `
       <span class="agent-task-icon"><i data-lucide="bot"></i></span>
       <span class="agent-task-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>
       <span class="agent-task-time">${time}</span>
     `;
     el.addEventListener('click', () => {
-      toast(`任务: ${text}`, 'info');
+      toast(result ? `任务: ${text} · 结果: ${result.slice(0, 100)}` : `任务: ${text}`, 'info');
     });
     list.appendChild(el);
   });
   refreshIcons();
 }
-function addAgentTask(goal, result) {
-  const tasks = LS.get('agentTasks', []);
-  tasks.push({ goal, result, text: goal, ts: Date.now() });
-  if (tasks.length > 50) tasks.shift();
-  LS.set('agentTasks', tasks);
-  renderAgentTasks();
-  updateCounts();
+// 兼容旧调用（本地直接添加任务）：统一写入 chrome.storage，与副驾数据同源
+async function addAgentTask(goal, result) {
+  try {
+    if (!storageAvailable()) return;
+    const { caidMemory } = await chrome.storage.local.get('caidMemory');
+    const m = Object.assign({}, caidMemory || {}, {
+      facts: (caidMemory && Array.isArray(caidMemory.facts)) ? caidMemory.facts : [],
+      history: (caidMemory && Array.isArray(caidMemory.history)) ? caidMemory.history : [],
+    });
+    m.history.push({ goal: String(goal || '').trim(), result: String(result || '').trim(), url: location.href, ts: Date.now() });
+    while (m.history.length > 20) m.history.shift();
+    await chrome.storage.local.set({ caidMemory: m });
+    loadAgentTasks();
+  } catch (e) {}
 }
 
 // ============ Counts ============
@@ -1313,7 +1365,14 @@ async function updateCounts() {
   } catch(e){}
   caidQs('#historyCount').textContent = state.searchHistory.length;
   caidQs('#todoCount').textContent = state.todos.length;
-  caidQs('#agentTaskCount').textContent = LS.get('agentTasks', []).length;
+  try {
+    let n = 0;
+    if (storageAvailable()) {
+      const { caidMemory } = await chrome.storage.local.get('caidMemory');
+      n = (caidMemory && Array.isArray(caidMemory.history)) ? caidMemory.history.length : 0;
+    }
+    caidQs('#agentTaskCount').textContent = n;
+  } catch(e){ caidQs('#agentTaskCount').textContent = LS.get('agentTasks', []).length; }
 }
 
 // ============ Settings ============
@@ -1498,7 +1557,7 @@ caidQs('#importFile').addEventListener('change', (e) => {
       renderHistory();
       renderTodos();
       await renderSnippets();
-      renderAgentTasks();
+      loadAgentTasks();
       updateCounts();
       toast('导入成功！','success');
     } catch (err) {
@@ -1515,6 +1574,9 @@ caidQs('#resetBtn').addEventListener('click', async () => {
   try {
     await db.snippets.clear();
     await db.history.clear();
+  } catch(e){}
+  try {
+    if (storageAvailable()) await chrome.storage.local.remove(['caidMemory']);  // 同步清空副驾任务记录/长期记忆
   } catch(e){}
   setTimeout(() => location.reload(), 400);
   toast('正在重置…');
@@ -1535,7 +1597,7 @@ async function init() {
   renderHistory();
   renderTodos();
   await renderSnippets();
-  renderAgentTasks();
+  loadAgentTasks();
   updateCounts();
 
   // Sidebar settings buttons
@@ -1560,6 +1622,15 @@ async function init() {
     setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }), 150);
   }
 }
+
+// 副驾任务实时同步：副驾在任意页面完成任务 → background 写 caidMemory → 本页监听变化刷新 sidebar
+try {
+  if (storageAvailable() && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.caidMemory) loadAgentTasks();
+    });
+  }
+} catch (e) {}
 
 init();
 
