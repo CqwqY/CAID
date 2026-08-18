@@ -1329,18 +1329,81 @@ function renderAgentTasks(tasks) {
     el.className = 'agent-task-item';
     const time = fmtHistoryTime(t.ts);
     const text = t.goal || t.text || '未命名任务';
-    const result = String(t.result || '').replace(/\s+/g, ' ').trim();
     el.innerHTML = `
       <span class="agent-task-icon"><i data-lucide="bot"></i></span>
       <span class="agent-task-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>
       <span class="agent-task-time">${time}</span>
     `;
-    el.addEventListener('click', () => {
-      toast(result ? `任务: ${text} · 结果: ${result.slice(0, 100)}` : `任务: ${text}`, 'info');
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      toggleAgentTaskDetail(list, el, t);
     });
     list.appendChild(el);
   });
   refreshIcons();
+}
+
+// 点击任务条目：展开/收起详情面板（同一时刻仅一个展开）
+function toggleAgentTaskDetail(list, itemEl, t) {
+  // 先看自己是否已展开：下一个兄弟是 detail → 收起
+  const myNext = itemEl.nextElementSibling;
+  if (myNext && myNext.classList && myNext.classList.contains('agent-task-detail')) {
+    myNext.remove();
+    itemEl.classList.remove('active');
+    return;
+  }
+  // 收起其他已展开的
+  caidQsa('.agent-task-detail', list).forEach(d => d.remove());
+  caidQsa('.agent-task-item.active', list).forEach(x => x.classList.remove('active'));
+  itemEl.classList.add('active');
+  const detail = document.createElement('div');
+  detail.className = 'agent-task-detail';
+  const text = t.goal || t.text || '未命名任务';
+  const result = String(t.result || '').trim();
+  const url = String(t.url || '').trim();
+  detail.innerHTML = `
+    <div class="agent-task-detail-label">任务</div>
+    <div class="agent-task-detail-goal">${escapeHtml(text)}</div>
+    <div class="agent-task-detail-meta">
+      <span>${fmtFullTime(t.ts)}</span>
+      ${url ? `<a class="agent-task-detail-url" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>` : ''}
+    </div>
+    <div class="agent-task-detail-label">结果</div>
+    <div class="agent-task-detail-result">${result ? escapeHtml(result) : '<span style="color:var(--muted)">（无结果记录）</span>'}</div>
+    <button class="btn small danger agent-task-del-btn"><i data-lucide="trash-2"></i>删除此任务</button>
+  `;
+  const delBtn = detail.querySelector('.agent-task-del-btn');
+  delBtn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    if (!window.confirm(`确定删除任务「${text}」吗？`)) return;
+    await deleteAgentTask(t);
+  });
+  itemEl.after(detail);
+  refreshIcons();
+}
+
+function fmtFullTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// 删除任务：按 goal+ts 精确匹配 storage.history 中的条目
+async function deleteAgentTask(t) {
+  try {
+    if (!storageAvailable()) { toast('存储不可用，无法删除', 'error'); return; }
+    const { caidMemory } = await chrome.storage.local.get('caidMemory');
+    if (!caidMemory || !Array.isArray(caidMemory.history)) return;
+    const key = (t.goal || t.text || '未命名任务') + '|' + (t.ts || 0);
+    const next = caidMemory.history.filter(h =>
+      ((h.goal || h.text || '未命名任务') + '|' + (h.ts || 0)) !== key
+    );
+    if (next.length === caidMemory.history.length) { toast('未找到该任务', 'warn'); return; }
+    await chrome.storage.local.set({ caidMemory: Object.assign({}, caidMemory, { history: next }) });
+    toast('任务已删除', 'success');
+    loadAgentTasks();
+  } catch (e) { toast('删除失败', 'error'); }
 }
 // 兼容旧调用（本地直接添加任务）：统一写入 chrome.storage，与副驾数据同源
 async function addAgentTask(goal, result) {
