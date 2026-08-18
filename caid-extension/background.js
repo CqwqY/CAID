@@ -192,6 +192,60 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
+  // ---------- 副驾长期记忆（chrome.storage.local.caidMemory，跨任务/跨会话持久）----------
+  // 结构：{ facts: [{id, text, ts}], history: [{goal, result, url, ts}] }
+  // facts = AI 主动记住的关键数据（remember_fact 工具写入），上限 50 条；
+  // history = 任务完成时自动记录（goal + 最终结果），上限 20 条，滚动淘汰最旧。
+  // 所有写操作在这里 read-modify-write：service worker 单线程处理消息，天然原子。
+  function _memRead(cb) {
+    chrome.storage.local.get(['caidMemory'], function (got) {
+      var m = (got && got.caidMemory) || {};
+      if (!Array.isArray(m.facts)) m.facts = [];
+      if (!Array.isArray(m.history)) m.history = [];
+      cb(m);
+    });
+  }
+  if (msg && msg.type === 'CAID_MEMORY_GET') {
+    _memRead(function (m) { sendResponse({ ok: true, memory: m }); });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MEMORY_ADD_FACT') {
+    var factText = String(msg.text || '').trim().slice(0, 500);
+    _memRead(function (m) {
+      if (factText) {
+        // 完全相同文本去重（更新时间戳即可）
+        var dup = null;
+        for (var i = 0; i < m.facts.length; i++) { if (m.facts[i].text === factText) { dup = m.facts[i]; break; } }
+        if (dup) { dup.ts = Date.now(); }
+        else { m.facts.push({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: factText, ts: Date.now() }); }
+        while (m.facts.length > 50) m.facts.shift();
+        chrome.storage.local.set({ caidMemory: m }, function () { sendResponse({ ok: true, memory: m }); });
+      } else { sendResponse({ ok: false, memory: m }); }
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MEMORY_DEL_FACT') {
+    var kw = String(msg.keyword || '').trim().toLowerCase();
+    _memRead(function (m) {
+      var before = m.facts.length;
+      if (kw) m.facts = m.facts.filter(function (f) { return String(f.text).toLowerCase().indexOf(kw) === -1; });
+      chrome.storage.local.set({ caidMemory: m }, function () { sendResponse({ ok: true, removed: before - m.facts.length, memory: m }); });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MEMORY_ADD_HISTORY') {
+    var hGoal = String(msg.goal || '').trim().slice(0, 200);
+    var hResult = String(msg.result || '').trim().slice(0, 400);
+    _memRead(function (m) {
+      if (hGoal) {
+        m.history.push({ goal: hGoal, result: hResult, url: String(msg.url || '').slice(0, 300), ts: Date.now() });
+        while (m.history.length > 20) m.history.shift();
+        chrome.storage.local.set({ caidMemory: m }, function () { sendResponse({ ok: true }); });
+      } else { sendResponse({ ok: false }); }
+    });
+    return true;
+  }
+
   // MAIN world 的副驾（无 chrome.*）经 content.js 把 LLM 请求转交到这里，
   // 由 service worker 用扩展网络栈发起——不受宿主页（如 github.com）的 CSP 限制。
   if (msg && msg.type === 'CAID_LLM_FETCH') {

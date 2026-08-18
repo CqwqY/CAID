@@ -281,7 +281,7 @@
     }
   };
 
-  // ---------- 9 个 customTools（忠实移植自主站 buildCaidCustomTools）----------
+  // ---------- 11 个 customTools（9 个移植自主站 buildCaidCustomTools + remember_fact / forget_fact 长期记忆）----------
   const tools = {
     execute_javascript: {
       description:
@@ -379,6 +379,51 @@
         try { (window.top || window).location.href = MAIN_URL; }
         catch (e) { window.location.href = MAIN_URL; }
         return `✅ Navigating back to CAID main workbench: ${MAIN_URL}`;
+      }
+    },
+
+    remember_fact: {
+      description:
+        'Save a piece of information to long-term memory (persists across tasks, sessions and pages). ' +
+        'Use when: the task result contains data worth remembering (numbers, states, conclusions), ' +
+        'the user explicitly asks to remember something, or you learn a user preference/identity fact. ' +
+        'Keep it concise (one sentence). Duplicates are auto-merged.',
+      inputSchema: mkObj({ fact: 'string' }),
+      execute: async function (input) {
+        var text = String(input && input.fact || '').trim().slice(0, 500);
+        if (!text) throw new Error('remember_fact: fact is required');
+        var resp = await caidRequestBg({ type: 'CAID_MEMORY_ADD_FACT', text: text });
+        if (resp && resp.ok && resp.memory) memoryCache = resp.memory;
+        else {
+          // 桥不可用：仅更新本地 cache（本页后续任务仍可见）
+          var dup = null;
+          for (var i = 0; i < memoryCache.facts.length; i++) { if (memoryCache.facts[i].text === text) { dup = memoryCache.facts[i]; break; } }
+          if (dup) dup.ts = Date.now(); else memoryCache.facts.push({ id: 'local' + Date.now(), text: text, ts: Date.now() });
+        }
+        console.log('[CAID-R] remember_fact:', text);
+        return '✅ 已记住：' + text;
+      }
+    },
+
+    forget_fact: {
+      description:
+        'Delete long-term memory entries whose text contains the given keyword. ' +
+        'Use when information is outdated, superseded, or the user asks to forget something.',
+      inputSchema: mkObj({ keyword: 'string' }),
+      execute: async function (input) {
+        var kw = String(input && input.keyword || '').trim();
+        if (!kw) throw new Error('forget_fact: keyword is required');
+        var resp = await caidRequestBg({ type: 'CAID_MEMORY_DEL_FACT', keyword: kw });
+        var removed = 0;
+        if (resp && resp.ok && resp.memory) { memoryCache = resp.memory; removed = resp.removed || 0; }
+        else {
+          var kwl = kw.toLowerCase();
+          var before = memoryCache.facts.length;
+          memoryCache.facts = memoryCache.facts.filter(function (f) { return String(f.text).toLowerCase().indexOf(kwl) === -1; });
+          removed = before - memoryCache.facts.length;
+        }
+        console.log('[CAID-R] forget_fact:', kw, 'removed=', removed);
+        return removed > 0 ? '✅ 已删除 ' + removed + ' 条包含「' + kw + '」的记忆' : '未找到包含「' + kw + '」的记忆';
       }
     },
 
@@ -695,6 +740,93 @@
     } catch (e) {}
   }
 
+  // ---------- 有响应的 background 请求桥（Promise 版）----------
+  // 扩展页 MAIN world 自带 chrome API → 直连 sendMessage(msg, cb)；
+  // 正则网页 MAIN world 无 chrome.* → 派发 __caid_bg_request（带 reqId），
+  // content.js 转发后回派 __caid_bg_response，按 reqId 匹配 resolve。3s 超时兜底 resolve(null)。
+  var _bgReqSeq = 0;
+  function caidRequestBg(msg) {
+    return new Promise(function (resolve) {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+          chrome.runtime.sendMessage(msg, function (resp) {
+            if (chrome.runtime.lastError) { console.warn('[CAID-R] caidRequestBg lastError:', chrome.runtime.lastError.message); resolve(null); }
+            else resolve(resp || null);
+          });
+          return;
+        }
+      } catch (e) { resolve(null); return; }
+      var reqId = 'r' + (++_bgReqSeq) + '_' + Date.now().toString(36);
+      var timer = null;
+      var onResp = function (e) {
+        var d = e && e.detail;
+        if (!d || d.reqId !== reqId) return;
+        window.removeEventListener('__caid_bg_response', onResp);
+        if (timer) clearTimeout(timer);
+        resolve(d.resp || null);
+      };
+      window.addEventListener('__caid_bg_response', onResp);
+      timer = setTimeout(function () {
+        window.removeEventListener('__caid_bg_response', onResp);
+        console.warn('[CAID-R] caidRequestBg 超时（3s 无响应）:', msg && msg.type);
+        resolve(null);
+      }, 3000);
+      try {
+        window.dispatchEvent(new CustomEvent('__caid_bg_request', { detail: { reqId: reqId, msg: msg } }));
+      } catch (e) {
+        window.removeEventListener('__caid_bg_response', onResp);
+        if (timer) clearTimeout(timer);
+        resolve(null);
+      }
+    });
+  }
+
+  // ---------- 副驾长期记忆 ----------
+  // 存储在 chrome.storage.local.caidMemory（background 代理读写），跨任务/跨会话/跨页面持久。
+  // memoryCache 是本页副本：sendTask 时实时拉取最新（跨页写入也能及时可见），拉取失败用 cache 兜底。
+  var memoryCache = { facts: [], history: [] };
+  function memoryFetch() {
+    return caidRequestBg({ type: 'CAID_MEMORY_GET' }).then(function (resp) {
+      if (resp && resp.ok && resp.memory) {
+        var m = resp.memory;
+        if (!Array.isArray(m.facts)) m.facts = [];
+        if (!Array.isArray(m.history)) m.history = [];
+        memoryCache = m;
+      }
+      return memoryCache;
+    });
+  }
+  function _fmtMemTime(ts) {
+    try {
+      var d = new Date(ts);
+      var p = function (n) { return (n < 10 ? '0' : '') + n; };
+      return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    } catch (e) { return ''; }
+  }
+  // 拼接注入到任务指令前的记忆上下文。无记忆时返回空串（不注入）。
+  // 长度控制：facts 最多 30 条 × 150 字，history 最多 10 条 ×（goal 80 + result 150），防 token 膨胀。
+  function buildMemoryContext(mem) {
+    if (!mem) return '';
+    var facts = (mem.facts || []).slice(-30);
+    var hist = (mem.history || []).slice(-10);
+    if (!facts.length && !hist.length) return '';
+    var lines = ['【长期记忆】（你跨任务持久记住的信息，可直接引用回答；用 remember_fact 记录新信息，forget_fact 删除过时信息）'];
+    if (facts.length) {
+      lines.push('◆ 已知事实：');
+      facts.forEach(function (f) {
+        lines.push('- ' + String(f.text || '').slice(0, 150) + '（' + _fmtMemTime(f.ts) + ' 记）');
+      });
+    }
+    if (hist.length) {
+      lines.push('◆ 最近完成的任务：');
+      hist.forEach(function (h) {
+        var r = String(h.result || '').slice(0, 150);
+        lines.push('- [' + _fmtMemTime(h.ts) + '] 「' + String(h.goal || '').slice(0, 80) + '」' + (r ? ' → ' + r : ''));
+      });
+    }
+    return lines.join('\n');
+  }
+
   // ---------- 创建 agent ----------
   const cfg = window.__CAID_LLM_CFG || {};
   // 【诊断】打印实际配置，排查"面板显示与实际使用不一致"
@@ -711,7 +843,8 @@
   const FREE_PROXY = 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
   const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
-    'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台。' +
+    'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台、' +
+    'remember_fact / forget_fact 管理长期记忆。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
     '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +
     '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。' +
@@ -722,7 +855,12 @@
     '【行动 vs 跳转判断】execute_javascript 只做当前页面内的行动：滚动、点击不跳转的按钮、填表、修改 DOM、读取数据。' +
     '凡是会让页面切换地址的操作——点击带 href 的链接、location.href= / location.assign / location.replace、' +
     'window.open、表单提交跳转——都属于跳转，一律先读出完整 URL，改用 navigate_to_url / open_url_in_new_tab 打开。' +
-    'execute_javascript 脚本里禁止任何跳转语句；若脚本导致地址变化，工具会返回警告并要求改用导航工具。';
+    'execute_javascript 脚本里禁止任何跳转语句；若脚本导致地址变化，工具会返回警告并要求改用导航工具。' +
+    '【长期记忆】你拥有跨任务、跨会话的长期记忆：用户指令前可能附带【长期记忆】块（已知事实 + 最近完成的任务记录），' +
+    '可直接引用其中的信息回答，不要重复查询已有答案。' +
+    '当以下情况出现时，用 remember_fact 记录（简洁一句话）：任务结果包含值得长期记住的数据（如查询到的数字、状态、结论）、' +
+    '用户明确说"记住/记一下"的内容、用户的偏好或身份信息。' +
+    '信息已过期、被更新（重新记住新值后删旧值）或用户要求遗忘时，用 forget_fact 按关键词删除。';
   const customTools = tools;
   // includeAttributes: ['href'] —— 让简化 HTML 里的链接带上 URL（默认白名单没有 href，
   // 模型看不到链接地址，才会"点了跳转链接但不知道去哪"。加上后模型能直接看到
@@ -752,7 +890,30 @@
     if (!hasKey && !isFreeProxy) { apiInfoEl.style.cursor = 'pointer'; apiInfoEl.title = '未配置 LLM，点击设置'; apiInfoEl.onclick = toggleSettings; }
     else { apiInfoEl.style.cursor = 'default'; apiInfoEl.title = ''; apiInfoEl.onclick = null; }
   }
-  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
+  // ---------- 任务完成自动存历史 ----------
+  // 任务 completed 时把「目标 + 最终结果」写入长期记忆（chrome.storage.local.caidMemory.history），
+  // 供后续任务的【长期记忆】前缀引用——这就是"之前查过的数据，之后直接问能答上来"的来源。
+  var _lastHistRec = { goal: '', ts: 0 };
+  function recordTaskHistory() {
+    try {
+      var goal = String(_currentGoal || '').trim().slice(0, 200);
+      if (!goal) return;
+      var now = Date.now();
+      if (goal === _lastHistRec.goal && now - _lastHistRec.ts < 30000) return;  // 防重：同 goal 30s 内只记一次
+      _lastHistRec = { goal: goal, ts: now };
+      var result = '';
+      for (var i = displayEvents.length - 1; i >= 0; i--) {
+        var ev = displayEvents[i];
+        if (ev && ev.type === 'assistant' && ev.content) { result = String(ev.content).slice(0, 300); break; }
+      }
+      var entry = { goal: goal, result: result, url: location.href, ts: now };
+      memoryCache.history.push(entry);
+      while (memoryCache.history.length > 20) memoryCache.history.shift();
+      caidSendToBg({ type: 'CAID_MEMORY_ADD_HISTORY', goal: goal, result: result, url: location.href });
+      console.log('[CAID-R] 任务历史已记录:', goal, '→', result.slice(0, 80));
+    } catch (e) { console.warn('[CAID-R] recordTaskHistory 异常:', e); }
+  }
+  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed') { recordTaskHistory(); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
@@ -774,10 +935,24 @@
     });
     toolsEl.scrollTop = toolsEl.scrollHeight;
   }
+  // ---------- 显示层对话保留（跨任务）----------
+  // lib 的 execute() 每次新任务都会 this.history=[] 清空——agent.history 只保存当前任务。
+  // displayEvents 是显示层副本：只增不减，面板里能看到完整的跨任务对话流。
+  // syncedLen 记录 agent.history 已同步进 displayEvents 的长度；
+  // execute 清空 history 后（length < syncedLen）重置指针，新任务条目继续追加。
+  var displayEvents = [];
+  var syncedLen = 0;
+  function syncDisplay() {
+    if (!agent) return;
+    var h = agent.history || [];
+    if (h.length < syncedLen) syncedLen = 0;   // execute 清空了 history → 重置
+    for (var i = syncedLen; i < h.length; i++) displayEvents.push(h[i]);
+    syncedLen = h.length;
+  }
   function renderHistory() {
     if (!logEl) return;
     logEl.innerHTML = '';
-    (agent.history || []).forEach(function (ev) {
+    displayEvents.forEach(function (ev) {
       var div = document.createElement('div');
       if (ev.type === 'user') { div.className = 'cp-bubble cp-bubble-user'; div.innerHTML = cpEscapeHtml(String(ev.content || '')).replace(/\n/g, '<br>'); }
       else if (ev.type === 'assistant') { div.className = 'cp-bubble cp-bubble-assistant'; div.innerHTML = cpEscapeHtml(String(ev.content || '')).replace(/\n/g, '<br>'); }
@@ -813,7 +988,7 @@
   }
   function onHistoryChangeSafe() {
     var mc = typeof queueMicrotask === 'function' ? queueMicrotask : function (f) { setTimeout(f, 0); };
-    mc(function () { var pushed = preprocessDoneToAssistant(); renderHistory(); renderApiInfo(); checkpoint(); if (pushed) setTimeout(function () { renderHistory(); renderApiInfo(); }, 0); });
+    mc(function () { var pushed = preprocessDoneToAssistant(); syncDisplay(); renderHistory(); renderApiInfo(); checkpoint(); if (pushed) setTimeout(function () { syncDisplay(); renderHistory(); renderApiInfo(); }, 0); });
   }
 
   var cpToolCalls = [];
@@ -828,6 +1003,12 @@
     agent.addEventListener('dispose', function () { if (statusEl) statusEl.textContent = '已销毁'; });
     agent.onAskUser = function (q) { return Promise.resolve(window.prompt(q) || ''); };
     renderApiInfo();
+    // 预热长期记忆缓存（sendTask 会实时再拉，这里是兜底 + remember_fact 本地回退的基线）
+    memoryFetch().then(function (m) {
+      if (m && (m.facts.length || m.history.length)) {
+        console.log('[CAID-R] 长期记忆已加载: facts=' + m.facts.length + ', history=' + m.history.length);
+      }
+    });
   } catch (err) {
     console.error('[CAID] agent init error:', err);
     if (statusEl) statusEl.textContent = '初始化失败: ' + err.message;
@@ -842,7 +1023,18 @@
     agent.history = agent.history || [];
     agent.history.push({ type: 'user', content: t });
     agent.dispatchEvent(new Event('historychange'));
-    try { await agent.execute(t); }
+    // 【长期记忆】实时拉取最新记忆（跨页写入也能及时可见），拼成上下文前缀注入指令。
+    // 拉取失败/超时用 memoryCache 兜底；面板显示与 handoff goal 均保持用户原文 t（不带前缀）。
+    var memCtx = '';
+    try {
+      var mem = await memoryFetch();
+      memCtx = buildMemoryContext(mem);
+    } catch (e) { memCtx = buildMemoryContext(memoryCache); }
+    var fullInstruction = memCtx ? (memCtx + '\n\n【本次任务】\n' + t) : t;
+    // execute 会清空 agent.history：先把已产生的条目同步进显示层，再重置同步指针，
+    // 让新任务条目从 0 开始追加，面板对话跨任务连续。
+    syncDisplay(); syncedLen = 0; renderHistory();
+    try { await agent.execute(fullInstruction); }
     catch (e) { if (!isHandingOff) { agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) }); agent.dispatchEvent(new Event('historychange')); } }
   }
   if (sendEl) sendEl.addEventListener('click', sendTask);
