@@ -168,20 +168,33 @@
     });
   });
 
-  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具（无 chrome.*）通过此 DOM 事件请求开新标签；
-  // 由本 ISOLATED world 脚本转发给 background，background 用特权 API chrome.tabs.create 打开，
-  // 同时把 handoff 写入 chrome.storage.session，新标签加载完成后自动注入副驾续跑。
+  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具（无 chrome.*）通过此 DOM 事件请求导航；
+  // 由本 ISOLATED world 脚本转发给 background：background 用特权 API chrome.tabs.create/update 执行，
+  // 同时把 handoff 写入 chrome.storage.session，新页面加载完成后自动注入副驾续跑。
+  // 转发成功后回派 __caid_nav_ack（带 navId），MAIN world 收到即确认，停止重试/兜底。
   window.addEventListener('__caid_navigate_request', function (e) {
     var detail = e && e.detail;
     if (!detail || !detail.url) return;
     var url = detail.url;
     var active = detail.active !== false;
     var handoff = detail.handoff || null;
-    console.log('[CAID-content] 收到 __caid_navigate_request, url=', url, ' active=', active, ' handoff=', !!handoff);
+    var navId = detail.id || null;
+    var sameTab = !!detail.sameTab;
+    console.log('[CAID-content] 收到 __caid_navigate_request, url=', url, ' active=', active, ' sameTab=', sameTab, ' handoff=', !!handoff);
     try {
       if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
-      chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: active, handoff: handoff });
-      console.log('[CAID-content] 已转发 NAVIGATE_TO_URL 给 background');
+      chrome.runtime.sendMessage(
+        { type: 'NAVIGATE_TO_URL', url: url, active: active, handoff: handoff, navId: navId, sameTab: sameTab },
+        function (resp) {
+          if (chrome.runtime.lastError) {
+            console.warn('[CAID-content] 转发 NAVIGATE_TO_URL 失败:', chrome.runtime.lastError.message);
+            return;
+          }
+          if (navId) {
+            try { window.dispatchEvent(new CustomEvent('__caid_nav_ack', { detail: { id: navId } })); } catch (e2) {}
+          }
+        }
+      );
     } catch (err) {
       console.error('[CAID-content] 转发 NAVIGATE_TO_URL 失败:', err.message || err);
     }

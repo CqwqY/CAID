@@ -40,7 +40,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // （永远有权限，不依赖 content.js 桥接 —— 修复扩展页/newtab 上 content.js 不运行导致 handoff 丢失的根因）。
   // 新标签加载完成后，下方 tabs.onUpdated 会自动检测 caidHandoff 并注入副驾续跑。
   if (msg && msg.type === 'NAVIGATE_TO_URL') {
-    // 先存储 handoff（若有），再开标签 —— 确保 tabs.onUpdated 触发时 handoff 已在 storage 中
+    // 先存储 handoff（若有），再导航 —— 确保 tabs.onUpdated 触发时 handoff 已在 storage 中
     var storePromise = Promise.resolve();
     if (msg.handoff) {
       storePromise = new Promise(function (resolve) {
@@ -56,22 +56,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     storePromise.then(function () {
       try {
-        const opts = { url: msg.url, active: msg.active !== false };
-        // 带 opener 关系：新标签加载后 tabs.onUpdated 的 viaOpener 判定才能命中
-        // （click 拦截等无 handoff 的站外导航，靠 opener 的活跃 agent 走 auto-follow 续跑）
-        if (sender && sender.tab && sender.tab.id) opts.openerTabId = sender.tab.id;
-        chrome.tabs.create(opts, function (tab) {
-          if (chrome.runtime.lastError) {
-            console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
-          } else {
-            console.log('[CAID-R] NAVIGATE_TO_URL: background 已用 chrome.tabs.create 打开新标签, tabId=', tab && tab.id, ' url=', msg.url, ' handoff=', !!msg.handoff);
-          }
-        });
+        var senderTabId = sender && sender.tab && sender.tab.id;
+        if (msg.sameTab && senderTabId) {
+          // 同页跳转（点击站内链接）：tabs.update 替换当前标签页（不新建），
+          // 续跑由 tabs.onUpdated 的「本 tab 有活跃 agent」判定接管（caidAgentTabs 心跳保持新鲜）。
+          chrome.tabs.update(senderTabId, { url: msg.url }, function (tab) {
+            if (chrome.runtime.lastError) {
+              console.warn('[CAID-R] NAVIGATE_TO_URL: tabs.update 失败:', chrome.runtime.lastError.message);
+            } else {
+              console.log('[CAID-R] NAVIGATE_TO_URL: 已同页导航 tabId=', senderTabId, ' url=', msg.url, ' handoff=', !!msg.handoff);
+            }
+          });
+        } else {
+          const opts = { url: msg.url, active: msg.active !== false };
+          // 带 opener 关系：新标签加载后 tabs.onUpdated 的 viaOpener 判定才能命中
+          // （click 拦截等无 handoff 的站外导航，靠 opener 的活跃 agent 走 auto-follow 续跑）
+          if (senderTabId) opts.openerTabId = senderTabId;
+          chrome.tabs.create(opts, function (tab) {
+            if (chrome.runtime.lastError) {
+              console.warn('[CAID-R] NAVIGATE_TO_URL: chrome.tabs.create 失败:', chrome.runtime.lastError.message);
+            } else {
+              console.log('[CAID-R] NAVIGATE_TO_URL: background 已用 chrome.tabs.create 打开新标签, tabId=', tab && tab.id, ' url=', msg.url, ' handoff=', !!msg.handoff);
+            }
+          });
+        }
       } catch (e) {
         console.error('[CAID-R] NAVIGATE_TO_URL: 异常', e);
       }
     });
-    return false; // 同步处理，无需异步 sendResponse
+    // ack 回执：立即通知发送方（MAIN world）导航请求已被受理，停止其重试/兜底计时。
+    // 无 navId（copilot 导航工具的旧路径）也统一回执，避免 content.js 回调误报 lastError。
+    try { sendResponse({ ok: true, id: msg.navId || null }); } catch (e) {}
+    return true; // 异步 sendResponse（storePromise.then 完成后才真正导航）
   }
 
   // content.js 在目标页 storage 两次均失败时的终极兜底：

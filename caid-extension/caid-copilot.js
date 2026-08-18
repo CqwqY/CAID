@@ -330,21 +330,17 @@
         const url = String(input && input.url || '').trim();
         console.log('[CAID-R] ★★★ navigate_to_url 工具被调用! input=', JSON.stringify(input), ' resolved url=', url);
         if (!url) throw new Error('navigate_to_url: url is required');
-        // 断点续传：构建 handoff，经 caidRequestNavigate 桥接发给 background（handoff 存储与开标签都在 background 完成）。
+        // 断点续传：__caidPrepareNavigation 统一完成「停 agent + 构建 handoff + 清理覆盖层」，
+        // 与执行层点击拦截（lib/page-agent.headless.js）共用同一套逻辑，避免两处漂移。
         let handoff = null;
         try {
-          handoff = buildHandoff(url);
-          if (handoff) {
-            console.log('[CAID-R] navigate_to_url: buildHandoff goal=', handoff.goal, ' toUrl=', handoff.toUrl);
-          } else {
-            console.warn('[CAID-R] navigate_to_url: buildHandoff 返回 null（无历史/无 goal），不存续传');
+          if (window.__caidPrepareNavigation) {
+            var ctx = window.__caidPrepareNavigation(url);
+            handoff = (ctx && ctx.handoff) || null;
           }
-        } catch (e) { console.warn('[CAID-R] navigate_to_url: buildHandoff 异常', e); }
-        // 立即终止当前页 agent，避免它在原页面继续空转输出；
-        // 检查点已保存，新标签副驾会自动续跑（控制权转移到新标签，原页面保留）。
-        isHandingOff = true;
-        try { if (agent && agent.status === 'running') agent.stop(); } catch (_) {}
-        cleanupAgentOverlays();  // 清理残留覆盖层，避免遮挡原页 UI
+        } catch (e) { console.warn('[CAID-R] navigate_to_url: __caidPrepareNavigation 异常', e); }
+        if (handoff) console.log('[CAID-R] navigate_to_url: handoff goal=', handoff.goal, ' toUrl=', handoff.toUrl);
+        else console.warn('[CAID-R] navigate_to_url: 无续传上下文（无历史/无 goal）');
         // caidRequestNavigate 路由：扩展页 MAIN world 自带 chrome API → 直连 background；
         // 正则网页 MAIN world 无 chrome.* → 派发 __caid_navigate_request DOM 事件，由 ISOLATED world
         // 的 content.js 转发给 background。background 用 chrome.tabs.create 打开新标签并存储 handoff
@@ -363,15 +359,15 @@
         // 断点续传：构建 handoff 并随导航消息发给 background（不再依赖 content.js 桥接，扩展页上 content.js 不运行）
         let h2 = null;
         try {
-          h2 = buildHandoff(url);
-          if (h2) console.log('[CAID-R] open_url_in_new_tab: buildHandoff goal=', h2.goal);
-          else console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 返回 null');
-        } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: buildHandoff 异常', e); }
+          if (window.__caidPrepareNavigation) {
+            var ctx2 = window.__caidPrepareNavigation(url);
+            h2 = (ctx2 && ctx2.handoff) || null;
+          }
+          if (h2) console.log('[CAID-R] open_url_in_new_tab: handoff goal=', h2.goal);
+          else console.warn('[CAID-R] open_url_in_new_tab: 无续传上下文');
+        } catch (e) { console.warn('[CAID-R] open_url_in_new_tab: __caidPrepareNavigation 异常', e); }
         // 经桥接把「导航目标 + 续传上下文」发给 background（扩展页直连 / 正则网页走 content.js DOM 桥）
         caidRequestNavigate(url, false, h2);
-        // 当前页 agent 无法操作新标签，立即终止本页 agent，使控制权转移到新标签续跑的副驾。
-        isHandingOff = true;
-        try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {}
         return `✅ Opened in new tab (task will continue there): ${url}`;
       }
     },
@@ -622,6 +618,9 @@
       var h = buildHandoff(null);         // toUrl=null：任何跳转目的地都可续跑
       if (h) {
         console.log('[CAID-R] checkpoint: 续传快照已派发, goal=', h.goal);
+        // 心跳：刷新 AGENT_ACTIVE 的 ts，保证 tabs.onUpdated 的 linked 判定恒新鲜——
+        // 否则长任务（>5min）后 AGENT_ACTIVE 过期，同页跳转/新标签的 auto-follow 会静默失效（"无反应"）。
+        caidSendToBg({ type: 'AGENT_ACTIVE', goal: h.goal, fromUrl: h.fromUrl });
         window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
         caidSendToBg({ type: 'CHECKPOINT', handoff: h });  // 扩展页直连 background（content.js 不运行时兜底）
       }
@@ -664,6 +663,21 @@
     // ③ 终极兜底：仅打开页面（无法续跑）
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e3) {}
   }
+
+  // ---------- 导航准备钩子（lib/page-agent.headless.js 执行层点击拦截到链接时调用）----------
+  // 统一收敛「停 agent + 构建续传上下文 + 清理覆盖层」，让点击拦截与导航工具走同一套逻辑：
+  // lib 层只负责识别链接并触发导航，这里负责把任务状态安全交接给新页面。
+  // 返回 { handoff }，由 lib 的 caidDispatchNavigate 随导航消息带给 background。
+  window.__caidPrepareNavigation = function (url) {
+    var out = { handoff: null };
+    try {
+      isHandingOff = true;                 // 保护：stop 触发 renderStatus 时不要清除检查点
+      try { out.handoff = buildHandoff(url); } catch (e) { console.warn('[CAID-R] __caidPrepareNavigation: buildHandoff 异常', e); }
+      try { if (agent && agent.status === 'running') agent.stop(); } catch (e) {}
+      cleanupAgentOverlays();
+    } catch (e) {}
+    return out;
+  };
 
   // ---------- 通用 background 消息桥 ----------
   // 与 caidRequestNavigate 同理：扩展页（MAIN world 有 chrome API）直接发消息；
