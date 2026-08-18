@@ -1336,51 +1336,84 @@ function renderAgentTasks(tasks) {
     `;
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      toggleAgentTaskDetail(list, el, t);
+      toggleAgentTaskDetail(el, t);
     });
     list.appendChild(el);
   });
   refreshIcons();
 }
 
-// 点击任务条目：展开/收起详情面板（同一时刻仅一个展开）
-function toggleAgentTaskDetail(list, itemEl, t) {
-  // 先看自己是否已展开：下一个兄弟是 detail → 收起
-  const myNext = itemEl.nextElementSibling;
-  if (myNext && myNext.classList && myNext.classList.contains('agent-task-detail')) {
-    myNext.remove();
+// 点击任务条目：在右侧搜索框区域覆盖展开详情面板（同一时刻仅一个展开）
+function toggleAgentTaskDetail(itemEl, t) {
+  const wrapper = caidQs('.search-wrapper');
+  if (!wrapper) return;
+  const key = (t.goal || t.text || '未命名任务') + '|' + (t.ts || 0);
+  const existing = wrapper.querySelector('.agent-task-detail');
+  // 再点同一任务 → 收起
+  if (existing && existing.dataset.key === key) {
+    existing.remove();
     itemEl.classList.remove('active');
     return;
   }
-  // 收起其他已展开的
-  caidQsa('.agent-task-detail', list).forEach(d => d.remove());
-  caidQsa('.agent-task-item.active', list).forEach(x => x.classList.remove('active'));
+  // 移除旧覆盖层 + 清除 active 标记
+  if (existing) existing.remove();
+  caidQsa('.agent-task-item.active').forEach(x => x.classList.remove('active'));
   itemEl.classList.add('active');
-  const detail = document.createElement('div');
-  detail.className = 'agent-task-detail';
+
   const text = t.goal || t.text || '未命名任务';
   const result = String(t.result || '').trim();
   const url = String(t.url || '').trim();
+  const detail = document.createElement('div');
+  detail.className = 'agent-task-detail';
+  detail.dataset.key = key;
   detail.innerHTML = `
-    <div class="agent-task-detail-label">任务</div>
-    <div class="agent-task-detail-goal">${escapeHtml(text)}</div>
-    <div class="agent-task-detail-meta">
-      <span>${fmtFullTime(t.ts)}</span>
-      ${url ? `<a class="agent-task-detail-url" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>` : ''}
+    <div class="agent-task-detail-head">
+      <span class="agent-task-detail-title"><i data-lucide="bot"></i> 副驾任务详情</span>
+      <button class="agent-task-detail-close" title="关闭 (Esc)"><i data-lucide="x"></i></button>
     </div>
-    <div class="agent-task-detail-label">结果</div>
-    <div class="agent-task-detail-result">${result ? escapeHtml(result) : '<span style="color:var(--muted)">（无结果记录）</span>'}</div>
-    <button class="btn small danger agent-task-del-btn"><i data-lucide="trash-2"></i>删除此任务</button>
+    <div class="agent-task-detail-body">
+      <div class="agent-task-detail-label">任务</div>
+      <div class="agent-task-detail-goal">${escapeHtml(text)}</div>
+      <div class="agent-task-detail-meta">
+        <span><i data-lucide="clock" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px;"></i>${fmtFullTime(t.ts)}</span>
+        ${url ? `<a class="agent-task-detail-url" href="${escapeHtml(url)}" target="_blank" rel="noopener"><i data-lucide="external-link" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px;"></i>${escapeHtml(url)}</a>` : ''}
+      </div>
+      <div class="agent-task-detail-label">结果</div>
+      <div class="agent-task-detail-result">${result ? escapeHtml(result) : '<span style="color:var(--muted)">（无结果记录）</span>'}</div>
+      <div class="agent-task-detail-actions">
+        <button class="btn small danger agent-task-del-btn"><i data-lucide="trash-2"></i>删除此任务</button>
+      </div>
+    </div>
   `;
+  // 关闭按钮
+  const closeBtn = detail.querySelector('.agent-task-detail-close');
+  closeBtn.addEventListener('click', () => {
+    detail.remove();
+    caidQsa('.agent-task-item.active').forEach(x => x.classList.remove('active'));
+  });
+  // 删除按钮
   const delBtn = detail.querySelector('.agent-task-del-btn');
   delBtn.addEventListener('click', async (ev) => {
     ev.stopPropagation();
     if (!window.confirm(`确定删除任务「${text}」吗？`)) return;
+    detail.remove();
     await deleteAgentTask(t);
   });
-  itemEl.after(detail);
+  wrapper.appendChild(detail);
   refreshIcons();
 }
+
+// Esc 关闭详情覆盖层
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const wrapper = caidQs('.search-wrapper');
+  if (!wrapper) return;
+  const detail = wrapper.querySelector('.agent-task-detail');
+  if (detail) {
+    detail.remove();
+    caidQsa('.agent-task-item.active').forEach(x => x.classList.remove('active'));
+  }
+});
 
 function fmtFullTime(ts) {
   if (!ts) return '';
