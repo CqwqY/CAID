@@ -94,7 +94,7 @@ a:hover { text-decoration: underline; }
   position: relative;
   z-index: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 100vh;
 }
 .container {
@@ -102,6 +102,156 @@ a:hover { text-decoration: underline; }
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
+}
+
+/* ============ Sidebar ============ */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border-right: 1px solid var(--rule);
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+}
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  user-select: none;
+}
+.sidebar-brand-icon { font-size: 20px; }
+.sidebar-sections {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.sidebar-section {
+  border-bottom: 1px solid var(--rule);
+}
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  position: relative;
+}
+.sidebar-header:hover { background: rgba(255,255,255,0.03); }
+.sidebar-icon {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-icon.blue { background: rgba(91,141,255,0.20); color: var(--accent); }
+.sidebar-icon.green { background: rgba(61,214,140,0.20); color: var(--accent2); }
+.sidebar-icon.purple { background: rgba(180,139,255,0.20); color: var(--purple); }
+.sidebar-icon.warn { background: rgba(255,180,84,0.20); color: var(--warn); }
+.sidebar-icon svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.sidebar-title {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sidebar-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.05);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.07);
+  font-variant-numeric: tabular-nums;
+}
+.sidebar-chevron {
+  color: var(--muted);
+  transition: transform 0.25s ease;
+  display: flex;
+}
+.sidebar-chevron svg { width: 16px; height: 16px; }
+.sidebar-section.collapsed .sidebar-body { display: none; }
+.sidebar-section.collapsed .sidebar-chevron { transform: rotate(-90deg); }
+.sidebar-body {
+  padding: 0 14px 14px;
+  animation: fadeIn 0.18s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.sidebar-body .comp-search { margin-bottom: 10px; }
+.sidebar-body .comp-actions { margin-bottom: 10px; }
+.settings-body { padding: 0 14px 14px; }
+.settings-body .btn { width: 100%; justify-content: center; }
+
+/* ============ Main ============ */
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  height: 100vh;
+}
+
+/* Agent task list */
+.agent-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.agent-task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  font-size: 12px;
+}
+.agent-task-item:hover { background: var(--bg3); border-color: var(--accent); }
+.agent-task-icon { color: var(--accent); flex-shrink: 0; }
+.agent-task-icon svg { width: 14px; height: 14px; }
+.agent-task-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+.agent-task-time {
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+/* Responsive sidebar */
+@media (max-width: 900px) {
+  .sidebar { width: 56px; }
+  .sidebar-brand-text, .sidebar-title, .sidebar-count { display: none; }
+  .sidebar-brand { justify-content: center; padding: 16px 0; }
+  .sidebar-header { justify-content: center; padding: 14px 0; }
+  .sidebar-chevron { display: none; }
+  .sidebar-section.collapsed .sidebar-body { display: none !important; }
+  .sidebar-body { position: fixed; left: 56px; top: 0; bottom: 0; width: 260px; background: var(--bg2); border-right: 1px solid var(--rule); z-index: 20; padding: 14px; overflow-y: auto; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
 }
 
 /* ============ Top Bar (Shortcuts) - 胶囊按钮风格 ============ */
@@ -230,13 +380,6 @@ a:hover { text-decoration: underline; }
 }
 .shortcut-empty-hint b { color: var(--accent); font-weight: 600; }
 
-/* 右上角控件：设置按钮（AI玻璃态风格） */
-.topbar-controls {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
 .icon-btn {
   width: 42px; height: 42px;
   display: flex; align-items: center; justify-content: center;
@@ -630,102 +773,7 @@ a:hover { text-decoration: underline; }
 .answer-body th { background: rgba(255,255,255,0.03); font-weight: 600; }
 .answer-body img { max-width: 100%; border-radius: 6px; }
 
-/* ============ Components Section ============ */
-.components-section {
-  padding: 34px 0 64px;
-  width: 100%;
-}
-.components-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-}
-@media (max-width: 1000px) { .components-grid { grid-template-columns: 1fr; } }
-@media (min-width: 1001px) and (max-width: 1180px) { .components-grid { grid-template-columns: repeat(2, 1fr); } }
-.comp-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border-radius: 16px;
-  overflow: hidden;
-  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s, border-color 0.25s;
-  box-shadow:
-    0 10px 32px rgba(0,0,0,0.32),
-    inset 0 1px 0 rgba(255,255,255,0.04);
-  position: relative;
-  will-change: transform;
-}
-.comp-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%);
-  pointer-events: none;
-  border-radius: inherit;
-}
-.comp-card:hover {
-  border-color: rgba(255,255,255,0.15);
-  transform: translateY(-3px);
-  box-shadow:
-    0 18px 48px rgba(0,0,0,0.42),
-    inset 0 1px 0 rgba(255,255,255,0.06);
-}
-.comp-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 18px;
-  border-bottom: 1px solid var(--glass-border);
-  cursor: pointer;
-  user-select: none;
-  position: relative;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
-}
-.comp-header .comp-icon {
-  width: 34px; height: 34px;
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-}
-.comp-header .comp-icon::before {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 55%);
-  pointer-events: none;
-}
-.comp-icon.blue { background: rgba(91,141,255,0.20); color: var(--accent); }
-.comp-icon.green { background: rgba(61,214,140,0.20); color: var(--accent2); }
-.comp-icon.purple { background: rgba(180,139,255,0.20); color: var(--purple); }
-.comp-icon.warn { background: rgba(255,180,84,0.20); color: var(--warn); }
-.comp-icon svg { width: 17px; height: 17px; stroke-width: 2.1; }
-.comp-title {
-  flex: 1;
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.01em;
-}
-.comp-count {
-  font-size: 12px;
-  color: var(--muted);
-  background: rgba(255,255,255,0.05);
-  padding: 3px 11px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.07);
-  font-variant-numeric: tabular-nums;
-}
-.comp-collapse {
-  color: var(--muted);
-  transition: transform 0.25s ease;
-  display: flex;
-}
-.comp-collapse svg { width: 18px; height: 18px; }
-.comp-card.collapsed .comp-collapse { transform: rotate(-90deg); }
-.comp-card.collapsed .comp-body { display: none; }
-.comp-body { padding: 15px 18px; position: relative; }
+/* ============ Sidebar Body Inner Components ============ */
 .comp-search {
   width: 100%;
   background: rgba(0,0,0,0.2);
@@ -1531,124 +1579,154 @@ a:hover { text-decoration: underline; }
 
 </head><body>
 <div class="app">
-  <!-- Top Bar -->
-  <div class="topbar">
-    <div class="container">
-      <div class="topbar-inner" id="shortcutBar">
-        <!-- Shortcuts injected by JS -->
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-brand-icon">🛠️</span>
+      <span class="sidebar-brand-text">CAID</span>
+    </div>
+    <div class="sidebar-sections">
+      <!-- Snippets -->
+      <div class="sidebar-section" data-comp="snippets">
+        <div class="sidebar-header">
+          <span class="sidebar-icon green"><i data-lucide="file-code"></i></span>
+          <span class="sidebar-title">代码片段</span>
+          <span class="sidebar-count" id="snippetCount">0</span>
+          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="sidebar-body">
+          <input type="text" class="comp-search" id="snippetSearch" placeholder="搜索代码片段…">
+          <div class="comp-actions">
+            <button class="btn small primary" id="addSnippetBtn"><i data-lucide="plus"></i>添加片段</button>
+          </div>
+          <div class="snippet-list" id="snippetList"></div>
+        </div>
+      </div>
+      <!-- History -->
+      <div class="sidebar-section" data-comp="history">
+        <div class="sidebar-header">
+          <span class="sidebar-icon purple"><i data-lucide="history"></i></span>
+          <span class="sidebar-title">搜索历史</span>
+          <span class="sidebar-count" id="historyCount">0</span>
+          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="sidebar-body">
+          <input type="text" class="comp-search" id="historySearch" placeholder="搜索历史…">
+          <div class="comp-actions">
+            <button class="btn small danger" id="clearHistoryBtn"><i data-lucide="trash-2"></i>清空历史</button>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </div>
+      </div>
+      <!-- Todos -->
+      <div class="sidebar-section" data-comp="todos">
+        <div class="sidebar-header">
+          <span class="sidebar-icon warn"><i data-lucide="check-square"></i></span>
+          <span class="sidebar-title">待办清单</span>
+          <span class="sidebar-count" id="todoCount">0</span>
+          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="sidebar-body">
+          <div class="todo-progress" id="todoProgressWrap">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
+              <span>完成进度</span>
+              <span id="todoProgressText">0 / 0</span>
+            </div>
+            <div class="todo-progress-bar"><div class="todo-progress-fill" id="todoProgressFill" style="width:0%"></div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input type="text" class="comp-search" id="todoInput" placeholder="输入任务，Enter 添加…" style="margin-bottom:0;">
+            <select class="form-select" id="todoPriority" style="width:90px;margin-bottom:0;">
+              <option value="low">低</option>
+              <option value="mid" selected>中</option>
+              <option value="high">高</option>
+            </select>
+            <button class="btn success" id="addTodoBtn" style="flex-shrink:0;"><i data-lucide="plus"></i></button>
+          </div>
+          <div class="todo-list" id="todoList"></div>
+        </div>
+      </div>
+      <!-- Agent Tasks -->
+      <div class="sidebar-section" data-comp="agentTasks">
+        <div class="sidebar-header">
+          <span class="sidebar-icon blue"><i data-lucide="bot"></i></span>
+          <span class="sidebar-title">副驾任务</span>
+          <span class="sidebar-count" id="agentTaskCount">0</span>
+          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="sidebar-body">
+          <div class="agent-task-list" id="agentTaskList">
+            <div class="empty-state">
+              <i data-lucide="bot"></i>
+              <div>暂无副驾任务记录</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Settings -->
+      <div class="sidebar-section" data-comp="settings">
+        <div class="sidebar-header">
+          <span class="sidebar-icon"><i data-lucide="settings"></i></span>
+          <span class="sidebar-title">设置</span>
+          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+        </div>
+        <div class="sidebar-body settings-body">
+          <button class="btn primary" id="sidebarOpenSettings" style="width:100%;margin-bottom:8px;">
+            <i data-lucide="settings"></i>打开设置面板
+          </button>
+          <button class="btn" id="sidebarSetHome" style="width:100%;">
+            <i data-lucide="home"></i>设为首页
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </aside>
 
   <!-- Main Area -->
-  <div class="container">
-    <div class="hero">
-      <div class="clock-date">
-        <div class="clock-time" id="clockTime">--:--</div>
-        <div class="clock-date-str" id="clockDate">----年--月--日 ---</div>
-        <div class="clock-greeting" id="clockGreeting"></div>
-      </div>
-
-      <div class="search-wrapper">
-        <div class="search-box">
-          <div class="search-inner">
-            <span class="search-icon"><i data-lucide="search"></i></span>
-            <input type="text" id="searchInput" placeholder="搜索、提问或输入命令… (Tab 切换模式)" autocomplete="off" spellcheck="false">
-            <div class="search-btns">
-              <button class="search-go" id="searchGoBtn" title="搜索 (Enter)"><i data-lucide="arrow-right"></i></button>
-            </div>
-          </div>
+  <main class="main">
+    <div class="topbar">
+      <div class="container">
+        <div class="topbar-inner" id="shortcutBar">
+          <!-- Shortcuts injected by JS -->
         </div>
-        <div class="suggestions" id="suggestions"></div>
-      </div>
-
-      <div class="mode-bar">
-        <button class="mode-pill" data-mode="ai-ans"><i data-lucide="message-square-text"></i>AI 回答</button>
-        <button class="mode-pill active" data-mode="bing"><i data-lucide="globe"></i>Bing 搜索</button>
-      </div>
-      <div class="intent-hint" id="intentHint"></div>
-
-      <div class="answer-panel" id="answerPanel">
-        <div class="answer-header">
-          <span class="badge"><i data-lucide="sparkles" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px;"></i>AI 回答</span>
-          <span id="answerModel">通义千问</span>
-          <button class="close" id="closeAnswer" title="关闭"><i data-lucide="x"></i></button>
-        </div>
-        <div class="answer-body" id="answerBody"></div>
-        <div class="answer-footer" id="answerFooter"></div>
       </div>
     </div>
-
-    <!-- Components Section -->
-    <div class="components-section">
-      <div class="components-grid">
-
-        <!-- Snippets -->
-        <div class="comp-card" data-comp="snippets">
-          <div class="comp-header">
-            <div class="comp-icon green"><i data-lucide="file-code"></i></div>
-            <div class="comp-title">代码片段</div>
-            <span class="comp-count" id="snippetCount">0</span>
-            <span class="comp-collapse"><i data-lucide="chevron-down"></i></span>
-          </div>
-          <div class="comp-body">
-            <input type="text" class="comp-search" id="snippetSearch" placeholder="搜索代码片段…">
-            <div class="comp-actions">
-              <button class="btn small primary" id="addSnippetBtn"><i data-lucide="plus"></i>添加片段</button>
-            </div>
-            <div class="snippet-list" id="snippetList"></div>
-          </div>
+    <div class="container">
+      <div class="hero">
+        <div class="clock-date">
+          <div class="clock-time" id="clockTime">--:--</div>
+          <div class="clock-date-str" id="clockDate">----年--月--日 ---</div>
+          <div class="clock-greeting" id="clockGreeting"></div>
         </div>
-
-        <!-- History -->
-        <div class="comp-card" data-comp="history">
-          <div class="comp-header">
-            <div class="comp-icon purple"><i data-lucide="history"></i></div>
-            <div class="comp-title">搜索历史</div>
-            <span class="comp-count" id="historyCount">0</span>
-            <span class="comp-collapse"><i data-lucide="chevron-down"></i></span>
-          </div>
-          <div class="comp-body">
-            <input type="text" class="comp-search" id="historySearch" placeholder="搜索历史…">
-            <div class="comp-actions">
-              <button class="btn small danger" id="clearHistoryBtn"><i data-lucide="trash-2"></i>清空历史</button>
-            </div>
-            <div class="history-list" id="historyList"></div>
-          </div>
-        </div>
-
-        <!-- Todos -->
-        <div class="comp-card" data-comp="todos">
-          <div class="comp-header">
-            <div class="comp-icon warn"><i data-lucide="check-square"></i></div>
-            <div class="comp-title">待办清单</div>
-            <span class="comp-count" id="todoCount">0</span>
-            <span class="comp-collapse"><i data-lucide="chevron-down"></i></span>
-          </div>
-          <div class="comp-body">
-            <div class="todo-progress" id="todoProgressWrap">
-              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
-                <span>完成进度</span>
-                <span id="todoProgressText">0 / 0</span>
+        <div class="search-wrapper">
+          <div class="search-box">
+            <div class="search-inner">
+              <span class="search-icon"><i data-lucide="search"></i></span>
+              <input type="text" id="searchInput" placeholder="搜索、提问或输入命令… (Tab 切换模式)" autocomplete="off" spellcheck="false">
+              <div class="search-btns">
+                <button class="search-go" id="searchGoBtn" title="搜索 (Enter)"><i data-lucide="arrow-right"></i></button>
               </div>
-              <div class="todo-progress-bar"><div class="todo-progress-fill" id="todoProgressFill" style="width:0%"></div></div>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
-              <input type="text" class="comp-search" id="todoInput" placeholder="输入任务，Enter 添加…" style="margin-bottom:0;">
-              <select class="form-select" id="todoPriority" style="width:90px;margin-bottom:0;">
-                <option value="low">低</option>
-                <option value="mid" selected>中</option>
-                <option value="high">高</option>
-              </select>
-              <button class="btn success" id="addTodoBtn" style="flex-shrink:0;"><i data-lucide="plus"></i></button>
-            </div>
-            <div class="todo-list" id="todoList"></div>
           </div>
+          <div class="suggestions" id="suggestions"></div>
         </div>
-
+        <div class="mode-bar">
+          <button class="mode-pill" data-mode="ai-ans"><i data-lucide="message-square-text"></i>AI 回答</button>
+          <button class="mode-pill active" data-mode="bing"><i data-lucide="globe"></i>Bing 搜索</button>
+        </div>
+        <div class="intent-hint" id="intentHint"></div>
+        <div class="answer-panel" id="answerPanel">
+          <div class="answer-header">
+            <span class="badge"><i data-lucide="sparkles" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px;"></i>AI 回答</span>
+            <span id="answerModel">通义千问</span>
+            <button class="close" id="closeAnswer" title="关闭"><i data-lucide="x"></i></button>
+          </div>
+          <div class="answer-body" id="answerBody"></div>
+          <div class="answer-footer" id="answerFooter"></div>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 </div>
 
 <!-- Context Menu -->

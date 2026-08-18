@@ -283,19 +283,7 @@ function renderShortcuts() {
   `;
   add.addEventListener('click', () => openShortcutModal());
 
-  // Settings & top-right controls
-  const ctrl = document.createElement('div');
-  ctrl.className = 'topbar-controls';
-  ctrl.innerHTML = `
-    <button class="icon-btn" id="btnSetHome" title="设为首页"><i data-lucide="home"></i></button>
-    <button class="icon-btn" id="btnSettings" title="设置"><i data-lucide="settings"></i></button>
-  `;
   bar.appendChild(add);
-  bar.appendChild(ctrl);
-  const btnSettings = ctrl.querySelector('#btnSettings');
-  if (btnSettings) btnSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }));
-  const btnSetHome = ctrl.querySelector('#btnSetHome');
-  if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
   refreshIcons();
 }
 
@@ -1269,16 +1257,54 @@ caidQs('#todoInput').addEventListener('keydown', (e) => {
 });
 
 // ============ Component Collapse ============
-caidQsa('.comp-card').forEach(card => {
-  const id = card.dataset.comp;
-  if (state.uiPrefs.collapsed?.[id]) card.classList.add('collapsed');
-  card.querySelector('.comp-header').addEventListener('click', () => {
-    card.classList.toggle('collapsed');
+caidQsa('.sidebar-section').forEach(sec => {
+  const id = sec.dataset.comp;
+  if (state.uiPrefs.collapsed?.[id]) sec.classList.add('collapsed');
+  sec.querySelector('.sidebar-header').addEventListener('click', () => {
+    sec.classList.toggle('collapsed');
     state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
-    state.uiPrefs.collapsed[id] = card.classList.contains('collapsed');
+    state.uiPrefs.collapsed[id] = sec.classList.contains('collapsed');
     LS.set('uiPrefs', state.uiPrefs);
   });
 });
+
+// ============ Agent Tasks ============
+const agentTasks = LS.get('agentTasks', []);
+function renderAgentTasks() {
+  const list = caidQs('#agentTaskList');
+  if (!list) return;
+  list.innerHTML = '';
+  const tasks = LS.get('agentTasks', []);
+  if (!tasks.length) {
+    list.innerHTML = `<div class="empty-state"><i data-lucide="bot"></i><div>暂无副驾任务记录</div></div>`;
+    refreshIcons();
+    return;
+  }
+  tasks.slice().reverse().forEach((t, idx) => {
+    const el = document.createElement('div');
+    el.className = 'agent-task-item';
+    const time = fmtHistoryTime(t.ts);
+    const text = t.text || t.goal || '未命名任务';
+    el.innerHTML = `
+      <span class="agent-task-icon"><i data-lucide="bot"></i></span>
+      <span class="agent-task-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>
+      <span class="agent-task-time">${time}</span>
+    `;
+    el.addEventListener('click', () => {
+      toast(`任务: ${text}`, 'info');
+    });
+    list.appendChild(el);
+  });
+  refreshIcons();
+}
+function addAgentTask(goal, result) {
+  const tasks = LS.get('agentTasks', []);
+  tasks.push({ goal, result, text: goal, ts: Date.now() });
+  if (tasks.length > 50) tasks.shift();
+  LS.set('agentTasks', tasks);
+  renderAgentTasks();
+  updateCounts();
+}
 
 // ============ Counts ============
 async function updateCounts() {
@@ -1287,6 +1313,7 @@ async function updateCounts() {
   } catch(e){}
   caidQs('#historyCount').textContent = state.searchHistory.length;
   caidQs('#todoCount').textContent = state.todos.length;
+  caidQs('#agentTaskCount').textContent = LS.get('agentTasks', []).length;
 }
 
 // ============ Settings ============
@@ -1463,14 +1490,15 @@ caidQs('#importFile').addEventListener('change', (e) => {
       state.uiPrefs = LS.get('uiPrefs', { collapsed: {} });
       state.llmCfg = LS.get('llmCfg', DEFAULT_LLM_CFG);
       // Apply collapse state
-      caidQsa('.comp-card').forEach(card => {
-        const id = card.dataset.comp;
-        card.classList.toggle('collapsed', !!state.uiPrefs.collapsed?.[id]);
+      caidQsa('.sidebar-section').forEach(sec => {
+        const id = sec.dataset.comp;
+        sec.classList.toggle('collapsed', !!state.uiPrefs.collapsed?.[id]);
       });
       renderShortcuts();
       renderHistory();
       renderTodos();
-      renderSnippets();
+      await renderSnippets();
+      renderAgentTasks();
       updateCounts();
       toast('导入成功！','success');
     } catch (err) {
@@ -1507,7 +1535,14 @@ async function init() {
   renderHistory();
   renderTodos();
   await renderSnippets();
+  renderAgentTasks();
   updateCounts();
+
+  // Sidebar settings buttons
+  const btnOpenSettings = caidQs('#sidebarOpenSettings');
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }));
+  const btnSetHome = caidQs('#sidebarSetHome');
+  if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
   // Icons
   if (window.lucide) lucide.createIcons();
