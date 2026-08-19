@@ -1564,64 +1564,6 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
   toast('设置已保存','success');
 });
 
-// ============ 常规设置：新标签页接管开关（存 chrome.storage.local.caidNewtabEnabled，默认开启）============
-async function fillGeneralForm() {
-  let ext = {};
-  try { ext = await chrome.storage.local.get('caidNewtabEnabled'); } catch (e) {}
-  const on = ext.caidNewtabEnabled !== false;
-  const sw = caidQs('#ntOverrideSwitch');
-  if (sw) {
-    sw.classList.toggle('on', on);
-    sw.setAttribute('aria-checked', on ? 'true' : 'false');
-  }
-}
-const ntOverrideSwitch = caidQs('#ntOverrideSwitch');
-if (ntOverrideSwitch) ntOverrideSwitch.addEventListener('click', () => {
-  ntOverrideSwitch.classList.toggle('on');
-  const on = ntOverrideSwitch.classList.contains('on');
-  ntOverrideSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
-  try { chrome.storage.local.set({ caidNewtabEnabled: on }); } catch (e) {}
-  if (!on) {
-    // 关闭接管立即生效：
-    // 1) 浏览器禁止扩展把标签页导航到 chrome://newtab（tabs.update 会静默失败），
-    //    所以直接 tabs.remove 关闭其他已打开的 CAID 工作台标签页；
-    // 2) 当前设置页保留，顶部显示横幅提示，让用户明确看到「取消已生效」。
-    try {
-      chrome.tabs.getCurrent((cur) => {
-        const curId = cur && cur.id;
-        chrome.tabs.query({ url: chrome.runtime.getURL('newtab.html') + '*' }, (tabs) => {
-          if (tabs && tabs.length) {
-            tabs.forEach((t) => {
-              if (!t.id || t.id === curId) return; // 保留当前设置页
-              try { chrome.tabs.remove(t.id); } catch (e) {}
-            });
-          }
-          showTakeoverOffBanner();
-        });
-      });
-    } catch (e) { showTakeoverOffBanner(); }
-  }
-  toast(on ? '已开启新标签页接管' : '已关闭接管：新标签页完全恢复为浏览器默认页面', on ? 'success' : '');
-});
-
-// 关闭接管后的横幅提示：仅本次页面会话内显示（不持久化，刷新即消失；无关闭按钮）
-let takeoverOffBannerShown = false;
-function showTakeoverOffBanner() {
-  if (takeoverOffBannerShown) return;
-  takeoverOffBannerShown = true;
-  let banner = caidQs('#takeoverOffBanner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'takeoverOffBanner';
-    banner.className = 'takeover-off-banner';
-    banner.innerHTML =
-      '<span class="tob-icon">ℹ</span>' +
-      '<span class="tob-text">新标签页接管已关闭，请关闭此标签页</span>';
-    document.body.appendChild(banner);
-  }
-  requestAnimationFrame(() => banner.classList.add('show'));
-}
-
 // ============ 副驾配置（独立于 AI 回答，存 chrome.storage.local.caidLlm）============
 async function fillCopilotForm() {
   let ext = {};
@@ -1960,7 +1902,7 @@ function switchSettingsTab(name) {
   refreshIcons();
 }
 function openServerSettings() {
-  openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); switchSettingsTab('servers'); });
+  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); switchSettingsTab('servers'); });
 }
 
 const addServerBtn = caidQs('#addServerBtn');
@@ -3003,7 +2945,7 @@ async function init() {
 
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -3020,7 +2962,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
   }
 }
 

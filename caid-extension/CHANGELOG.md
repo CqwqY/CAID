@@ -3,14 +3,14 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
-## [v0.3.0] - 2026-08-19
+## [v0.3.1] - 2026-08-19
+
+### 变更
+- **移除「新标签页接管」开关**（用户确认）：设置 → 常规 中的接管开关已删除，接管功能改为**常驻开启**——新建标签页一律重定向为 CAID 工作台，无关闭入口。如需恢复浏览器默认新标签页，请在扩展管理页停用/卸载本扩展。同步移除关闭接管的 `tabs.remove` 关闭页面、顶部横幅提示等逻辑与样式。
 
 ### 修复
-- **新标签页接管「取消无效」四个根因修复**（用户反馈复盘）：
-  1. **关闭后已打开页面回退失败**：浏览器禁止扩展把标签页导航到 `chrome://newtab`（`tabs.update` 静默失败），此前「把已打开 CAID 页导航回默认新标签页」根本不生效。现改为直接 `chrome.tabs.remove` 关闭其他已打开的 CAID 工作台标签页；当前设置页保留。
-  2. **关闭后当前页显示横幅提示**：接管关闭后，当前页顶部弹出横幅「新标签页接管已关闭，请关闭此标签页」（仅本次会话显示、不持久化，刷新即消失），替代此前的静默失败，用户可明确感知取消已生效。
-  3. **SW 内存缓存竞态**：`maybeTakeoverNewTab` 不再依赖 `caidNewtabEnabledCache` 内存缓存——MV3 Service Worker 休眠-唤醒时顶层代码重新执行、缓存先复位为默认 true，用户刚关闭接管的瞬间新建标签页可能被误接管。现每次接管前 `await chrome.storage.local.get('caidNewtabEnabled')` 实时读最新值（Chromium 内部内存映射，开销可忽略），彻底消除竞态。
-  4. **Edge 新标签页 URL 不匹配**：新增 `isNewTabUrl()` 统一判断，同时匹配 `chrome://newtab`、`edge://newtab`（带/不带尾斜杠），Edge 中接管开关同样生效。
+- **接管逻辑简化**：`maybeTakeoverNewTab` 不再读取 `chrome.storage.local.caidNewtabEnabled` 开关（已无开关），识别到 `chrome://newtab` / `edge://newtab` 后直接重定向。
+- **Edge 支持**：`isNewTabUrl()` 统一匹配 `chrome://newtab`、`edge://newtab`（带/不带尾斜杠），Edge 中接管同样生效。
 
 ## [v0.2.9] - 2026-08-19
 

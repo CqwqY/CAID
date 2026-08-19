@@ -349,16 +349,11 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) ensureCopilotOpen(tab.id);
 });
 
-// ---------- 新标签页动态接管（浏览器层面，可开关）----------
+// ---------- 新标签页动态接管（浏览器层面，常驻开启）----------
 // 不声明 chrome_url_overrides.newtab：该声明是静态的、无法在运行时移除——即使页面内部做
 // 「停用提示页」，本质上仍是扩展在占用新标签页（用户明确拒绝此方案）。
-// 正确做法：监听浏览器原生新标签页创建（chrome://newtab / edge://newtab），仅当用户开启
-// 接管（chrome.storage.local.caidNewtabEnabled !== false）时用 tabs.update 重定向到工作台；
-// 关闭接管后浏览器 100% 走默认新标签页，扩展零干预。
-// ⚠️ 开关状态不依赖 SW 内存缓存：MV3 Service Worker 有休眠-唤醒机制，唤醒时顶层代码
-// 重新执行、缓存会先被初始化为默认值，若用户此时恰好在关闭接管后立刻新建标签页，
-// 缓存可能读到旧值导致误接管。因此每次接管前实时读一次 storage（Chromium 内部有
-// 内存映射，storage.local.get 开销可忽略）。
+// 正确做法：监听浏览器原生新标签页创建（chrome://newtab / edge://newtab），一律用
+// tabs.update 重定向到工作台。接管功能常驻开启，无关闭开关（v0.3.1 起）。
 function isNewTabUrl(u) {
   return u === 'chrome://newtab/' || u === 'chrome://newtab' ||
          u === 'edge://newtab/' || u === 'edge://newtab';
@@ -377,9 +372,6 @@ async function maybeTakeoverNewTab(tabId) {
     if (!tab) return;
     const u = (tab.pendingUrl || tab.url || '');
     if (!isNewTabUrl(u)) return;
-    const got = await chrome.storage.local.get('caidNewtabEnabled');
-    const on = got.caidNewtabEnabled !== false; // 默认开启；未显式设置过时保持 true
-    if (!on) return; // 用户已关闭接管 → 保持浏览器默认新标签页
     await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('newtab.html') });
   } catch (e) {
     // tab 可能已被用户关闭，忽略

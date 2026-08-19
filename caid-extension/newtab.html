@@ -2155,29 +2155,6 @@ a:hover { text-decoration: underline; }
   to { transform: translateX(0); opacity: 1; }
 }
 
-/* 关闭接管横幅提示 */
-.takeover-off-banner {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%) translateY(-140%);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--accent);
-  color: #fff;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  font-size: 13px;
-  max-width: calc(100vw - 40px);
-  transition: transform 0.35s ease;
-}
-.takeover-off-banner.show { transform: translateX(-50%) translateY(0); }
-.tob-icon { font-style: normal; }
-.tob-text { flex: 1; }
-
 /* Skeleton */
 .skeleton {
   background: linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%);
@@ -2712,14 +2689,7 @@ a:hover { text-decoration: underline; }
       <div class="settings-panel" data-panel="general" style="display:none;">
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="layout-dashboard"></i>新标签页</div>
-          <div class="setting-desc">CAID 扩展动态接管浏览器新标签页：开关开启时，新建标签页自动重定向为本工作台。可随时在此关闭。</div>
-          <div class="setting-row" style="margin-top:10px;">
-            <div>
-              <div style="font-weight:500;">接管浏览器新标签页</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:2px;">关闭后，浏览器完全恢复默认新标签页，扩展不再干预</div>
-            </div>
-            <button type="button" class="setting-switch on" id="ntOverrideSwitch" role="switch" aria-checked="true" title="切换新标签页接管"></button>
-          </div>
+          <div class="setting-desc">CAID 扩展动态接管浏览器新标签页：新建标签页自动重定向为本工作台（常驻开启）。若需恢复浏览器默认新标签页，请在扩展管理页停用或卸载本扩展。</div>
         </div>
       </div>
 
@@ -2964,7 +2934,7 @@ a:hover { text-decoration: underline; }
           <li>打开浏览器 <b>设置</b>（地址栏输入 <code>chrome://settings</code>）</li>
           <li><b>外观</b> → 开启「显示主页按钮」，并把主页设为上面的地址</li>
           <li><b>启动时</b> → 选择「打开特定网页或一组网页」，添加上面的地址</li>
-          <li>若已安装 CAID 扩展：新标签页默认被接管为本工作台（可在 设置 → 常规 中关闭，关闭后完全恢复浏览器默认新标签页）</li>
+          <li>若已安装 CAID 扩展：新标签页默认被接管为本工作台（常驻开启，可在扩展管理页停用/卸载本扩展以恢复浏览器默认新标签页）</li>
         </ol>
       </div>
     </div>
