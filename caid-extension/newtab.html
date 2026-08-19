@@ -277,6 +277,128 @@ a:hover { text-decoration: underline; }
   isolation: isolate;
 }
 
+/* 主内容区双栏：左侧原内容 + 右侧插件面板栏 */
+.main-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+.main-body > .container {
+  flex: 1;
+  min-width: 0;
+}
+.right-panels {
+  width: 300px;
+  flex-shrink: 0;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px 24px;
+  border-left: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+.right-panels.has-panels { display: flex; }
+.right-panel-card {
+  background: var(--bg2);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.right-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--rule);
+  background: rgba(255,255,255,0.02);
+}
+.right-panel-icon { display: inline-flex; color: var(--accent); }
+.right-panel-icon svg { width: 15px; height: 15px; }
+.right-panel-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.right-panel-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+  display: inline-flex;
+}
+.right-panel-close:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
+.right-panel-close svg { width: 14px; height: 14px; }
+.right-panel-frame { display: block; width: 100%; border: 0; background: transparent; }
+
+/* 插件弹窗（api.modal 打开，内容渲染在独立沙箱帧内） */
+.plugin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: caidFadeIn 0.15s ease;
+}
+.plugin-modal {
+  background: var(--bg2);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+  width: min(640px, calc(100vw - 48px));
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: caidPopIn 0.18s ease;
+}
+.plugin-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.plugin-modal-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plugin-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  display: inline-flex;
+}
+.plugin-modal-close:hover { color: var(--ink); background: rgba(255,255,255,0.06); }
+.plugin-modal-close svg { width: 16px; height: 16px; }
+.plugin-modal-body { flex: 1; min-height: 0; overflow-y: auto; }
+.plugin-modal-body iframe { display: block; width: 100%; border: 0; background: transparent; }
+@keyframes caidFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes caidPopIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: none; } }
+
 /* Agent task list */
 .agent-task-list {
   display: flex;
@@ -446,6 +568,10 @@ a:hover { text-decoration: underline; }
   .sidebar-body { position: fixed; left: 56px; top: 0; bottom: 0; width: 260px; background: var(--bg2); border-right: 1px solid var(--rule); z-index: 20; padding: 14px; overflow-y: auto; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
   .sidebar-footer-btn span { display: none; }
   .sidebar-footer-btn { padding: 11px 0; }
+}
+/* 窄屏时隐藏右侧插件面板栏（主内容优先） */
+@media (max-width: 1100px) {
+  .right-panels { display: none !important; }
 }
 
 /* ============ Top Bar (Shortcuts) - 胶囊按钮风格 ============ */
@@ -2326,10 +2452,14 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
     </div>
-    <!-- 底部：创建插件 -->
+    <!-- 底部：创建插件 + 更新日志 -->
     <div class="sidebar-footer">
       <button class="sidebar-footer-btn" id="sidebarCreatePlugin">
         <i data-lucide="plus-circle"></i><span>创建插件</span>
+      </button>
+      <button class="sidebar-footer-btn" id="sidebarChangelog"
+        style="margin-top:8px;border-style:solid;border-color:var(--rule);background:rgba(255,255,255,0.02);color:var(--muted);font-weight:500;">
+        <i data-lucide="history"></i><span>更新日志</span>
       </button>
     </div>
   </aside>
@@ -2347,6 +2477,7 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
     </div>
+    <div class="main-body">
     <div class="container">
       <div class="hero">
         <div class="clock-date">
@@ -2388,6 +2519,8 @@ a:hover { text-decoration: underline; }
         </div>
         <div class="server-cards" id="serverCards"></div>
       </div>
+    </div>
+    <div class="right-panels" id="rightPanels"></div>
     </div>
   </main>
 </div>
@@ -2704,6 +2837,15 @@ a:hover { text-decoration: underline; }
     <button class="btn" id="pluginTutorialBack"><i data-lucide="arrow-left"></i>返回编辑器</button>
   </div>
   <div class="plugin-tutorial-body" id="pluginTutorialBody"></div>
+</div>
+
+<!-- 更新日志：全屏阅读视图（复用教程视图样式） -->
+<div class="plugin-tutorial-view" id="changelogView">
+  <div class="plugin-view-header">
+    <div class="plugin-view-title"><i data-lucide="history"></i>更新日志</div>
+    <button class="btn" id="changelogBack"><i data-lucide="arrow-left"></i>返回</button>
+  </div>
+  <div class="plugin-tutorial-body" id="changelogBody"></div>
 </div>
 
 <!-- 设为首页 / 新标签页 Modal -->

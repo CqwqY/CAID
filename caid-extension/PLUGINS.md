@@ -38,7 +38,12 @@ CAID.plugin({
 | `id` | ✅ | 唯一标识，英文数字与 `-`。重复会提示冲突 |
 | `name` | ✅ | 侧边栏显示的名称 |
 | `icon` | ⬜ | lucide 图标名（[图标列表](https://lucide.dev/icons)），如 `clock` / `notebook` / `rss`，留空用 `puzzle` |
-| `mount(api)` | ✅ | 渲染函数，注入时调用一次，用 `api` 操作你的区块 |
+| `mount(api)` | ⬜ | **侧边栏视图**。渲染函数，注入时调用一次，用 `api` 操作你的区块 |
+| `panel(api)` | ⬜ | **右侧面板视图**。定义了它，插件内容会显示在主页面右侧的面板栏（顶部有移除按钮） |
+| `modal(api)` | ⬜ | **弹窗视图**。定义了它，插件才能用 `api.modal()` 打开弹窗，内容渲染在弹窗里 |
+
+> `mount` / `panel` / `modal` 至少实现一个，否则插件不会被加载。
+> 每个视图函数都会收到独立的新 `api`（各自的 `container`），但 `storage` 是共享的——同一个插件 id 的数据在三个视图里都能读到。
 
 > 设置面板里的「名称 / 图标」输入框可以覆盖代码里的 `name` / `icon`，方便不改代码就改名。
 
@@ -55,6 +60,8 @@ CAID.plugin({
 | `api.toast(msg)` | 弹出一个提示 |
 | `api.setInterval(fn, ms)` / `api.setTimeout(fn, ms)` | 被自动追踪的定时器，插件停用/删除时会自动清理，**优先用这两个而非全局定时器** |
 | `api.onUnmount(fn)` | 插件被停用/删除时执行的一次性清理函数（如取消订阅、移除监听） |
+| `api.modal(opts?)` | 打开本插件的弹窗（需定义 `modal(api)` 视图）。`opts`：`{ title, width }`，返回 Promise |
+| `api.closeModal()` | 关闭当前弹窗（在 `modal` 视图内调用） |
 
 ### 沙箱说明（轻量）
 
@@ -131,6 +138,48 @@ CAID.plugin({
     };
     check();
     api.setInterval(check, 30000);
+  }
+});
+```
+
+### 4. 多视图：侧边栏 + 右侧面板 + 弹窗
+
+`mount` 管侧边栏，`panel` 管右侧面板，`modal` 管弹窗——三个视图共用同一份 `storage`：
+
+```js
+CAID.plugin({
+  id: 'multi-view-demo',
+  name: '多视图示例',
+  icon: 'layout-dashboard',
+  // 侧边栏：一个按钮
+  mount(api) {
+    const btn = api.el('button', {
+      text: '打开设置弹窗',
+      onClick: () => api.modal({ title: '我的弹窗', width: 480 }),
+      style: { width: '100%', padding: '8px', borderRadius: '8px',
+               border: '1px solid var(--rule)', background: 'var(--bg3,#16202c)',
+               color: 'var(--text)', cursor: 'pointer' }
+    });
+    api.container.appendChild(btn);
+  },
+  // 右侧面板：显示当前时间，可手动移除
+  panel(api) {
+    const box = api.el('div', { className: 'plugin-row', text: '--:--' });
+    api.container.appendChild(box);
+    const tick = () => { box.textContent = new Date().toLocaleTimeString('zh-CN'); };
+    tick();
+    api.setInterval(tick, 1000);
+  },
+  // 弹窗：倒计时关闭（调 api.closeModal 主动关闭）
+  modal(api) {
+    const box = api.el('div', { className: 'plugin-row', text: '3 秒后自动关闭…' });
+    api.container.appendChild(box);
+    let n = 3;
+    const timer = api.setInterval(() => {
+      n--;
+      box.textContent = n + ' 秒后自动关闭…';
+      if (n <= 0) { clearInterval(timer); api.closeModal(); }
+    }, 1000);
   }
 });
 ```

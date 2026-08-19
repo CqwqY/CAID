@@ -1942,8 +1942,18 @@ window.addEventListener('message', function (ev) {
   } else if (d.type === 'CAID_PLUGIN_SIZE') {
     const f = pluginFrameByWin.get(src);
     if (f) f.style.height = Math.max(60, d.height) + 'px';
+  } else if (d.type === 'CAID_PLUGIN_MODAL_CLOSE') {
+    // 插件在 modal 视图内调用 api.closeModal()：按帧归属关闭对应弹窗
+    const f = pluginFrameByWin.get(src);
+    if (f) closePluginModalByPlugin(f.dataset.pluginId);
   } else if (d.type === 'CAID_PLUGIN_ERROR') {
-    console.warn('[CAID-Plugin] 运行出错', d.error);
+    const f = pluginFrameByWin.get(src);
+    const mode = f ? f.dataset.mode : null;
+    if (mode === 'modal' && typeof toast === 'function') {
+      toast('插件弹窗运行失败：' + (d.error || '未知错误'), 'error');
+    } else {
+      console.warn('[CAID-Plugin] 运行出错', d.error);
+    }
   }
 });
 
@@ -1961,6 +1971,12 @@ async function handlePluginBridge(src, d) {
       const text = await res.text();
       let json = null; try { json = JSON.parse(text); } catch (e) {}
       payload = { ok: res.ok, status: res.status, text: text, json: json };
+    } else if (d.op === 'modalOpen') {
+      // 插件请求打开自己的弹窗：pluginId 由帧归属反查
+      const f = pluginFrameByWin.get(src);
+      const pluginId = f ? f.dataset.pluginId : null;
+      if (!pluginId) payload = { ok: false, error: 'unknown plugin frame' };
+      else payload = await openPluginModal(pluginId, d.data || {});
     }
   } catch (e) {
     payload = { error: e.message };
@@ -1968,13 +1984,64 @@ async function handlePluginBridge(src, d) {
   src.postMessage({ __caidPlugin: true, type: 'CAID_BRIDGE_RES', reqId: d.reqId, payload: payload }, '*');
 }
 
-// 等待沙箱帧就绪后挂载插件代码
-function mountPluginInFrame(iframe, code, pluginId) {
+// ============ 插件弹窗（api.modal 打开；内容渲染在独立沙箱帧 modal 模式）============
+const pluginModalMap = {};   // pluginId -> { backdrop, iframe, onKey }
+
+function openPluginModal(pluginId, opts) {
+  if (pluginModalMap[pluginId]) closePluginModalByPlugin(pluginId);   // 已开则重开
+  return getPlugins().then(list => {
+    const rec = list.find(x => x.id === pluginId);
+    if (!rec || !rec.code) return { ok: false, error: '插件不存在' };
+    const title = (opts && opts.title) || rec.name || pluginId;
+    const rawW = Number((opts && opts.width) || 0);
+    const width = Math.min(Math.max(rawW || 640, 320), 1200);   // 防 NaN/越界
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'plugin-modal-backdrop';
+    backdrop.innerHTML =
+      '<div class="plugin-modal" style="width:min(' + Number(width) + 'px, calc(100vw - 48px));">' +
+        '<div class="plugin-modal-head">' +
+          '<span class="plugin-modal-title">' + escapeHtml(String(title)) + '</span>' +
+          '<button class="plugin-modal-close" title="关闭"><i data-lucide="x"></i></button>' +
+        '</div>' +
+        '<div class="plugin-modal-body">' +
+          '<iframe class="plugin-modal-frame" sandbox="allow-scripts" style="min-height:120px;"></iframe>' +
+        '</div>' +
+      '</div>';
+    const iframe = backdrop.querySelector('iframe');
+    iframe.src = pluginSandboxUrl();        // 不设 src 帧停在 about:blank
+    const closeBtn = backdrop.querySelector('.plugin-modal-close');
+    const onKey = (e) => { if (e.key === 'Escape') closePluginModalByPlugin(pluginId); };
+    backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) closePluginModalByPlugin(pluginId); });
+    closeBtn.addEventListener('click', () => closePluginModalByPlugin(pluginId));
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(backdrop);
+    if (window.lucide) lucide.createIcons();
+
+    pluginModalMap[pluginId] = { backdrop: backdrop, iframe: iframe, onKey: onKey };
+    mountPluginInFrame(iframe, rec.code, pluginId, 'modal');
+    return { ok: true };
+  });
+}
+
+function closePluginModalByPlugin(pluginId) {
+  const rec = pluginModalMap[pluginId];
+  if (!rec) return;
+  if (rec.iframe.contentWindow) pluginFrameByWin.delete(rec.iframe.contentWindow);
+  if (rec.onKey) document.removeEventListener('keydown', rec.onKey);
+  rec.backdrop.remove();
+  delete pluginModalMap[pluginId];
+}
+
+// 等待沙箱帧就绪后挂载插件代码（mode: mount 侧边栏 / panel 右侧面板 / modal 弹窗）
+function mountPluginInFrame(iframe, code, pluginId, mode) {
+  iframe.dataset.pluginId = pluginId || '';
+  iframe.dataset.mode = mode || 'mount';
   const onReady = function (ev) {
     if (ev.source !== iframe.contentWindow) return;
     window.removeEventListener('message', onReady);
     pluginFrameByWin.set(iframe.contentWindow, iframe);
-    iframe.contentWindow.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_MOUNT', reqId: 'm' + (++pluginMsgSeq), code: code, pluginId: pluginId }, '*');
+    iframe.contentWindow.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_MOUNT', reqId: 'm' + (++pluginMsgSeq), code: code, pluginId: pluginId, mode: mode || 'mount' }, '*');
   };
   window.addEventListener('message', onReady);
 }
@@ -2110,6 +2177,48 @@ function removePluginSection(id) {
   delete pluginRegistry[id];
   const sec = caidQs('.sidebar-section[data-comp="plugin:' + id + '"]');
   if (sec) sec.remove();
+  removeRightPanel(id, true);
+}
+
+// ============ 右侧插件面板（def.panel 视图，显示在主内容区右侧）============
+function injectRightPanel(rec) {
+  const wrap = caidQs('#rightPanels');
+  if (!wrap) return;
+  if (wrap.querySelector('.right-panel-card[data-pid="' + rec.id + '"]')) return;   // 防重复
+  wrap.classList.add('has-panels');
+  const card = document.createElement('div');
+  card.className = 'right-panel-card';
+  card.dataset.pid = rec.id;
+  card.innerHTML =
+    '<div class="right-panel-head">' +
+      '<span class="right-panel-icon"><i data-lucide="' + escapeHtml(rec.icon || 'puzzle') + '"></i></span>' +
+      '<span class="right-panel-title">' + escapeHtml(rec.name || rec.id) + '</span>' +
+      '<button class="right-panel-close" title="移除面板"><i data-lucide="x"></i></button>' +
+    '</div>' +
+    '<iframe class="plugin-frame right-panel-frame" sandbox="allow-scripts" style="min-height:80px;"></iframe>';
+  wrap.appendChild(card);
+  const iframe = card.querySelector('iframe');
+  iframe.src = pluginSandboxUrl();
+  card.querySelector('.right-panel-close').addEventListener('click', () => {
+    // 用户手动移除：持久化 panelHidden，避免每次打开 newtab 都重新出现
+    getPlugins().then(list => {
+      const r = list.find(x => x.id === rec.id);
+      if (r) { r.panelHidden = true; return savePlugins(list); }
+    }).catch(() => {});
+    removeRightPanel(rec.id, false);
+  });
+  mountPluginInFrame(iframe, rec.code, rec.id, 'panel');
+}
+
+function removeRightPanel(id, quiet) {
+  const card = caidQs('.right-panel-card[data-pid="' + id + '"]');
+  if (!card) return;
+  const iframe = card.querySelector('iframe');
+  if (iframe && iframe.contentWindow) pluginFrameByWin.delete(iframe.contentWindow);
+  card.remove();
+  const wrap = caidQs('#rightPanels');
+  if (wrap && !wrap.querySelector('.right-panel-card')) wrap.classList.remove('has-panels');
+  if (!quiet) toast('面板已移除');
 }
 
 let _pluginRenderToken = 0;
@@ -2120,6 +2229,7 @@ function renderPluginSections() {
     if (myToken !== _pluginRenderToken) return;   // 有更新的渲染任务在跑，本次作废
     list.filter(p => p.enabled !== false).forEach(p => {
       if (p.code) injectPluginSection(p);
+      if (p.code && p.hasPanel && !p.panelHidden) injectRightPanel(p);
     });
   });
 }
@@ -2212,15 +2322,26 @@ async function savePlugin() {
   if (hIcon) def.icon = hIcon; else if (!def.icon) def.icon = 'puzzle';
   const cancel = caidQs('#pluginCancelEdit');
   const editId = cancel.dataset.editId;
+  const vdef = (validation && validation.def) ? validation.def : null;
   const list = await getPlugins();
+  const buildRec = (prev) => ({
+    id: def.id,
+    name: def.name,
+    icon: def.icon,
+    enabled: prev ? prev.enabled !== false : true,
+    panelHidden: prev ? !!prev.panelHidden : false,      // 用户手动移除右侧面板后保持隐藏
+    hasPanel: !!(vdef && vdef.hasPanel),                  // 沙箱元数据：是否提供 def.panel()
+    hasModal: !!(vdef && vdef.hasModal),                  // 是否提供 def.modal()
+    code
+  });
   if (editId) {
     def.id = editId;                       // 编辑时锁定 id，避免记录键漂移
     const i = list.findIndex(x => x.id === editId);
-    if (i >= 0) list[i] = { id: def.id, name: def.name, icon: def.icon, enabled: list[i].enabled !== false, code };
-    else list.push({ id: def.id, name: def.name, icon: def.icon, enabled: true, code });
+    if (i >= 0) list[i] = buildRec(list[i]);
+    else list.push(buildRec(null));
   } else {
     if (list.some(x => x.id === def.id)) { errEl.textContent = '插件 id「' + def.id + '」已存在，请改用其他 id 或点编辑'; return; }
-    list.push({ id: def.id, name: def.name, icon: def.icon, enabled: true, code });
+    list.push(buildRec(null));
   }
   await savePlugins(list);
   caidQs('#pluginEditor').value = '';
@@ -2405,6 +2526,43 @@ const pluginTutorialBtn = caidQs('#pluginTutorialBtn');
 if (pluginTutorialBtn) pluginTutorialBtn.addEventListener('click', openPluginTutorial);
 const pluginTutorialBack = caidQs('#pluginTutorialBack');
 if (pluginTutorialBack) pluginTutorialBack.addEventListener('click', closePluginTutorial);
+
+// ============ 更新日志（侧边栏底部入口 → 全屏阅读 CHANGELOG.md）============
+const CHANGELOG_URL = chrome.runtime.getURL('CHANGELOG.md');
+function openChangelog() {
+  const view = caidQs('#changelogView');
+  if (!view) return;
+  view.classList.add('open');
+  const body = caidQs('#changelogBody');
+  if (body && !body.dataset.loaded) {
+    body.innerHTML = '<p style="color:var(--muted);padding:12px 2px;">正在加载更新日志…</p>';
+    fetch(CHANGELOG_URL)
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(md => {
+        body.dataset.loaded = '1';
+        body.innerHTML = window.marked ? marked.parse(md) : '<pre>' + escapeHtml(md) + '</pre>';
+        if (window.hljs) body.querySelectorAll('pre code').forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
+        // 外链新标签打开（内部锚点除外），避免打断阅读
+        body.querySelectorAll('a[href]').forEach(a => {
+          if (a.getAttribute('href').charAt(0) !== '#') a.target = '_blank';
+        });
+      })
+      .catch(err => {
+        body.innerHTML = '<div style="color:var(--danger);padding:16px 2px;">加载更新日志失败：' +
+          escapeHtml(String((err && err.message) || err)) +
+          '<br>请确认扩展包内存在 <code>CHANGELOG.md</code> 文件。</div>';
+      });
+  }
+  if (window.lucide) lucide.createIcons();
+}
+function closeChangelog() {
+  const view = caidQs('#changelogView');
+  if (view) view.classList.remove('open');
+}
+const sidebarChangelogBtn = caidQs('#sidebarChangelog');
+if (sidebarChangelogBtn) sidebarChangelogBtn.addEventListener('click', openChangelog);
+const changelogBack = caidQs('#changelogBack');
+if (changelogBack) changelogBack.addEventListener('click', closeChangelog);
 
 // ============ 插件编辑器：语法高亮（textarea 透明文字 + 底层 pre 高亮同步）============
 function syncPluginEditorHl() {

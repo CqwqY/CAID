@@ -51,6 +51,12 @@
       },
       fetch: function (url, opt) { return bridge('fetch', { url: url, opt: opt }); },
       toast: function (msg) { post({ type: 'CAID_TOAST', msg: String(msg) }); },
+      // 打开本插件的弹窗视图（父页面创建弹窗帧，mode=modal 调用 def.modal(api)）
+      modal: function (opts) {
+        return bridge('modalOpen', { title: opts && opts.title, width: opts && opts.width });
+      },
+      // 关闭当前弹窗（仅在 modal 视图内调用有效）
+      closeModal: function () { post({ type: 'CAID_PLUGIN_MODAL_CLOSE' }); },
       setInterval: function (fn, ms) { var id = setInterval(fn, ms); timers.add(id); return id; },
       setTimeout: function (fn, ms) { var id = setTimeout(fn, ms); timers.add(id); return id; },
       onUnmount: function (fn) { if (typeof fn === 'function') cleanups.push(fn); }
@@ -73,7 +79,12 @@
     var defs = [];
     var CAID = {
       version: 1,
-      plugin: function (def) { if (def && def.id && typeof def.mount === 'function') defs.push(def); }
+      plugin: function (def) {
+        if (def && def.id &&
+            (typeof def.mount === 'function' || typeof def.panel === 'function' || typeof def.modal === 'function')) {
+          defs.push(def);
+        }
+      }
     };
     try {
       var fn = new Function('CAID', '"use strict";\n' + code);
@@ -83,16 +94,31 @@
     }
     var def = defs[0];
     if (!def) return { ok: false, error: '未找到 CAID.plugin(...) 调用' };
-    if (mode === 'validate') return { ok: true, def: def };
+    if (mode === 'validate') {
+      // 只回传可序列化元数据（函数过不了 postMessage 的 structured clone）
+      return { ok: true, def: {
+        id: def.id,
+        name: def.name,
+        icon: def.icon,
+        hasPanel: typeof def.panel === 'function',
+        hasModal: typeof def.modal === 'function'
+      } };
+    }
 
-    // mount
+    // mount / panel / modal：分别执行 def.mount / def.panel / def.modal
     clearTimers();
     var root = document.getElementById('pluginRoot');
     root.innerHTML = '';
     var api = makeApi(pluginId || def.id, root);
     reportSize();
+    var viewFn = mode === 'modal' ? def.modal : (mode === 'panel' ? def.panel : def.mount);
+    if (typeof viewFn !== 'function') {
+      var vname = mode === 'modal' ? 'modal()' : (mode === 'panel' ? 'panel()' : 'mount()');
+      root.innerHTML = '<div class="plugin-err">该插件未提供 ' + vname + ' 视图</div>';
+      return { ok: false, error: 'no ' + (mode || 'mount') + ' view' };
+    }
     try {
-      def.mount(api);
+      viewFn(api);
     } catch (e) {
       var msg = (e && e.message) ? e.message : String(e);
       root.innerHTML = '<div class="plugin-err">插件运行出错：' + escapeHtmlLocal(msg) + '</div>';
@@ -130,7 +156,7 @@
       return;
     }
     if (d.type === 'CAID_PLUGIN_MOUNT') {
-      var m = runCode(d.code, d.pluginId, 'mount');
+      var m = runCode(d.code, d.pluginId, d.mode || 'mount');
       post({ type: m.ok ? 'CAID_PLUGIN_READY' : 'CAID_PLUGIN_ERROR', reqId: d.reqId, error: m.error, def: m.def });
       return;
     }
