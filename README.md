@@ -84,9 +84,14 @@ CAID.plugin({
 
 ### 安装扩展
 
-1. 克隆仓库，打开浏览器扩展管理页：Chrome `chrome://extensions` / Edge `edge://extensions`
-2. 开启「开发者模式」→「加载已解压的扩展程序」→ 选择 `caid-extension/` 目录
-3. 新建标签页即被接管为 CAID 工作台；任意网页右下角出现副驾浮动按钮
+**直接下载（推荐）**：[📦 下载 caid-extension.crx](caid-extension.crx?raw=1)（已签名打包，~500KB）
+
+1. 打开浏览器扩展管理页：Chrome `chrome://extensions` / Edge `edge://extensions`
+2. 开启右上角「开发者模式」
+3. 把下载好的 `.crx` 文件直接拖进页面，确认安装
+4. 新建标签页即被接管为 CAID 工作台；任意网页右下角出现副驾浮动按钮
+
+> 若拖拽安装被浏览器拦截或提示包无效，改用源码加载：克隆仓库 → 开发者模式 →「加载已解压的扩展程序」→ 选择 `caid-extension/` 目录。
 
 ### 写第一个插件
 
