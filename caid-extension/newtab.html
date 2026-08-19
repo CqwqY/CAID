@@ -783,18 +783,43 @@ a:hover { text-decoration: underline; }
 }
 .plugin-editor:focus { outline: 1px solid var(--accent); }
 .plugin-err { color: var(--danger); font-size: 12px; margin-top: 6px; min-height: 16px; }
-/* 插件编辑器独立大窗 */
-.plugin-modal { max-width: 940px; }
-.plugin-modal-body { display: flex; gap: 18px; align-items: stretch; }
+/* 插件编辑器：整站全屏视图（非弹窗，接管整个页面） */
+.plugin-editor-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  background: var(--bg);
+}
+.plugin-editor-view.open { display: flex; }
+.plugin-view-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg2, #101822);
+}
+.plugin-view-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.plugin-view-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 20px;
+  padding: 20px 22px;
+  overflow: hidden;
+}
 .plugin-list-col { width: 250px; flex: 0 0 250px; display: flex; flex-direction: column; min-height: 0; }
 .plugin-list-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
-.plugin-list { flex: 1; overflow-y: auto; max-height: 62vh; display: flex; flex-direction: column; gap: 6px; }
-.plugin-edit-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.plugin-modal .plugin-editor {
+.plugin-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.plugin-edit-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.plugin-editor-view .plugin-editor {
+  flex: 1;
+  min-height: 220px;
   width: 100%;
-  height: 44vh;
-  min-height: 240px;
-  resize: vertical;
+  resize: none;
   background: var(--bg3, #16202c);
   color: var(--text);
   border: 1px solid var(--rule);
@@ -807,12 +832,12 @@ a:hover { text-decoration: underline; }
   tab-size: 2;
 }
 .plugin-edit-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
-.plugin-preview-head { margin-top: 12px; font-size: 12px; color: var(--muted); }
-.plugin-preview { width: 100%; min-height: 150px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg3, #16202c); margin-top: 6px; }
+.plugin-preview-head { margin-top: 10px; font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+.plugin-preview { width: 100%; flex: 0 0 auto; height: 24vh; min-height: 140px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg3, #16202c); margin-top: 6px; }
 @media (max-width: 720px) {
-  .plugin-modal-body { flex-direction: column; }
+  .plugin-view-body { flex-direction: column; overflow-y: auto; }
   .plugin-list-col { width: 100%; flex: none; }
-  .plugin-list { max-height: 180px; }
+  .plugin-list { max-height: 200px; }
 }
 /* 插件侧边栏区块内的内容通用样式 */
 .plugin-row { padding: 6px 2px; font-size: 13px; line-height: 1.6; color: var(--text); }
@@ -2397,40 +2422,35 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<!-- 插件编辑器 Modal（独立大窗，不挤在设置里） -->
-<div class="modal-backdrop" id="pluginModal">
-  <div class="modal plugin-modal">
-    <div class="modal-header">
-      <div class="modal-title"><i data-lucide="puzzle" style="width:18px;height:18px;display:inline;vertical-align:middle;margin-right:6px;"></i>插件编辑器</div>
-      <button class="modal-close" data-close><i data-lucide="x"></i></button>
-    </div>
-    <div class="modal-body plugin-modal-body">
-      <div class="plugin-list-col">
-        <div class="plugin-list-col-head">
-          <span>我的插件</span>
-          <button class="btn" id="pluginNewBtn"><i data-lucide="plus"></i>新建</button>
-        </div>
-        <div id="pluginList" class="plugin-list"></div>
+<!-- 插件编辑器：整站全屏视图（非弹窗，接管整个页面） -->
+<div class="plugin-editor-view" id="pluginEditorView">
+  <div class="plugin-view-header">
+    <div class="plugin-view-title"><i data-lucide="puzzle"></i>插件编辑器</div>
+    <button class="btn" id="pluginEditorBack"><i data-lucide="arrow-left"></i>返回工作台</button>
+  </div>
+  <div class="plugin-view-body">
+    <div class="plugin-list-col">
+      <div class="plugin-list-col-head">
+        <span>我的插件</span>
+        <button class="btn" id="pluginNewBtn"><i data-lucide="plus"></i>新建</button>
       </div>
-      <div class="plugin-edit-col">
-        <div class="plugin-editor-head">
-          <input type="text" class="form-input" id="pluginName" placeholder="插件名称，如：我的时钟">
-          <input type="text" class="form-input" id="pluginIcon" placeholder="图标(lucide名)" value="puzzle" style="width:130px;">
-          <button class="btn" id="pluginTplBtn"><i data-lucide="file-code"></i>插入模板</button>
-        </div>
-        <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
-        <div class="plugin-edit-actions">
-          <button class="btn primary" id="savePluginBtn"><i data-lucide="save"></i>保存为新插件</button>
-          <button class="btn" id="pluginPreviewBtn"><i data-lucide="play"></i>运行预览</button>
-          <button class="btn" id="pluginCancelEdit" style="display:none;">取消编辑</button>
-          <span class="plugin-err" id="pluginErr"></span>
-        </div>
-        <div class="plugin-preview-head">实时预览</div>
-        <iframe id="pluginPreview" class="plugin-preview" sandbox="allow-scripts" src="about:blank"></iframe>
-      </div>
+      <div id="pluginList" class="plugin-list"></div>
     </div>
-    <div class="modal-footer">
-      <button class="btn" data-close>关闭</button>
+    <div class="plugin-edit-col">
+      <div class="plugin-editor-head">
+        <input type="text" class="form-input" id="pluginName" placeholder="插件名称，如：我的时钟">
+        <input type="text" class="form-input" id="pluginIcon" placeholder="图标(lucide名)" value="puzzle" style="width:130px;">
+        <button class="btn" id="pluginTplBtn"><i data-lucide="file-code"></i>插入模板</button>
+      </div>
+      <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
+      <div class="plugin-edit-actions">
+        <button class="btn primary" id="savePluginBtn"><i data-lucide="save"></i>保存为新插件</button>
+        <button class="btn" id="pluginPreviewBtn"><i data-lucide="play"></i>运行预览</button>
+        <button class="btn" id="pluginCancelEdit" style="display:none;">取消编辑</button>
+        <span class="plugin-err" id="pluginErr"></span>
+      </div>
+      <div class="plugin-preview-head">实时预览</div>
+      <iframe id="pluginPreview" class="plugin-preview" sandbox="allow-scripts" src="about:blank"></iframe>
     </div>
   </div>
 </div>

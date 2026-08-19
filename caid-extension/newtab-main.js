@@ -2144,10 +2144,11 @@ if (pluginCancelEdit) pluginCancelEdit.addEventListener('click', () => {
   caidQs('#pluginErr').textContent = '';
 });
 
-// 打开插件编辑器（独立大窗）
+// 打开插件编辑器（整站全屏视图，接管整个页面）
 const openPluginEditorBtn = caidQs('#openPluginEditorBtn');
 if (openPluginEditorBtn) openPluginEditorBtn.addEventListener('click', () => {
-  openModal('pluginModal', () => { renderPluginList(); });
+  closeModal('settingsModal');
+  openPluginEditor();
 });
 // 新建：清空编辑器
 const pluginNewBtn = caidQs('#pluginNewBtn');
@@ -2181,14 +2182,27 @@ function runPluginPreview() {
   pluginPreviewReadyHandler = onReady;
   window.addEventListener('message', onReady);
 }
-// 关闭插件窗时卸载预览帧
-const pluginModalEl = caidQs('#pluginModal');
-if (pluginModalEl) pluginModalEl.addEventListener('click', (e) => {
-  if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
-    const pv = caidQs('#pluginPreview');
-    if (pv) { if (pv.contentWindow) pluginFrameByWin.delete(pv.contentWindow); pv.src = 'about:blank'; }
-  }
-});
+// 插件编辑器整站视图：打开 / 关闭
+function openPluginEditor() {
+  const view = caidQs('#pluginEditorView');
+  if (!view) return;
+  const app = caidQs('.app');
+  if (app) app.style.display = 'none';
+  view.classList.add('open');
+  renderPluginList();
+  if (window.lucide) lucide.createIcons();
+}
+function closePluginEditor() {
+  const view = caidQs('#pluginEditorView');
+  if (!view) return;
+  view.classList.remove('open');
+  const app = caidQs('.app');
+  if (app) app.style.display = '';
+  const pv = caidQs('#pluginPreview');
+  if (pv) { if (pv.contentWindow) pluginFrameByWin.delete(pv.contentWindow); pv.src = 'about:blank'; }
+}
+const pluginEditorBack = caidQs('#pluginEditorBack');
+if (pluginEditorBack) pluginEditorBack.addEventListener('click', closePluginEditor);
 
 // ============ Init ============
 async function init() {
