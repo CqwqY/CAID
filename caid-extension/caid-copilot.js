@@ -627,23 +627,37 @@
   function buildHandoff(targetUrl) {
     if (!agent) { console.warn('[CAID-R] buildHandoff: agent 不存在'); return null; }
     const hist = agent.history || [];
-    // 提取目标（优先从历史找 user 消息，回退到输入框当前值）
-    let goal = '';
-    for (let i = hist.length - 1; i >= 0; i--) {
-      if (hist[i] && hist[i].type === 'user') { goal = hist[i].content; break; }
+    // 【防嵌套】goal 提取链：① _originalGoal（sendTask 时记录的用户真实指令）
+    // → ② history 里最后一条非续传 user 消息 → ③ inputEl → ④ _currentGoal。
+    // 必须跳过以【任务续传】开头的消息——那是 resumeIfNeeded 注入的交接指令，不是用户目标；
+    // 不跳过的话每跳转一层 goal 就多一层"【任务续传】你正在协助用户完成：…"前缀，
+    // 多次跳转后 AI 收到层层包裹的嵌套文本，原始任务反而被淹没（AI 忘事的根因）。
+    let goal = _originalGoal || '';
+    if (!goal) {
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i] && hist[i].type === 'user' && String(hist[i].content || '').indexOf('【任务续传】') !== 0) {
+          goal = hist[i].content; break;
+        }
+      }
     }
     // 【关键修复】不再因"无历史/无 user 条目"就返回 null——三级回退：
     // ① agent.history 里的 user 消息 → ② inputEl.value → ③ _currentGoal（sendTask 时存的原始指令）
     if (!goal && inputEl) goal = String(inputEl.value || '').trim();
     if (!goal && _currentGoal) goal = _currentGoal;
-    if (!goal) { console.warn('[CAID-R] buildHandoff: 无法提取 goal（history=', hist.length, ', inputEl=', inputEl ? '"' + inputEl.value + '"' : 'N/A', ', _currentGoal=', '"' + _currentGoal + '"', ')'); return null; }
+    if (!goal) { console.warn('[CAID-R] buildHandoff: 无法提取 goal（history=', hist.length, ', inputEl=', inputEl ? '"' + inputEl.value + '"' : 'N/A', ', _currentGoal=', '"' + _currentGoal + '"', ', _originalGoal=', '"' + _originalGoal + '"', ')'); return null; }
     const recent = hist.slice(-12).map(function (ev) {
       if (ev.type === 'user') return { type: 'user', content: ev.content };
       if (ev.type === 'assistant') return { type: 'assistant', content: ev.content };
       if (ev.type === 'step') return { type: 'step', action: { name: ev.action && ev.action.name, input: ev.action && ev.action.input, output: (ev.action && ev.action.output || '').slice(0, 300) } };
       if (ev.type === 'error') return { type: 'error', message: ev.message };
       return { type: ev.type };
-    }).filter(function (ev) { return ev.type !== 'error'; });
+    }).filter(function (ev) {
+      // 【防嵌套】error 与续传交接指令都不进 recent：前者无续跑价值，
+      // 后者是旧格式残留——若混进去，下一次 handoff 又把它带回新页面，形成嵌套。
+      if (ev.type === 'error') return false;
+      if (ev.type === 'user' && String(ev.content || '').indexOf('【任务续传】') === 0) return false;
+      return true;
+    });
     return { goal: goal, fromUrl: location.href, toUrl: targetUrl, ts: Date.now(), recent: recent };
   }
 
@@ -651,6 +665,7 @@
   // 这样无论跳转由哪个工具触发、还是站内表单提交/意外崩溃，新页面都能捡起续跑。
   var isHandingOff = false;     // 正在因跳转而终止当前页 agent（此时不要清除检查点）
   var _currentGoal = '';         // 【续传兜底】sendTask 时存原始指令，buildHandoff 在 history/inputEl 均空时使用
+  var _originalGoal = '';        // 【防嵌套】用户最近一次真实指令（不含续传交接文本），buildHandoff 提取 goal 的最高优先级
   var isResuming = false;       // 正在恢复上次任务（此时不要重复检查点）
   var _lastCpTs = 0;
   function checkpoint() {
@@ -1018,7 +1033,10 @@
   async function sendTask() {
     if (!inputEl || !agent) return;
     var t = inputEl.value.trim(); if (!t) return; inputEl.value = '';
-    _currentGoal = t; // 【续传兜底】保存原始指令，buildHandoff 在 history/inputEl 均空时使用
+    // 【续传兜底】保存原始指令，buildHandoff 在 history/inputEl 均空时使用。
+    // 【防嵌套】续传交接指令（以【任务续传】开头）不是用户新目标，不覆盖：
+    // 否则多次跳转后 goal 会嵌套成"【任务续传】…【任务续传】…"，AI 迷失原始任务。
+    if (t.indexOf('【任务续传】') !== 0) { _currentGoal = t; _originalGoal = t; }
     caidSendToBg({ type: 'AGENT_ACTIVE', goal: t, fromUrl: location.href });  // 通知 background：本 tab 有活跃 agent，页面导航时自动跟随
     agent.history = agent.history || [];
     agent.history.push({ type: 'user', content: t });
@@ -1149,6 +1167,18 @@
   });
 
   // ---------- 断点续传：若本次启动携带上次跳转的上下文，恢复历史并自动继续 ----------
+  // 【剥壳兜底】storage.session 里可能残留修复前的旧格式 handoff——goal 被嵌套成
+  // "【任务续传】你正在协助用户完成：【任务续传】你正在协助用户完成：原始目标…"。
+  // 反复剥掉前缀直到露出真实目标（取首行，余下是交接描述文本）。
+  function cleanResumeGoal(g) {
+    g = String(g || '').trim();
+    while (g.indexOf('【任务续传】') === 0) {
+      g = g.slice('【任务续传】'.length);
+      if (g.indexOf('你正在协助用户完成：') === 0) g = g.slice('你正在协助用户完成：'.length);
+      g = g.split('\n')[0].trim();
+    }
+    return g;
+  }
   (async function resumeIfNeeded() {
     try {
       const h = window.__CAID_HANDOFF;
@@ -1156,16 +1186,27 @@
       if (!h || !agent) return;
       isResuming = true;
       isHandingOff = false;
-      // 恢复历史展示
+      // 【防雪球】不再把 h.recent 灌回 agent.history！旧逻辑：灌回 → 新一轮 buildHandoff
+      // 又把整段 history 打包进 recent → 下一页再灌回 → 每跳转一次上下文就嵌套一层，
+      // 真正的任务信息被续传元消息淹没（AI 忘事的根因）。
+      // 新逻辑：recent 只作为只读摘要拼进续传指令，agent.history 从本轮真实对话开始；
+      // _originalGoal 记录干净的原始目标（剥壳兜底消化旧格式残留），本页 buildHandoff 直接复用。
+      _originalGoal = cleanResumeGoal(h.goal);
+      let stepsSummary = '';
       if (Array.isArray(h.recent) && h.recent.length) {
-        agent.history = h.recent;
-        agent.dispatchEvent(new Event('historychange'));
+        stepsSummary = '\n上一页已完成的关键步骤：\n' + h.recent.map(function (ev) {
+          if (ev.type === 'user') return '· 用户：' + String(ev.content || '').slice(0, 120);
+          if (ev.type === 'assistant') return '· 助手：' + String(ev.content || '').slice(0, 120);
+          if (ev.type === 'step') return '· 执行 ' + (ev.action && ev.action.name || '') + '：' + String(ev.action && ev.action.output || '').slice(0, 100);
+          return '';
+        }).filter(Boolean).join('\n');
       }
       if (inputEl && typeof sendTask === 'function') {
-        const cont = '【任务续传】你正在协助用户完成：' + (h.goal || '') +
+        const cont = '【任务续传】你正在协助用户完成：' + (_originalGoal || h.goal || '') +
+          stepsSummary +
           '\n此前你已离开 ' + (h.fromUrl || '上一页') + ' 并自动跳转到当前页面 ' + location.href +
           '。请先观察当前页面（URL 可能已变化），然后继续完成上述任务（例如执行搜索 / 操作 / 填表）。';
-        logBubble('assistant', '⟳ 检测到任务续传：' + (h.goal || ''));
+        logBubble('assistant', '⟳ 检测到任务续传：' + (_originalGoal || h.goal || ''));
         console.log('[CAID-R] resumeIfNeeded: 500ms 后自动 sendTask 续跑');
         setTimeout(function () { console.log('[CAID-R] resumeIfNeeded: 调用 sendTask'); inputEl.value = cont; sendTask(); isResuming = false; }, 500);
       } else {

@@ -384,11 +384,13 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 10px;
-  overflow-x: auto;
+  /* 【修复裁切】删掉 overflow-x: auto：CSS 规范里一轴非 visible 时另一轴的 visible
+     会被强制成 auto，等于隐式开了 overflow-y 裁切——悬浮上浮 translateY(-2px) 顶部被裁、
+     左右 box-shadow 光效被容器边裁的元凶。且已有 flex-wrap: wrap（内容换行不横向溢出），
+     横向滚动永远不会触发，这行本来就是死代码。 */
   padding-bottom: 4px;
   flex-wrap: wrap;
 }
-.topbar-inner::-webkit-scrollbar { height: 0; }
 
 /* 胶囊快捷按钮：AI工作台风格 —— 多层渐变+微高光+光晕+悬浮弹起 */
 .shortcut {
