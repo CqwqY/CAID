@@ -2014,6 +2014,11 @@ function injectPluginSection(def) {
     state.uiPrefs.collapsed['plugin:' + def.id] = sec.classList.contains('collapsed');
     LS.set('uiPrefs', state.uiPrefs);
   });
+  // 右键菜单：删除插件
+  sec.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showPluginCtxMenu(e.clientX, e.clientY, def.id, def.name || def.id);
+  });
   const body = sec.querySelector('.plugin-body');
   const iframe = document.createElement('iframe');
   iframe.className = 'plugin-frame';
@@ -2181,6 +2186,51 @@ if (openPluginEditorBtn) openPluginEditorBtn.addEventListener('click', () => {
   closeModal('settingsModal');
   openPluginEditor();
 });
+// 侧边栏底部「创建插件」
+const sidebarCreatePlugin = caidQs('#sidebarCreatePlugin');
+if (sidebarCreatePlugin) sidebarCreatePlugin.addEventListener('click', () => {
+  openPluginEditor();
+});
+// 侧边栏插件右键菜单
+let pluginCtxTargetId = null;
+function showPluginCtxMenu(x, y, id, name) {
+  const menu = caidQs('#pluginCtxMenu');
+  if (!menu) return;
+  pluginCtxTargetId = id;
+  const del = caidQs('#pluginCtxDelete');
+  if (del) del.textContent = '删除「' + name + '」';
+  menu.hidden = false;
+  const rect = menu.getBoundingClientRect();
+  let left = x, top = y;
+  if (left + rect.width > window.innerWidth) left = x - rect.width;
+  if (top + rect.height > window.innerHeight) top = y - rect.height;
+  menu.style.left = Math.max(4, left) + 'px';
+  menu.style.top = Math.max(4, top) + 'px';
+}
+function hidePluginCtxMenu() {
+  const menu = caidQs('#pluginCtxMenu');
+  if (menu) menu.hidden = true;
+  pluginCtxTargetId = null;
+}
+document.addEventListener('click', (e) => {
+  const menu = caidQs('#pluginCtxMenu');
+  if (menu && !menu.hidden && !menu.contains(e.target)) hidePluginCtxMenu();
+});
+window.addEventListener('scroll', hidePluginCtxMenu, true);
+const pluginCtxDelete = caidQs('#pluginCtxDelete');
+if (pluginCtxDelete) pluginCtxDelete.addEventListener('click', async () => {
+  const id = pluginCtxTargetId;
+  hidePluginCtxMenu();
+  if (!id) return;
+  const rec = (await getPlugins()).find(x => x.id === id);
+  const name = rec ? (rec.name || id) : id;
+  if (!confirm('确定删除插件「' + name + '」？此操作不可撤销。')) return;
+  const lst = (await getPlugins()).filter(x => x.id !== id);
+  await savePlugins(lst);
+  renderPluginList(); renderPluginSections();
+  toast('已删除插件：' + name);
+});
+
 // 新建：清空编辑器
 const pluginNewBtn = caidQs('#pluginNewBtn');
 if (pluginNewBtn) pluginNewBtn.addEventListener('click', () => {

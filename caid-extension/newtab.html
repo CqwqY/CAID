@@ -182,6 +182,59 @@ a:hover { text-decoration: underline; }
 .sidebar-chevron svg { width: 16px; height: 16px; }
 .sidebar-section.collapsed .sidebar-body { display: none; }
 .sidebar-section.collapsed .sidebar-chevron { transform: rotate(-90deg); }
+.sidebar-footer {
+  border-top: 1px solid var(--rule);
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+.sidebar-footer-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(91,141,255,0.4);
+  border-radius: 10px;
+  background: rgba(91,141,255,0.08);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sidebar-footer-btn:hover { background: rgba(91,141,255,0.16); border-color: var(--accent); }
+.sidebar-footer-btn svg { width: 16px; height: 16px; }
+/* 侧边栏插件右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 168px;
+  background: var(--bg3, #16202c);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  animation: fadeIn 0.12s ease;
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ctx-item:hover { background: rgba(255,255,255,0.06); }
+.ctx-item.ctx-danger { color: var(--danger); }
+.ctx-item.ctx-danger:hover { background: rgba(255,90,90,0.14); }
 .sidebar-body {
   padding: 0 14px 14px;
   animation: fadeIn 0.18s ease;
@@ -375,6 +428,8 @@ a:hover { text-decoration: underline; }
   .sidebar-chevron { display: none; }
   .sidebar-section.collapsed .sidebar-body { display: none !important; }
   .sidebar-body { position: fixed; left: 56px; top: 0; bottom: 0; width: 260px; background: var(--bg2); border-right: 1px solid var(--rule); z-index: 20; padding: 14px; overflow-y: auto; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
+  .sidebar-footer-btn span { display: none; }
+  .sidebar-footer-btn { padding: 11px 0; }
 }
 
 /* ============ Top Bar (Shortcuts) - 胶囊按钮风格 ============ */
@@ -2101,7 +2156,17 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
     </div>
+    <!-- 底部：创建插件 -->
+    <div class="sidebar-footer">
+      <button class="sidebar-footer-btn" id="sidebarCreatePlugin">
+        <i data-lucide="plus-circle"></i><span>创建插件</span>
+      </button>
+    </div>
   </aside>
+  <!-- 侧边栏插件右键菜单 -->
+  <div class="ctx-menu" id="pluginCtxMenu" hidden>
+    <button class="ctx-item ctx-danger" id="pluginCtxDelete">删除插件</button>
+  </div>
 
   <!-- Main Area -->
   <main class="main">
