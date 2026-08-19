@@ -867,6 +867,84 @@ a:hover { text-decoration: underline; }
   background: var(--bg);
 }
 .plugin-editor-view.open { display: flex; }
+/* 插件教程：全屏阅读视图（从编辑器进入，覆盖在编辑器之上） */
+.plugin-tutorial-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: none;
+  flex-direction: column;
+  background: var(--bg);
+}
+.plugin-tutorial-view.open { display: flex; }
+.plugin-tutorial-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 26px 34px 70px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.plugin-tutorial-body h1 {
+  font-size: 22px;
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.plugin-tutorial-body h2 {
+  font-size: 17px;
+  margin: 26px 0 10px;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+}
+.plugin-tutorial-body h3 { font-size: 15px; margin: 20px 0 8px; }
+.plugin-tutorial-body p { margin: 8px 0; }
+.plugin-tutorial-body ul, .plugin-tutorial-body ol { margin: 8px 0; padding-left: 22px; }
+.plugin-tutorial-body li { margin: 3px 0; }
+.plugin-tutorial-body code {
+  background: var(--bg3, #16202c);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  color: #9ecbff;
+}
+.plugin-tutorial-body pre {
+  background: #0d1117;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.plugin-tutorial-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
+}
+.plugin-tutorial-body blockquote {
+  margin: 10px 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: rgba(91, 141, 255, 0.08);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted);
+}
+.plugin-tutorial-body blockquote code { background: rgba(91, 141, 255, 0.15); }
+.plugin-tutorial-body table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px; }
+.plugin-tutorial-body th, .plugin-tutorial-body td { border: 1px solid var(--rule); padding: 7px 12px; text-align: left; }
+.plugin-tutorial-body th { background: var(--bg3); }
+.plugin-tutorial-body hr { border: none; border-top: 1px solid var(--rule); margin: 22px 0; }
+.plugin-tutorial-body a { color: var(--accent); }
 .plugin-view-header {
   flex: 0 0 auto;
   display: flex;
@@ -2566,6 +2644,7 @@ a:hover { text-decoration: underline; }
         <input type="text" class="form-input" id="pluginName" placeholder="插件名称，如：我的时钟">
         <input type="text" class="form-input" id="pluginIcon" placeholder="图标(lucide名)" value="puzzle" style="width:130px;">
         <button class="btn" id="pluginTplBtn"><i data-lucide="file-code"></i>插入模板</button>
+        <button class="btn" id="pluginTutorialBtn"><i data-lucide="book-open"></i>插件教程</button>
       </div>
       <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
       <div class="plugin-edit-actions">
@@ -2578,6 +2657,15 @@ a:hover { text-decoration: underline; }
       <iframe id="pluginPreview" class="plugin-preview" sandbox="allow-scripts" src="about:blank"></iframe>
     </div>
   </div>
+</div>
+
+<!-- 插件教程：全屏阅读视图（PLUGINS.md） -->
+<div class="plugin-tutorial-view" id="pluginTutorialView">
+  <div class="plugin-view-header">
+    <div class="plugin-view-title"><i data-lucide="book-open"></i>插件开发指南</div>
+    <button class="btn" id="pluginTutorialBack"><i data-lucide="arrow-left"></i>返回编辑器</button>
+  </div>
+  <div class="plugin-tutorial-body" id="pluginTutorialBody"></div>
 </div>
 
 <!-- 设为首页 / 新标签页 Modal -->

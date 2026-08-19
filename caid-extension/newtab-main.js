@@ -2356,6 +2356,44 @@ function closePluginEditor() {
 const pluginEditorBack = caidQs('#pluginEditorBack');
 if (pluginEditorBack) pluginEditorBack.addEventListener('click', closePluginEditor);
 
+// 插件教程：全屏阅读 PLUGINS.md（marked 渲染 + hljs 高亮，加载一次缓存）
+const PLUGIN_TUTORIAL_URL =
+  (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) ? chrome.runtime.getURL('PLUGINS.md') : 'PLUGINS.md';
+function openPluginTutorial() {
+  const view = caidQs('#pluginTutorialView');
+  if (!view) return;
+  view.classList.add('open');
+  const body = caidQs('#pluginTutorialBody');
+  if (body && !body.dataset.loaded) {
+    body.innerHTML = '<p style="color:var(--muted);padding:12px 2px;">正在加载插件开发指南…</p>';
+    fetch(PLUGIN_TUTORIAL_URL)
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(md => {
+        body.dataset.loaded = '1';
+        body.innerHTML = window.marked ? marked.parse(md) : '<pre>' + escapeHtml(md) + '</pre>';
+        if (window.hljs) body.querySelectorAll('pre code').forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
+        // 外链新标签打开，避免打断教程阅读（内部锚点链接除外）
+        body.querySelectorAll('a[href]').forEach(a => {
+          if (a.getAttribute('href').charAt(0) !== '#') a.target = '_blank';
+        });
+      })
+      .catch(err => {
+        body.innerHTML = '<div style="color:var(--danger);padding:16px 2px;">加载插件开发指南失败：' +
+          escapeHtml(String((err && err.message) || err)) +
+          '<br>请确认扩展包内存在 <code>PLUGINS.md</code> 文件。</div>';
+      });
+  }
+  if (window.lucide) lucide.createIcons();
+}
+function closePluginTutorial() {
+  const view = caidQs('#pluginTutorialView');
+  if (view) view.classList.remove('open');
+}
+const pluginTutorialBtn = caidQs('#pluginTutorialBtn');
+if (pluginTutorialBtn) pluginTutorialBtn.addEventListener('click', openPluginTutorial);
+const pluginTutorialBack = caidQs('#pluginTutorialBack');
+if (pluginTutorialBack) pluginTutorialBack.addEventListener('click', closePluginTutorial);
+
 // ============ Init ============
 async function init() {
   // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
