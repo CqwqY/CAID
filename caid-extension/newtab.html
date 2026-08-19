@@ -803,6 +803,47 @@ a:hover { text-decoration: underline; }
   border-radius: 6px;
 }
 .server-monitor-manage:hover { background: rgba(91,141,255,.1); }
+/* 插件挂载区（服务器监控列表下方） */
+.plugin-zone {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto 24px;
+}
+.plugin-zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.plugin-zone-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.plugin-zone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.plugin-zone-card {
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg2);
+}
+.plugin-zone-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  font-weight: 500;
+}
+.plugin-zone-card-head i { color: var(--accent); }
+.plugin-zone-card .plugin-frame { display: block; }
+.plugin-inline-hint { font-size: 12px; color: var(--muted); padding: 4px 12px 8px; line-height: 1.5; }
 .server-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -2529,6 +2570,12 @@ a:hover { text-decoration: underline; }
           <button class="server-monitor-manage" id="serverMonitorManage">管理服务器</button>
         </div>
         <div class="server-cards" id="serverCards"></div>
+      </div>
+      <div class="plugin-zone" id="pluginZone" style="display:none;">
+        <div class="plugin-zone-head">
+          <span class="plugin-zone-title"><i data-lucide="puzzle" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:5px;"></i>插件</span>
+        </div>
+        <div class="plugin-zone-body" id="pluginZoneBody"></div>
       </div>
     </div>
     <div class="right-panels" id="rightPanels"></div>

@@ -1577,15 +1577,15 @@ if (ntOverrideSwitch) ntOverrideSwitch.addEventListener('click', () => {
   ntOverrideSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
   try { chrome.storage.local.set({ caidNewtabEnabled: on }); } catch (e) {}
   if (!on) {
-    // 关闭接管立即生效：把已打开的 CAID 工作台标签页（当前设置页与 #settings 选项入口除外）
-    // 导航回浏览器默认新标签页，让用户直接看到"取消接管"的结果
+    // 关闭接管立即生效：把已打开的 CAID 工作台标签页（含当前设置页）全部导航回浏览器默认
+    // 新标签页，让用户直接看到"取消接管"的结果。当前页稍延迟，让 toast 提示先显示出来。
     try {
       chrome.tabs.query({ url: chrome.runtime.getURL('newtab.html') + '*' }, (tabs) => {
         if (!tabs || !tabs.length) return;
         tabs.forEach((t) => {
-          if (!t.id || t.active) return;
-          if (String(t.url || '').indexOf('#settings') !== -1) return;
-          chrome.tabs.update(t.id, { url: 'chrome://newtab' });
+          if (!t.id) return;
+          if (t.active) setTimeout(() => { try { chrome.tabs.update(t.id, { url: 'chrome://newtab' }); } catch (e) {} }, 400);
+          else try { chrome.tabs.update(t.id, { url: 'chrome://newtab' }); } catch (e) {}
         });
       });
     } catch (e) {}
@@ -2190,7 +2190,8 @@ function injectPluginSection(def) {
       '<span class="plugin-kebab" title="更多操作"><i data-lucide="more-vertical"></i></span>' +
       '<span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>' +
     '</div>' +
-    '<div class="sidebar-body"><div class="plugin-body"></div></div>';
+    // mount 视图已迁移到主内容区「插件」挂载点（服务器监控下方），侧边栏仅保留管理入口
+    '<div class="sidebar-body"><div class="plugin-body"><div class="plugin-inline-hint">内容显示在主区域</div></div></div>';
   const settingsSec = caidQs('.sidebar-section[data-comp="settings"]');
   if (settingsSec) sections.insertBefore(sec, settingsSec);
   else sections.appendChild(sec);
@@ -2218,7 +2219,28 @@ function injectPluginSection(def) {
     const r = kebab.getBoundingClientRect();
     showPluginCtxMenu(r.left, r.bottom + 4, def.id, def.name || def.id);
   });
-  const body = sec.querySelector('.plugin-body');
+  pluginRegistry[def.id] = { def: def, iframe: null, mounted: true };
+  if (window.lucide) lucide.createIcons();
+}
+
+// ============ 主内容区插件挂载点（服务器监控列表下方，mount 视图）============
+function injectPluginZone(def) {
+  const zone = caidQs('#pluginZone');
+  const zoneBody = caidQs('#pluginZoneBody');
+  if (!zone || !zoneBody) return;
+  // 防重复：同名卡片已存在则只保证可见
+  if (zoneBody.querySelector('.plugin-zone-card[data-pid="' + def.id + '"]')) {
+    zone.style.display = 'block';
+    return;
+  }
+  const card = document.createElement('div');
+  card.className = 'plugin-zone-card';
+  card.dataset.pid = def.id;
+  card.innerHTML =
+    '<div class="plugin-zone-card-head">' +
+      '<i data-lucide="' + escapeHtml(def.icon || 'puzzle') + '" style="width:14px;height:14px;"></i>' +
+      '<span>' + escapeHtml(def.name || def.id) + '</span>' +
+    '</div>';
   const iframe = document.createElement('iframe');
   iframe.className = 'plugin-frame';
   iframe.setAttribute('sandbox', 'allow-scripts');
@@ -2226,11 +2248,14 @@ function injectPluginSection(def) {
   iframe.style.border = '0';
   iframe.style.minHeight = '60px';
   iframe.style.background = 'transparent';
-  iframe.src = pluginSandboxUrl();          // 关键：不设 src 帧停在 about:blank，沙箱页不加载
-  body.appendChild(iframe);
-  mountPluginInFrame(iframe, def.code, def.id);
-  pluginRegistry[def.id] = { def: def, iframe: iframe, mounted: true };
+  iframe.src = pluginSandboxUrl();   // 关键：不设 src 帧停在 about:blank，沙箱页不加载
+  card.appendChild(iframe);
+  zoneBody.appendChild(card);
+  zone.style.display = 'block';
   if (window.lucide) lucide.createIcons();
+  const reg = pluginRegistry[def.id];
+  if (reg) reg.iframe = iframe;
+  mountPluginInFrame(iframe, def.code, def.id);
 }
 
 function removePluginSection(id) {
@@ -2242,6 +2267,14 @@ function removePluginSection(id) {
   delete pluginRegistry[id];
   const sec = caidQs('.sidebar-section[data-comp="plugin:' + id + '"]');
   if (sec) sec.remove();
+  // 同步清理主内容区插件挂载卡片
+  const zone = caidQs('#pluginZone');
+  const zoneBody = caidQs('#pluginZoneBody');
+  if (zoneBody) {
+    const card = zoneBody.querySelector('.plugin-zone-card[data-pid="' + id + '"]');
+    if (card) card.remove();
+    if (zone && !zoneBody.querySelector('.plugin-zone-card')) zone.style.display = 'none';
+  }
   removeRightPanel(id, true);
 }
 
@@ -2293,7 +2326,7 @@ function renderPluginSections() {
   return getPlugins().then(list => {
     if (myToken !== _pluginRenderToken) return;   // 有更新的渲染任务在跑，本次作废
     list.filter(p => p.enabled !== false).forEach(p => {
-      if (p.code) injectPluginSection(p);
+      if (p.code) { injectPluginSection(p); injectPluginZone(p); }
       if (p.code && p.hasPanel && !p.panelHidden) injectRightPanel(p);
     });
     // 兼容副驾/外部保存的插件：缺 hasPanel/hasModal 元数据 → 沙箱校验补齐并写回，

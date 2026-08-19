@@ -355,6 +355,18 @@ chrome.action.onClicked.addListener((tab) => {
 // 正确做法：监听浏览器原生新标签页创建（chrome://newtab），仅当用户开启接管
 // （chrome.storage.local.caidNewtabEnabled !== false）时用 tabs.update 重定向到工作台；
 // 关闭接管后浏览器 100% 走默认新标签页，扩展零干预。
+// 状态用 SW 内存缓存 + storage.onChanged 实时同步：用户在设置页点「取消」的瞬间，
+// SW 立刻知道接管已关闭，正在排队/即将新建的新标签页也不会再被重定向。
+let caidNewtabEnabledCache = true;   // 默认开启；未显式设置过时保持 true
+chrome.storage.local.get('caidNewtabEnabled', function (got) {
+  if (got && got.caidNewtabEnabled !== undefined) caidNewtabEnabledCache = got.caidNewtabEnabled !== false;
+});
+chrome.storage.onChanged.addListener(function (changes, area) {
+  if (area === 'local' && changes.caidNewtabEnabled) {
+    caidNewtabEnabledCache = changes.caidNewtabEnabled.newValue !== false;
+  }
+});
+
 chrome.tabs.onCreated.addListener((tab) => {
   const u = (tab.pendingUrl || tab.url || '');
   if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
@@ -368,8 +380,7 @@ async function maybeTakeoverNewTab(tabId) {
     if (!tab) return;
     const u = (tab.pendingUrl || tab.url || '');
     if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
-    const got = await chrome.storage.local.get('caidNewtabEnabled');
-    if (got.caidNewtabEnabled === false) return; // 用户已关闭接管 → 保持浏览器默认新标签页
+    if (!caidNewtabEnabledCache) return; // 用户已关闭接管 → 保持浏览器默认新标签页
     await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('newtab.html') });
   } catch (e) {
     // tab 可能已被用户关闭，忽略
