@@ -82,7 +82,7 @@ CAID.plugin({
 
 ### 安装扩展
 
-**直接下载（推荐）**：[📦 下载 caid-extension.crx](caid-extension.crx?raw=1)（已签名打包，~500KB）
+**直接下载（推荐）**：[📦 下载 caid-extension.crx](https://github.com/CqwqY/CAID/raw/refs/heads/main/caid-extension.crx)（已签名打包，~500KB）
 
 1. 打开浏览器扩展管理页：Chrome `chrome://extensions` / Edge `edge://extensions`
 2. 开启右上角「开发者模式」
