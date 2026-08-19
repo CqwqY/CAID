@@ -33,6 +33,56 @@ const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;'
 // lucide.createIcons 防抖版：合并短时间内的多次调用，避免全量 DOM 扫描
 const refreshIcons = debounce(() => { if (window.lucide) lucide.createIcons(); }, 50);
 
+// ============ 自定义确认弹窗（替代原生 confirm）============
+function caidConfirm(opts) {
+  return new Promise((resolve) => {
+    if (typeof opts === 'string') opts = { message: opts };
+    const dlg = caidQs('#caidConfirmDlg');
+    if (!dlg) { resolve(window.confirm(opts.message || '')); return; } // 兜底：弹窗缺失时退回原生
+    const titleEl = caidQs('#caidConfirmTitle');
+    const msgEl = caidQs('#caidConfirmMsg');
+    const okEl = caidQs('#caidConfirmOk');
+    const cancelEl = caidQs('#caidConfirmCancel');
+    titleEl.textContent = opts.title || '确认操作';
+    msgEl.textContent = opts.message || '';
+    okEl.textContent = opts.okText || '确认';
+    cancelEl.textContent = opts.cancelText || '取消';
+    okEl.classList.toggle('danger', !!opts.danger);
+    // 头部图标（danger 时变红）
+    let iconEl = titleEl.querySelector('i');
+    if (!iconEl) { iconEl = document.createElement('i'); titleEl.prepend(iconEl); }
+    iconEl.dataset.lucide = opts.icon || 'alert-circle';
+    iconEl.style.color = opts.danger ? 'var(--danger, #ff5c7a)' : '';
+    if (window.lucide) lucide.createIcons();
+    const done = (val) => {
+      dlg.classList.remove('open');
+      document.body.style.overflow = '';
+      okEl.removeEventListener('click', onOk);
+      cancelEl.removeEventListener('click', onCancel);
+      dlg.removeEventListener('mousedown', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = (e) => { if (e.target === dlg) done(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') done(false);
+      else if (e.key === 'Enter' && !e.isComposing) {
+        // 焦点在「取消」上按 Enter = 取消，否则视为确认
+        done(document.activeElement === cancelEl ? false : true);
+      }
+    };
+    okEl.addEventListener('click', onOk);
+    cancelEl.addEventListener('click', onCancel);
+    dlg.addEventListener('mousedown', onBackdrop);
+    document.addEventListener('keydown', onKey);
+    dlg.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    okEl.focus();
+  });
+}
+
 // ============ 主网站信息（给 Page-Agent 读）============
 const MAIN_SITE_URL = 'https://graduate.dpdns.org/';
 const MAIN_SITE_NAME = '程序员工作台 · CAID';
@@ -237,8 +287,8 @@ function renderShortcuts() {
         { icon: 'edit', label: '编辑', action: () => openShortcutModal(sc) },
         { icon: 'copy', label: '复制链接', action: () => { navigator.clipboard.writeText(sc.url); toast('链接已复制','success'); } },
         { sep: true },
-        { icon: 'trash-2', label: '删除', danger: true, action: () => {
-          if (confirm(`确认删除快捷入口「${sc.name}」？`)) {
+        { icon: 'trash-2', label: '删除', danger: true, action: async () => {
+          if (await caidConfirm({ title: '删除快捷入口', message: `确认删除快捷入口「${sc.name}」？`, danger: true, okText: '删除', icon: 'trash-2' })) {
             state.shortcuts = state.shortcuts.filter(s => s.id !== sc.id);
             LS.set('shortcuts', state.shortcuts);
             renderShortcuts();
@@ -727,8 +777,8 @@ function renderHistory(filter = '') {
   refreshIcons();
 }
 caidQs('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
-caidQs('#clearHistoryBtn').addEventListener('click', () => {
-  if (!confirm('确认清空所有搜索历史？此操作不可恢复。')) return;
+caidQs('#clearHistoryBtn').addEventListener('click', async () => {
+  if (!(await caidConfirm({ title: '清空搜索历史', message: '确认清空所有搜索历史？此操作不可恢复。', danger: true, okText: '清空', icon: 'trash-2' }))) return;
   state.searchHistory = [];
   LS.set('searchHistory', []);
   db.history.clear().catch(()=>{});
@@ -1154,9 +1204,9 @@ async function renderSnippets(filter = '') {
       navigator.clipboard.writeText(item.code||'').then(() => toast('已复制到剪贴板','success'));
     });
     el.querySelector('[data-act="edit"]').addEventListener('click', (e) => { e.stopPropagation(); openSnippetModal(item); });
-    el.querySelector('[data-act="del"]').addEventListener('click', (e) => {
+    el.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm(`删除代码片段「${item.title}」？`)) {
+      if (await caidConfirm({ title: '删除代码片段', message: `删除代码片段「${item.title}」？`, danger: true, okText: '删除', icon: 'trash-2' })) {
         db.snippets.delete(item.id).then(() => { renderSnippets(filter); updateCounts(); toast('已删除','success'); });
       }
     });
@@ -1395,7 +1445,7 @@ function toggleAgentTaskDetail(itemEl, t) {
   const delBtn = detail.querySelector('.agent-task-del-btn');
   delBtn.addEventListener('click', async (ev) => {
     ev.stopPropagation();
-    if (!window.confirm(`确定删除任务「${text}」吗？`)) return;
+    if (!(await caidConfirm({ title: '删除任务', message: `确定删除任务「${text}」吗？`, danger: true, okText: '删除', icon: 'trash-2' }))) return;
     detail.remove();
     await deleteAgentTask(t);
   });
@@ -1619,10 +1669,10 @@ caidQs('#exportBtn').addEventListener('click', async () => {
   toast('导出完成','success');
 });
 caidQs('#importBtn').addEventListener('click', () => caidQs('#importFile').click());
-caidQs('#importFile').addEventListener('change', (e) => {
+caidQs('#importFile').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   if (!f) return;
-  if (!confirm('导入将覆盖当前所有数据，确定继续？')) { e.target.value = ''; return; }
+  if (!(await caidConfirm({ title: '导入备份', message: '导入将覆盖当前所有数据，确定继续？', okText: '继续导入', icon: 'upload' }))) { e.target.value = ''; return; }
   const r = new FileReader();
   r.onload = async () => {
     try {
@@ -1664,8 +1714,8 @@ caidQs('#importFile').addEventListener('change', (e) => {
   r.readAsText(f);
 });
 caidQs('#resetBtn').addEventListener('click', async () => {
-  if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？')) return;
-  if (!confirm('⚠️ 再次确认：数据将被永久删除，不可恢复！')) return;
+  if (!(await caidConfirm({ title: '重置全部数据', message: '⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？', danger: true, okText: '继续', icon: 'alert-triangle' }))) return;
+  if (!(await caidConfirm({ title: '最后确认', message: '⚠️ 再次确认：数据将被永久删除，不可恢复！', danger: true, okText: '永久删除', icon: 'alert-triangle' }))) return;
   localStorage.clear();
   try {
     await db.snippets.clear();
@@ -2106,7 +2156,7 @@ function renderPluginList() {
       });
       item.querySelector('[data-act="del"]').addEventListener('click', async () => {
         const name = item.querySelector('.plugin-item-name').textContent;
-        if (!confirm('确定删除插件「' + name + '」？')) return;
+        if (!(await caidConfirm({ title: '删除插件', message: `确定删除插件「${name}」？`, danger: true, okText: '删除', icon: 'trash-2' }))) return;
         const lst = (await getPlugins()).filter(x => x.id !== id);
         await savePlugins(lst);
         renderPluginList(); renderPluginSections();
@@ -2245,7 +2295,7 @@ if (pluginCtxDelete) pluginCtxDelete.addEventListener('click', async () => {
   if (!id) return;
   const rec = (await getPlugins()).find(x => x.id === id);
   const name = rec ? (rec.name || id) : id;
-  if (!confirm('确定删除插件「' + name + '」？此操作不可撤销。')) return;
+  if (!(await caidConfirm({ title: '删除插件', message: `确定删除插件「${name}」？此操作不可撤销。`, danger: true, okText: '删除', icon: 'trash-2' }))) return;
   const lst = (await getPlugins()).filter(x => x.id !== id);
   await savePlugins(lst);
   renderPluginList(); renderPluginSections();

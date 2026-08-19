@@ -1047,6 +1047,47 @@ a:hover { text-decoration: underline; }
   display: block;
 }
 
+/* ============ Confirm Dialog ============ */
+.caid-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(5,7,14,0.62);
+  display: none; align-items: center; justify-content: center;
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  animation: caidConfirmFade .16s ease;
+}
+.caid-confirm-backdrop.open { display: flex; }
+.caid-confirm {
+  width: 400px; max-width: calc(100vw - 40px);
+  background: var(--bg2, #12151f);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  border-radius: var(--radius, 14px);
+  box-shadow: var(--shadow, 0 8px 32px rgba(0,0,0,0.45));
+  overflow: hidden;
+  animation: caidConfirmPop .18s cubic-bezier(.2,.9,.3,1.15);
+}
+.caid-confirm-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 18px 20px 0; font-size: 15px; font-weight: 600; color: var(--ink, #e6e8f0);
+}
+.caid-confirm-head i { width: 18px; height: 18px; flex: none; color: var(--accent, #5b8dff); }
+.caid-confirm-body {
+  padding: 10px 20px 6px; font-size: 13px; line-height: 1.65;
+  color: var(--muted, #8b93a7); white-space: pre-line; word-break: break-word;
+}
+.caid-confirm-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px 18px; }
+.caid-confirm-btn {
+  padding: 8px 18px; border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  background: var(--bg3, #1b1f2c); color: var(--ink, #e6e8f0);
+  font-size: 13px; cursor: pointer; transition: background .15s, transform .1s;
+}
+.caid-confirm-btn:hover { background: rgba(255,255,255,0.08); }
+.caid-confirm-btn:active { transform: scale(.97); }
+.caid-confirm-btn.danger { background: var(--danger, #ff5c7a); border-color: var(--danger, #ff5c7a); color: #fff; }
+.caid-confirm-btn.danger:hover { background: #ff6f89; }
+@keyframes caidConfirmFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes caidConfirmPop { from { transform: scale(.94) translateY(6px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
 /* ============ Modal ============ */
 .modal-backdrop {
   position: fixed;
@@ -1906,6 +1947,56 @@ const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;'
 // lucide.createIcons 防抖版：合并短时间内的多次调用，避免全量 DOM 扫描
 const refreshIcons = debounce(() => { if (window.lucide) lucide.createIcons(); }, 50);
 
+// ============ 自定义确认弹窗（替代原生 confirm）============
+function caidConfirm(opts) {
+  return new Promise((resolve) => {
+    if (typeof opts === 'string') opts = { message: opts };
+    const dlg = caidQs('#caidConfirmDlg');
+    if (!dlg) { resolve(window.confirm(opts.message || '')); return; } // 兜底：弹窗缺失时退回原生
+    const titleEl = caidQs('#caidConfirmTitle');
+    const msgEl = caidQs('#caidConfirmMsg');
+    const okEl = caidQs('#caidConfirmOk');
+    const cancelEl = caidQs('#caidConfirmCancel');
+    titleEl.textContent = opts.title || '确认操作';
+    msgEl.textContent = opts.message || '';
+    okEl.textContent = opts.okText || '确认';
+    cancelEl.textContent = opts.cancelText || '取消';
+    okEl.classList.toggle('danger', !!opts.danger);
+    // 头部图标（danger 时变红）
+    let iconEl = titleEl.querySelector('i');
+    if (!iconEl) { iconEl = document.createElement('i'); titleEl.prepend(iconEl); }
+    iconEl.dataset.lucide = opts.icon || 'alert-circle';
+    iconEl.style.color = opts.danger ? 'var(--danger, #ff5c7a)' : '';
+    if (window.lucide) lucide.createIcons();
+    const done = (val) => {
+      dlg.classList.remove('open');
+      document.body.style.overflow = '';
+      okEl.removeEventListener('click', onOk);
+      cancelEl.removeEventListener('click', onCancel);
+      dlg.removeEventListener('mousedown', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = (e) => { if (e.target === dlg) done(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') done(false);
+      else if (e.key === 'Enter' && !e.isComposing) {
+        // 焦点在「取消」上按 Enter = 取消，否则视为确认
+        done(document.activeElement === cancelEl ? false : true);
+      }
+    };
+    okEl.addEventListener('click', onOk);
+    cancelEl.addEventListener('click', onCancel);
+    dlg.addEventListener('mousedown', onBackdrop);
+    document.addEventListener('keydown', onKey);
+    dlg.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    okEl.focus();
+  });
+}
+
 // ============ 主网站信息（给 Page-Agent 读）============
 const MAIN_SITE_URL = 'https://graduate.dpdns.org/';
 const MAIN_SITE_NAME = '程序员工作台 · CAID';
@@ -2110,8 +2201,8 @@ function renderShortcuts() {
         { icon: 'edit', label: '编辑', action: () => openShortcutModal(sc) },
         { icon: 'copy', label: '复制链接', action: () => { navigator.clipboard.writeText(sc.url); toast('链接已复制','success'); } },
         { sep: true },
-        { icon: 'trash-2', label: '删除', danger: true, action: () => {
-          if (confirm(`确认删除快捷入口「${sc.name}」？`)) {
+        { icon: 'trash-2', label: '删除', danger: true, action: async () => {
+          if (await caidConfirm({ title: '删除快捷入口', message: `确认删除快捷入口「${sc.name}」？`, danger: true, okText: '删除', icon: 'trash-2' })) {
             state.shortcuts = state.shortcuts.filter(s => s.id !== sc.id);
             LS.set('shortcuts', state.shortcuts);
             renderShortcuts();
@@ -2612,8 +2703,8 @@ function renderHistory(filter = '') {
   refreshIcons();
 }
 caidQs('#historySearch').addEventListener('input', (e) => renderHistory(e.target.value));
-caidQs('#clearHistoryBtn').addEventListener('click', () => {
-  if (!confirm('确认清空所有搜索历史？此操作不可恢复。')) return;
+caidQs('#clearHistoryBtn').addEventListener('click', async () => {
+  if (!(await caidConfirm({ title: '清空搜索历史', message: '确认清空所有搜索历史？此操作不可恢复。', danger: true, okText: '清空', icon: 'trash-2' }))) return;
   state.searchHistory = [];
   LS.set('searchHistory', []);
   db.history.clear().catch(()=>{});
@@ -3039,9 +3130,9 @@ async function renderSnippets(filter = '') {
       navigator.clipboard.writeText(item.code||'').then(() => toast('已复制到剪贴板','success'));
     });
     el.querySelector('[data-act="edit"]').addEventListener('click', (e) => { e.stopPropagation(); openSnippetModal(item); });
-    el.querySelector('[data-act="del"]').addEventListener('click', (e) => {
+    el.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm(`删除代码片段「${item.title}」？`)) {
+      if (await caidConfirm({ title: '删除代码片段', message: `删除代码片段「${item.title}」？`, danger: true, okText: '删除', icon: 'trash-2' })) {
         db.snippets.delete(item.id).then(() => { renderSnippets(filter); updateCounts(); toast('已删除','success'); });
       }
     });
@@ -3248,10 +3339,10 @@ caidQs('#exportBtn').addEventListener('click', async () => {
   toast('导出完成','success');
 });
 caidQs('#importBtn').addEventListener('click', () => caidQs('#importFile').click());
-caidQs('#importFile').addEventListener('change', (e) => {
+caidQs('#importFile').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   if (!f) return;
-  if (!confirm('导入将覆盖当前所有数据，确定继续？')) { e.target.value = ''; return; }
+  if (!(await caidConfirm({ title: '导入备份', message: '导入将覆盖当前所有数据，确定继续？', okText: '继续导入', icon: 'upload' }))) { e.target.value = ''; return; }
   const r = new FileReader();
   r.onload = async () => {
     try {
@@ -3292,8 +3383,8 @@ caidQs('#importFile').addEventListener('change', (e) => {
   r.readAsText(f);
 });
 caidQs('#resetBtn').addEventListener('click', async () => {
-  if (!confirm('⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？')) return;
-  if (!confirm('⚠️ 再次确认：数据将被永久删除，不可恢复！')) return;
+  if (!(await caidConfirm({ title: '重置全部数据', message: '⚠️ 此操作将清空全部本地数据（快捷入口、片段、历史、待办、配置）！确定继续？', danger: true, okText: '继续', icon: 'alert-triangle' }))) return;
+  if (!(await caidConfirm({ title: '最后确认', message: '⚠️ 再次确认：数据将被永久删除，不可恢复！', danger: true, okText: '永久删除', icon: 'alert-triangle' }))) return;
   localStorage.clear();
   try {
     await db.snippets.clear();
@@ -3335,6 +3426,21 @@ async function init() {
 init();
 
 </script>
+
+<!-- Confirm Dialog -->
+<div class="caid-confirm-backdrop" id="caidConfirmDlg">
+  <div class="caid-confirm" role="alertdialog" aria-modal="true" aria-labelledby="caidConfirmTitle" aria-describedby="caidConfirmMsg">
+    <div class="caid-confirm-head">
+      <i data-lucide="alert-circle"></i>
+      <span id="caidConfirmTitle">确认操作</span>
+    </div>
+    <div class="caid-confirm-body" id="caidConfirmMsg"></div>
+    <div class="caid-confirm-foot">
+      <button type="button" class="caid-confirm-btn" id="caidConfirmCancel">取消</button>
+      <button type="button" class="caid-confirm-btn danger" id="caidConfirmOk">确认</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

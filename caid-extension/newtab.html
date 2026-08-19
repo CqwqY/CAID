@@ -1587,6 +1587,47 @@ a:hover { text-decoration: underline; }
   display: block;
 }
 
+/* ============ Confirm Dialog ============ */
+.caid-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(5,7,14,0.62);
+  display: none; align-items: center; justify-content: center;
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  animation: caidConfirmFade .16s ease;
+}
+.caid-confirm-backdrop.open { display: flex; }
+.caid-confirm {
+  width: 400px; max-width: calc(100vw - 40px);
+  background: var(--bg2, #12151f);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  border-radius: var(--radius, 14px);
+  box-shadow: var(--shadow, 0 8px 32px rgba(0,0,0,0.45));
+  overflow: hidden;
+  animation: caidConfirmPop .18s cubic-bezier(.2,.9,.3,1.15);
+}
+.caid-confirm-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 18px 20px 0; font-size: 15px; font-weight: 600; color: var(--ink, #e6e8f0);
+}
+.caid-confirm-head i { width: 18px; height: 18px; flex: none; color: var(--accent, #5b8dff); }
+.caid-confirm-body {
+  padding: 10px 20px 6px; font-size: 13px; line-height: 1.65;
+  color: var(--muted, #8b93a7); white-space: pre-line; word-break: break-word;
+}
+.caid-confirm-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px 18px; }
+.caid-confirm-btn {
+  padding: 8px 18px; border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  background: var(--bg3, #1b1f2c); color: var(--ink, #e6e8f0);
+  font-size: 13px; cursor: pointer; transition: background .15s, transform .1s;
+}
+.caid-confirm-btn:hover { background: rgba(255,255,255,0.08); }
+.caid-confirm-btn:active { transform: scale(.97); }
+.caid-confirm-btn.danger { background: var(--danger, #ff5c7a); border-color: var(--danger, #ff5c7a); color: #fff; }
+.caid-confirm-btn.danger:hover { background: #ff6f89; }
+@keyframes caidConfirmFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes caidConfirmPop { from { transform: scale(.94) translateY(6px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
 /* ============ Modal ============ */
 .modal-backdrop {
   position: fixed;
@@ -2571,6 +2612,21 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
+
+<!-- Confirm Dialog -->
+<div class="caid-confirm-backdrop" id="caidConfirmDlg">
+  <div class="caid-confirm" role="alertdialog" aria-modal="true" aria-labelledby="caidConfirmTitle" aria-describedby="caidConfirmMsg">
+    <div class="caid-confirm-head">
+      <i data-lucide="alert-circle"></i>
+      <span id="caidConfirmTitle">确认操作</span>
+    </div>
+    <div class="caid-confirm-body" id="caidConfirmMsg"></div>
+    <div class="caid-confirm-foot">
+      <button type="button" class="caid-confirm-btn" id="caidConfirmCancel">取消</button>
+      <button type="button" class="caid-confirm-btn danger" id="caidConfirmOk">确认</button>
+    </div>
+  </div>
+</div>
 
 <script src="vendor/err-report.js"></script>
 <script src="newtab-main.js"></script>
