@@ -688,6 +688,104 @@ a:hover { text-decoration: underline; }
   border-radius: 6px;
 }
 .server-item-del:hover { background: rgba(226,75,74,.12); }
+
+/* ===== 插件生态 ===== */
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.plugin-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.plugin-item-name { font-weight: 500; white-space: nowrap; }
+.plugin-item-id { color: var(--muted); font-size: 11px; font-family: var(--font-mono, monospace); }
+.plugin-item-spacer { margin-left: auto; }
+.plugin-toggle {
+  position: relative;
+  width: 36px; height: 20px;
+  border-radius: 12px;
+  background: var(--rule);
+  border: none; cursor: pointer;
+  flex: 0 0 auto;
+  transition: background .2s ease;
+}
+.plugin-toggle.on { background: var(--accent); }
+.plugin-toggle::after {
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff;
+  transition: transform .2s ease;
+}
+.plugin-toggle.on::after { transform: translateX(16px); }
+.plugin-item-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 12px; padding: 3px 6px; border-radius: 6px;
+}
+.plugin-item-btn:hover { background: rgba(255,255,255,.06); color: var(--text); }
+.plugin-item-btn.danger:hover { background: rgba(226,75,74,.12); color: var(--danger); }
+.plugin-empty {
+  font-size: 12px; color: var(--muted);
+  padding: 8px 0 14px;
+}
+.plugin-doc {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.plugin-doc summary { cursor: pointer; font-weight: 500; }
+.plugin-doc-body {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.plugin-doc-body code {
+  background: var(--bg3, #16202c);
+  padding: 1px 5px; border-radius: 5px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+.plugin-doc-body pre {
+  background: var(--bg3, #16202c);
+  padding: 10px 12px; border-radius: 8px;
+  overflow-x: auto;
+  font-size: 11px; line-height: 1.6;
+  color: var(--text);
+}
+.plugin-editor-head {
+  display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
+}
+.plugin-editor {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  background: var(--bg3, #16202c);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+.plugin-editor:focus { outline: 1px solid var(--accent); }
+.plugin-err { color: var(--danger); font-size: 12px; margin-top: 6px; min-height: 16px; }
+/* 插件侧边栏区块内的内容通用样式 */
+.plugin-row { padding: 6px 2px; font-size: 13px; line-height: 1.6; color: var(--text); }
+.plugin-row.muted { color: var(--muted); font-size: 12px; }
 .clock-date {
   text-align: center;
   margin-bottom: 32px;
@@ -2100,7 +2198,7 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="llm">
@@ -2191,6 +2289,64 @@ a:hover { text-decoration: underline; }
           </div>
           <button class="btn primary" id="addServerBtn"><i data-lucide="plus"></i>添加监控</button>
           <div class="setting-desc" style="margin-top:8px;font-size:12px;">每 30 秒自动探测一次，离线自动标红；地址仅存于扩展本地 chrome.storage。</div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="plugins" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="puzzle"></i>插件生态</div>
+          <div class="setting-desc">用 JavaScript 自制侧边栏区块，零部署。代码运行在轻量沙箱中，只暴露受控 API（storage / el / fetch / toast / 定时器），安全可控。详见下方「插件开发指南」。</div>
+
+          <div id="pluginList" class="plugin-list"></div>
+
+          <details class="plugin-doc">
+            <summary>插件开发指南</summary>
+            <div class="plugin-doc-body">
+              <p>一个插件就是调用一次 <code>CAID.plugin(def)</code>。def 字段：</p>
+              <ul>
+                <li><code>id</code>：唯一标识（英文，如 <code>my-clock</code>）</li>
+                <li><code>name</code>：侧边栏显示的名称</li>
+                <li><code>icon</code>：lucide 图标名（如 <code>clock</code> / <code>notebook</code>），留空用 <code>puzzle</code></li>
+                <li><code>mount(api)</code>：渲染函数，注入时调用一次</li>
+              </ul>
+              <p><code>mount</code> 收到的 <code>api</code>：</p>
+              <ul>
+                <li><code>api.container</code>：你的内容容器（DOM 节点），往里塞东西</li>
+                <li><code>api.el(tag, props?)</code>：创建 DOM 节点，props 支持 className/text/html/onClick 等</li>
+                <li><code>api.storage.get(key)</code> / <code>api.storage.set(key, val)</code>：按插件 id 隔离的本地存储（异步，返回 Promise）</li>
+                <li><code>api.fetch(url, opt?)</code>：发起网络请求（继承扩展跨域权限）</li>
+                <li><code>api.toast(msg)</code>：弹出提示</li>
+                <li><code>api.setInterval(fn, ms)</code> / <code>api.setTimeout(fn, ms)</code>：会被自动清理的定时器</li>
+                <li><code>api.onUnmount(fn)</code>：插件被停用/删除时执行的清理</li>
+              </ul>
+              <p>最小模板：</p>
+              <pre>CAID.plugin({
+  id: 'my-clock',
+  name: '我的时钟',
+  icon: 'clock',
+  mount(api) {
+    const box = api.el('div', { className: 'plugin-row' });
+    api.container.appendChild(box);
+    const tick = () =&gt; { box.textContent = new Date().toLocaleTimeString('zh-CN'); };
+    tick();
+    api.setInterval(tick, 1000);
+  }
+});</pre>
+              <p>点击「插入模板」可把上面的代码填进编辑器，改改就能用。更多示例见仓库 <code>PLUGINS.md</code>。</p>
+            </div>
+          </details>
+
+          <div class="plugin-editor-head">
+            <input type="text" class="form-input" id="pluginName" placeholder="插件名称，如：我的时钟">
+            <input type="text" class="form-input" id="pluginIcon" placeholder="图标(lucide名)" value="puzzle" style="width:140px;">
+            <button class="btn" id="pluginTplBtn"><i data-lucide="file-code"></i>插入模板</button>
+          </div>
+          <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+            <button class="btn primary" id="savePluginBtn"><i data-lucide="save"></i>保存为新插件</button>
+            <button class="btn" id="pluginCancelEdit" style="display:none;">取消编辑</button>
+            <span class="plugin-err" id="pluginErr"></span>
+          </div>
         </div>
       </div>
 

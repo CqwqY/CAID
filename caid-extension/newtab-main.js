@@ -1855,6 +1855,262 @@ if (addServerBtn) addServerBtn.addEventListener('click', addServer);
 const srvManageBtn = caidQs('#serverMonitorManage');
 if (srvManageBtn) srvManageBtn.addEventListener('click', openServerSettings);
 
+// ============ Plugin System ============
+const PLUGIN_STORE_KEY = 'caidPlugins';
+const pluginRegistry = {};           // id -> { def, container, dispose, mounted }
+const PLUGIN_TEMPLATE = `CAID.plugin({
+  id: 'my-clock',
+  name: '我的时钟',
+  icon: 'clock',
+  mount(api) {
+    const box = api.el('div', { className: 'plugin-row' });
+    api.container.appendChild(box);
+    const tick = () => { box.textContent = new Date().toLocaleTimeString('zh-CN'); };
+    tick();
+    api.setInterval(tick, 1000);
+  }
+});`;
+
+// 受控 API 构造（每个插件实例独立，定时器/清理可追踪）
+function makePluginApi(def, container) {
+  const cleanups = [];
+  const timers = new Set();
+  const api = {
+    container,
+    el(tag, props) {
+      const node = document.createElement(tag);
+      if (props) {
+        for (const k in props) {
+          if (k === 'className') node.className = props[k];
+          else if (k === 'text') node.textContent = props[k];
+          else if (k === 'html') node.innerHTML = props[k];
+          else if (k === 'onClick') node.addEventListener('click', props[k]);
+          else if (k === 'style' && typeof props[k] === 'object') Object.assign(node.style, props[k]);
+          else if (k === 'dataset' && typeof props[k] === 'object') Object.assign(node.dataset, props[k]);
+          else node.setAttribute(k, props[k]);
+        }
+      }
+      return node;
+    },
+    storage: {
+      async get(key) {
+        const full = 'caidPlugin:' + def.id + ':' + key;
+        if (storageAvailable()) { const r = await chrome.storage.local.get(full); return r[full]; }
+        return LS.get(full);
+      },
+      async set(key, val) {
+        const full = 'caidPlugin:' + def.id + ':' + key;
+        if (storageAvailable()) await chrome.storage.local.set({ [full]: val });
+        else LS.set(full, val);
+      }
+    },
+    fetch: (url, opt) => fetch(url, opt),
+    toast: (msg) => toast(msg),
+    setInterval(fn, ms) { const id = setInterval(fn, ms); timers.add(id); return id; },
+    setTimeout(fn, ms) { const id = setTimeout(fn, ms); timers.add(id); return id; },
+    onUnmount(fn) { if (typeof fn === 'function') cleanups.push(fn); }
+  };
+  return { api, dispose() {
+    timers.forEach(id => { clearInterval(id); clearTimeout(id); });
+    cleanups.forEach(fn => { try { fn(); } catch (e) {} });
+  } };
+}
+
+// 轻量沙箱：只把 CAID 与受控 api 暴露给插件代码；屏蔽 chrome / localStorage 直接访问
+function evalPluginCode(code) {
+  const defs = [];
+  const CAID = {
+    version: 1,
+    plugin(def) { if (def && def.id && typeof def.mount === 'function') defs.push(def); }
+  };
+  try {
+    const fn = new Function('CAID', 'chrome', 'localStorage', '"use strict";\n' + code);
+    fn(CAID, undefined, undefined);
+    return { defs };
+  } catch (e) {
+    return { defs, error: e.message };
+  }
+}
+
+async function getPlugins() {
+  if (storageAvailable()) {
+    const r = await chrome.storage.local.get(PLUGIN_STORE_KEY);
+    return Array.isArray(r[PLUGIN_STORE_KEY]) ? r[PLUGIN_STORE_KEY] : [];
+  }
+  return LS.get(PLUGIN_STORE_KEY, []);
+}
+async function savePlugins(list) {
+  if (storageAvailable()) await chrome.storage.local.set({ [PLUGIN_STORE_KEY]: list });
+  else LS.set(PLUGIN_STORE_KEY, list);
+}
+
+function injectPluginSection(def) {
+  const sections = caidQs('#sidebarSections') || caidQs('.sidebar-sections');
+  if (!sections) return;
+  const sec = document.createElement('div');
+  sec.className = 'sidebar-section';
+  sec.dataset.comp = 'plugin:' + def.id;
+  sec.innerHTML =
+    '<div class="sidebar-header">' +
+      '<span class="sidebar-icon"><i data-lucide="' + escapeHtml(def.icon || 'puzzle') + '"></i></span>' +
+      '<span class="sidebar-title">' + escapeHtml(def.name || def.id) + '</span>' +
+      '<span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>' +
+    '</div>' +
+    '<div class="sidebar-body"><div class="plugin-body"></div></div>';
+  const settingsSec = caidQs('.sidebar-section[data-comp="settings"]');
+  if (settingsSec) sections.insertBefore(sec, settingsSec);
+  else sections.appendChild(sec);
+  const collapsed = state.uiPrefs.collapsed && state.uiPrefs.collapsed['plugin:' + def.id];
+  if (collapsed) sec.classList.add('collapsed');
+  sec.querySelector('.sidebar-header').addEventListener('click', () => {
+    sec.classList.toggle('collapsed');
+    state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
+    state.uiPrefs.collapsed['plugin:' + def.id] = sec.classList.contains('collapsed');
+    LS.set('uiPrefs', state.uiPrefs);
+  });
+  const container = sec.querySelector('.plugin-body');
+  const { api, dispose } = makePluginApi(def, container);
+  try {
+    def.mount(api);
+  } catch (e) {
+    container.innerHTML = '<div class="plugin-row muted">插件运行出错：' + escapeHtml(e.message) + '</div>';
+  }
+  pluginRegistry[def.id] = { def, container, dispose, mounted: true };
+  if (window.lucide) lucide.createIcons();
+}
+
+function removePluginSection(id) {
+  const reg = pluginRegistry[id];
+  if (reg && reg.dispose) { try { reg.dispose(); } catch (e) {} }
+  delete pluginRegistry[id];
+  const sec = caidQs('.sidebar-section[data-comp="plugin:' + id + '"]');
+  if (sec) sec.remove();
+}
+
+function renderPluginSections() {
+  Object.keys(pluginRegistry).forEach(removePluginSection);
+  return getPlugins().then(list => {
+    list.filter(p => p.enabled !== false).forEach(p => {
+      const res = evalPluginCode(p.code);
+      if (res.error) { console.warn('[CAID-Plugin] 解析失败', p.id, res.error); return; }
+      const def = res.defs[0];
+      if (def) injectPluginSection(def);
+    });
+  });
+}
+
+function loadPlugins() { return renderPluginSections(); }
+
+function renderPluginList() {
+  const listEl = caidQs('#pluginList');
+  if (!listEl) return Promise.resolve();
+  return getPlugins().then(list => {
+    if (!list.length) {
+      listEl.innerHTML = '<div class="plugin-empty">还没有插件。点「插入模板」写一个，或参考仓库 PLUGINS.md。</div>';
+      return;
+    }
+    listEl.innerHTML = list.map(p =>
+      '<div class="plugin-item" data-id="' + escapeHtml(p.id) + '">' +
+        '<span class="plugin-item-name">' + escapeHtml(p.name || p.id) + '</span>' +
+        '<span class="plugin-item-id">' + escapeHtml(p.id) + '</span>' +
+        '<span class="plugin-item-spacer"></span>' +
+        '<button class="plugin-item-btn" data-act="edit">编辑</button>' +
+        '<button class="plugin-item-btn danger" data-act="del">删除</button>' +
+        '<button class="plugin-toggle ' + (p.enabled !== false ? 'on' : '') + '" data-act="toggle" title="启用/停用"></button>' +
+      '</div>'
+    ).join('');
+    caidQsa('.plugin-item', listEl).forEach(item => {
+      const id = item.dataset.id;
+      item.querySelector('[data-act="toggle"]').addEventListener('click', async () => {
+        const lst = await getPlugins();
+        const rec = lst.find(x => x.id === id);
+        if (!rec) return;
+        rec.enabled = rec.enabled === false;
+        await savePlugins(lst);
+        renderPluginList(); renderPluginSections();
+      });
+      item.querySelector('[data-act="del"]').addEventListener('click', async () => {
+        const name = item.querySelector('.plugin-item-name').textContent;
+        if (!confirm('确定删除插件「' + name + '」？')) return;
+        const lst = (await getPlugins()).filter(x => x.id !== id);
+        await savePlugins(lst);
+        renderPluginList(); renderPluginSections();
+      });
+      item.querySelector('[data-act="edit"]').addEventListener('click', () => {
+        getPlugins().then(lst2 => {
+          const rec = lst2.find(x => x.id === id);
+          if (!rec) return;
+          caidQs('#pluginName').value = rec.name || '';
+          caidQs('#pluginIcon').value = rec.icon || 'puzzle';
+          caidQs('#pluginEditor').value = rec.code || '';
+          caidQs('#pluginErr').textContent = '';
+          const cancel = caidQs('#pluginCancelEdit');
+          cancel.style.display = '';
+          cancel.dataset.editId = id;
+          caidQs('#savePluginBtn').textContent = '更新插件';
+        });
+      });
+    });
+  });
+}
+
+function savePlugin() {
+  const code = caidQs('#pluginEditor').value.trim();
+  const errEl = caidQs('#pluginErr');
+  errEl.textContent = '';
+  if (!code) { errEl.textContent = '请先编写插件代码'; return; }
+  const res = evalPluginCode(code);
+  if (res.error) { errEl.textContent = '代码解析错误：' + res.error; return; }
+  if (!res.defs.length) { errEl.textContent = '未找到 CAID.plugin(...) 调用'; return; }
+  const def = res.defs[0];
+  const hName = caidQs('#pluginName').value.trim();
+  const hIcon = caidQs('#pluginIcon').value.trim();
+  if (hName) def.name = hName;
+  if (hIcon) def.icon = hIcon;
+  const cancel = caidQs('#pluginCancelEdit');
+  const editId = cancel.dataset.editId;
+  getPlugins().then(list => {
+    if (editId) {
+      def.id = editId;                       // 编辑时锁定 id，避免记录键漂移
+      const i = list.findIndex(x => x.id === editId);
+      if (i >= 0) list[i] = { id: def.id, name: def.name, icon: def.icon, enabled: list[i].enabled !== false, code };
+      else list.push({ id: def.id, name: def.name, icon: def.icon, enabled: true, code });
+    } else {
+      if (list.some(x => x.id === def.id)) { errEl.textContent = '插件 id「' + def.id + '」已存在，请改用其他 id 或点编辑'; return; }
+      list.push({ id: def.id, name: def.name, icon: def.icon, enabled: true, code });
+    }
+    savePlugins(list).then(() => {
+      caidQs('#pluginEditor').value = '';
+      caidQs('#pluginName').value = '';
+      caidQs('#pluginIcon').value = 'puzzle';
+      cancel.style.display = 'none';
+      delete cancel.dataset.editId;
+      caidQs('#savePluginBtn').textContent = '保存为新插件';
+      renderPluginList(); renderPluginSections();
+      toast('插件已保存');
+    });
+  });
+}
+
+const pluginTplBtn = caidQs('#pluginTplBtn');
+if (pluginTplBtn) pluginTplBtn.addEventListener('click', () => {
+  if (!caidQs('#pluginEditor').value.trim()) caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
+  else caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
+  caidQs('#pluginErr').textContent = '';
+});
+const savePluginBtn = caidQs('#savePluginBtn');
+if (savePluginBtn) savePluginBtn.addEventListener('click', savePlugin);
+const pluginCancelEdit = caidQs('#pluginCancelEdit');
+if (pluginCancelEdit) pluginCancelEdit.addEventListener('click', () => {
+  caidQs('#pluginEditor').value = '';
+  caidQs('#pluginName').value = '';
+  caidQs('#pluginIcon').value = 'puzzle';
+  pluginCancelEdit.style.display = 'none';
+  delete pluginCancelEdit.dataset.editId;
+  caidQs('#savePluginBtn').textContent = '保存为新插件';
+  caidQs('#pluginErr').textContent = '';
+});
+
 // ============ Init ============
 async function init() {
   // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
@@ -1875,9 +2131,12 @@ async function init() {
   loadServers().then(() => probeAll());
   setInterval(() => { if (document.visibilityState === 'visible') probeAll(); }, 30000);
 
+  // 插件：加载并渲染已启用的侧边栏区块
+  loadPlugins();
+
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -1894,7 +2153,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
   }
 }
 
@@ -1905,6 +2164,7 @@ try {
       if (area !== 'local') return;
       if (changes.caidMemory) loadAgentTasks();
       if (changes.caidServers) loadServers();
+      if (changes.caidPlugins) { renderPluginList(); renderPluginSections(); }
     });
   }
 } catch (e) {}
