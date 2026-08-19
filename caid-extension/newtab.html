@@ -203,6 +203,9 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
   overflow-y: auto;
   height: 100vh;
+  /* 建立独立层叠上下文：把 .topbar 的 z-index:100 关在 .main 内部，
+     否则它会漏到 .app 上下文与侧边栏(z-index:10)竞争并压住侧边栏浮层 */
+  isolation: isolate;
 }
 
 /* Agent task list */
