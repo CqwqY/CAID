@@ -967,13 +967,46 @@ a:hover { text-decoration: underline; }
 .plugin-list-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
 .plugin-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 .plugin-edit-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* 编辑器双层结构：底层 pre 显示 hljs 高亮，上层 textarea 文字透明仅保留光标 */
+.plugin-editor-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  display: flex;
+}
+.plugin-editor-hl {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: hidden;
+  pointer-events: none;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--bg3, #16202c);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  tab-size: 2;
+  box-sizing: border-box;
+}
+.plugin-editor-hl code {
+  font: inherit;
+  background: transparent;
+  color: var(--text);
+}
 .plugin-editor-view .plugin-editor {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 220px;
   width: 100%;
   resize: none;
-  background: var(--bg3, #16202c);
-  color: var(--text);
+  background: transparent;
+  color: transparent;
+  caret-color: var(--ink, #e6e8f0);
   border: 1px solid var(--rule);
   border-radius: 10px;
   padding: 12px;
@@ -982,7 +1015,9 @@ a:hover { text-decoration: underline; }
   line-height: 1.7;
   box-sizing: border-box;
   tab-size: 2;
+  overflow-y: auto;
 }
+.plugin-editor-view .plugin-editor:focus { outline: 1px solid var(--accent); }
 .plugin-edit-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
 .plugin-preview-head { margin-top: 10px; font-size: 12px; color: var(--muted); flex: 0 0 auto; }
 .plugin-preview { width: 100%; flex: 0 0 auto; height: 24vh; min-height: 140px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg3, #16202c); margin-top: 6px; }
@@ -2642,11 +2677,14 @@ a:hover { text-decoration: underline; }
     <div class="plugin-edit-col">
       <div class="plugin-editor-head">
         <input type="text" class="form-input" id="pluginName" placeholder="插件名称，如：我的时钟">
-        <input type="text" class="form-input" id="pluginIcon" placeholder="图标(lucide名)" value="puzzle" style="width:130px;">
+        <input type="text" class="form-input" id="pluginIcon" placeholder="图标留空用代码里的" value="" style="width:150px;">
         <button class="btn" id="pluginTplBtn"><i data-lucide="file-code"></i>插入模板</button>
         <button class="btn" id="pluginTutorialBtn"><i data-lucide="book-open"></i>插件教程</button>
       </div>
-      <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
+      <div class="plugin-editor-wrap">
+        <pre class="plugin-editor-hl" aria-hidden="true"><code id="pluginEditorHl"></code></pre>
+        <textarea id="pluginEditor" class="plugin-editor" spellcheck="false" placeholder="// 在这里编写插件代码，调用 CAID.plugin({...})"></textarea>
+      </div>
       <div class="plugin-edit-actions">
         <button class="btn primary" id="savePluginBtn"><i data-lucide="save"></i>保存为新插件</button>
         <button class="btn" id="pluginPreviewBtn"><i data-lucide="play"></i>运行预览</button>

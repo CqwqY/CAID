@@ -2166,9 +2166,10 @@ function renderPluginList() {
           const rec = lst2.find(x => x.id === id);
           if (!rec) return;
           caidQs('#pluginName').value = rec.name || '';
-          caidQs('#pluginIcon').value = rec.icon || 'puzzle';
+          caidQs('#pluginIcon').value = rec.icon || '';
           caidQs('#pluginEditor').value = rec.code || '';
           caidQs('#pluginErr').textContent = '';
+          syncPluginEditorHl();
           const cancel = caidQs('#pluginCancelEdit');
           cancel.style.display = '';
           cancel.dataset.editId = id;
@@ -2224,7 +2225,9 @@ async function savePlugin() {
   await savePlugins(list);
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
-  caidQs('#pluginIcon').value = 'puzzle';
+  caidQs('#pluginIcon').value = '';
+  syncPluginEditorHl();
+  clearPluginDraft();
   cancel.style.display = 'none';
   delete cancel.dataset.editId;
   caidQs('#savePluginBtn').textContent = '保存为新插件';
@@ -2234,9 +2237,9 @@ async function savePlugin() {
 
 const pluginTplBtn = caidQs('#pluginTplBtn');
 if (pluginTplBtn) pluginTplBtn.addEventListener('click', () => {
-  if (!caidQs('#pluginEditor').value.trim()) caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
-  else caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
+  caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
   caidQs('#pluginErr').textContent = '';
+  syncPluginEditorHl();
 });
 const savePluginBtn = caidQs('#savePluginBtn');
 if (savePluginBtn) savePluginBtn.addEventListener('click', savePlugin);
@@ -2244,7 +2247,9 @@ const pluginCancelEdit = caidQs('#pluginCancelEdit');
 if (pluginCancelEdit) pluginCancelEdit.addEventListener('click', () => {
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
-  caidQs('#pluginIcon').value = 'puzzle';
+  caidQs('#pluginIcon').value = '';
+  syncPluginEditorHl();
+  clearPluginDraft();
   pluginCancelEdit.style.display = 'none';
   delete pluginCancelEdit.dataset.editId;
   caidQs('#savePluginBtn').textContent = '保存为新插件';
@@ -2307,7 +2312,9 @@ const pluginNewBtn = caidQs('#pluginNewBtn');
 if (pluginNewBtn) pluginNewBtn.addEventListener('click', () => {
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
-  caidQs('#pluginIcon').value = 'puzzle';
+  caidQs('#pluginIcon').value = '';
+  syncPluginEditorHl();
+  clearPluginDraft();
   if (pluginCancelEdit) { pluginCancelEdit.style.display = 'none'; delete pluginCancelEdit.dataset.editId; }
   caidQs('#savePluginBtn').textContent = '保存为新插件';
   caidQs('#pluginErr').textContent = '';
@@ -2341,6 +2348,11 @@ function openPluginEditor() {
   const app = caidQs('.app');
   if (app) app.style.display = 'none';
   view.classList.add('open');
+  // 非「编辑已有插件」状态下，恢复上次未保存的草稿
+  const cancel = caidQs('#pluginCancelEdit');
+  if (!cancel || !cancel.dataset.editId) {
+    if (restorePluginDraft()) toast('已恢复上次未保存的草稿');
+  }
   renderPluginList();
   if (window.lucide) lucide.createIcons();
 }
@@ -2393,6 +2405,66 @@ const pluginTutorialBtn = caidQs('#pluginTutorialBtn');
 if (pluginTutorialBtn) pluginTutorialBtn.addEventListener('click', openPluginTutorial);
 const pluginTutorialBack = caidQs('#pluginTutorialBack');
 if (pluginTutorialBack) pluginTutorialBack.addEventListener('click', closePluginTutorial);
+
+// ============ 插件编辑器：语法高亮（textarea 透明文字 + 底层 pre 高亮同步）============
+function syncPluginEditorHl() {
+  const ta = caidQs('#pluginEditor');
+  const hl = caidQs('#pluginEditorHl');
+  if (!ta || !hl) return;
+  if (window.hljs) {
+    try {
+      const res = hljs.highlight(ta.value || ' ', { language: 'javascript' });
+      hl.innerHTML = res.value;
+      hl.className = 'hljs';
+    } catch (e) { hl.textContent = ta.value || ' '; }
+  } else {
+    hl.textContent = ta.value || ' ';
+  }
+  hl.scrollTop = ta.scrollTop;
+  hl.scrollLeft = ta.scrollLeft;
+}
+const syncPluginEditorHlDeb = debounce(syncPluginEditorHl, 120);
+
+// ============ 插件编辑器：草稿缓存（输入防抖落盘；保存/取消/新建时清除）============
+const PLUGIN_DRAFT_KEY = 'caidPluginDraft';
+const savePluginDraftDeb = debounce(() => {
+  const code = caidQs('#pluginEditor').value;
+  const name = caidQs('#pluginName').value;
+  const icon = caidQs('#pluginIcon').value;
+  if (!code.trim() && !name.trim()) { LS.del(PLUGIN_DRAFT_KEY); return; }
+  LS.set(PLUGIN_DRAFT_KEY, { code, name, icon, ts: Date.now() });
+}, 600);
+function restorePluginDraft() {
+  const d = LS.get(PLUGIN_DRAFT_KEY, null);
+  if (!d) return false;
+  const ta = caidQs('#pluginEditor'); if (ta) ta.value = d.code || '';
+  const n = caidQs('#pluginName'); if (n) n.value = d.name || '';
+  const ic = caidQs('#pluginIcon'); if (ic) ic.value = d.icon || '';
+  syncPluginEditorHl();
+  return true;
+}
+function clearPluginDraft() { LS.del(PLUGIN_DRAFT_KEY); }
+
+const pluginEditorTa = caidQs('#pluginEditor');
+if (pluginEditorTa) {
+  pluginEditorTa.addEventListener('input', () => { syncPluginEditorHlDeb(); savePluginDraftDeb(); });
+  pluginEditorTa.addEventListener('scroll', () => {
+    const hl = caidQs('#pluginEditorHl');
+    if (hl) { hl.scrollTop = pluginEditorTa.scrollTop; hl.scrollLeft = pluginEditorTa.scrollLeft; }
+  });
+  // Tab 插入两空格缩进，不跳出编辑器
+  pluginEditorTa.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    const s = pluginEditorTa.selectionStart, en = pluginEditorTa.selectionEnd;
+    pluginEditorTa.setRangeText('  ', s, en, 'end');
+    pluginEditorTa.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+['#pluginName', '#pluginIcon'].forEach(sel => {
+  const el = caidQs(sel);
+  if (el) el.addEventListener('input', savePluginDraftDeb);
+});
 
 // ============ Init ============
 async function init() {
