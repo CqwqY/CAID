@@ -45,32 +45,30 @@ CAID.plugin({
 
 ### 三种视图
 
-| 视图 | 字段 | 说明 |
-|---|---|---|
-| 侧边栏区块 | `mount(api)` | 主视图，内容渲染在左侧边栏可折叠区块 |
-| 右侧面板 | `panel(api)` | 内容显示在主页面右侧的面板栏（顶部有移除按钮） |
-| 弹窗 | `modal(api)` | 定义后可用 `api.modal()` 打开弹窗 |
+| 视图    | 字段           | 说明                       |
+| ----- | ------------ | ------------------------ |
+| 侧边栏区块 | `mount(api)` | 主视图，内容渲染在左侧边栏可折叠区块       |
+| 右侧面板  | `panel(api)` | 内容显示在主页面右侧的面板栏（顶部有移除按钮）  |
+| 弹窗    | `modal(api)` | 定义后可用 `api.modal()` 打开弹窗 |
 
 > `mount` / `panel` / `modal` 至少实现一个，否则插件不会被加载。每个视图收到独立的 `api`，但 `storage` 与 `shared` 跨视图共享。
 
 ### 受控 API（节选）
 
-| API | 说明 |
-|---|---|
-| `api.container` / `api.el()` | DOM 容器与元素创建 |
-| `api.storage.get/set` | 按插件 id 隔离的本地存储（异步） |
-| `api.fetch()` | 网络请求（继承扩展 `<all_urls>` 跨域权限，返回标准 `Response`） |
-| `api.md()` | Markdown 渲染为安全 HTML |
-| `api.modal()` / `api.closeModal()` | 弹窗控制 |
-| `api.setInterval` / `api.setTimeout` | 自动追踪的定时器，插件停用/删除时自动清理 |
-| `api.toast()` / `api.confirm()` | 提示与自定义确认对话框 |
-| `api.copyToClipboard()` / `api.openURL()` | 剪贴板与打开链接（`javascript:` 拒绝） |
-| `api.onPluginEvent()` / `api.emitPluginEvent()` | 插件间事件广播/监听 |
-| `api.exportData()` / `api.importData()` | 插件数据备份 / 恢复 |
-| `api.getVersion()` / `api.getLocale()` / `api.isDarkMode()` | 环境信息 |
-| `api.onUnmount()` | 停用/删除时的一次性清理 |
-
-完整 API 见 [插件开发指南](caid-extension/PLUGINS.md)。
+| API                                                         | 说明                                           |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| `api.container` / `api.el()`                                | DOM 容器与元素创建                                  |
+| `api.storage.get/set`                                       | 按插件 id 隔离的本地存储（异步）                           |
+| `api.fetch()`                                               | 网络请求（继承扩展 `<all_urls>` 跨域权限，返回标准 `Response`） |
+| `api.md()`                                                  | Markdown 渲染为安全 HTML                          |
+| `api.modal()` / `api.closeModal()`                          | 弹窗控制                                         |
+| `api.setInterval` / `api.setTimeout`                        | 自动追踪的定时器，插件停用/删除时自动清理                        |
+| `api.toast()` / `api.confirm()`                             | 提示与自定义确认对话框                                  |
+| `api.copyToClipboard()` / `api.openURL()`                   | 剪贴板与打开链接（`javascript:` 拒绝）                   |
+| `api.onPluginEvent()` / `api.emitPluginEvent()`             | 插件间事件广播/监听                                   |
+| `api.exportData()` / `api.importData()`                     | 插件数据备份 / 恢复                                  |
+| `api.getVersion()` / `api.getLocale()` / `api.isDarkMode()` | 环境信息                                         |
+| `api.onUnmount()`                                           | 停用/删除时的一次性清理                                 |
 
 ### 安全设计
 
@@ -151,13 +149,6 @@ CAID.plugin({
 ```
 
 ---
-
-## 📚 文档
-
-| 文档 | 说明 |
-|---|---|
-| [插件开发指南](caid-extension/PLUGINS.md) | 手写插件的完整 API、三视图、插件间通信与示例 |
-| [更新日志](caid-extension/CHANGELOG.md) | 扩展版本历史（Keep a Changelog 风格） |
 
 ---
 
