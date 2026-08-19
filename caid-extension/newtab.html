@@ -546,6 +546,139 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   flex: 1;
 }
+.server-monitor {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto 24px;
+}
+.server-monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.server-monitor-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.server-monitor-manage {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.server-monitor-manage:hover { background: rgba(91,141,255,.1); }
+.server-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.server-card {
+  background: var(--bg-secondary, rgba(255,255,255,.04));
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.server-card.offline { border-color: var(--danger); }
+.server-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+.server-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success, #3DD68C);
+  flex: 0 0 auto;
+}
+.server-dot.offline { background: var(--danger); }
+.server-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-card-host {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-card-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-meters { display: flex; flex-direction: column; gap: 5px; }
+.server-meter-row { display: flex; align-items: center; gap: 8px; }
+.server-meter-label {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 0 0 28px;
+}
+.server-meter-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--rule);
+  overflow: hidden;
+}
+.server-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width .4s ease;
+}
+.server-meter-fill.warn { background: var(--warning, #EF9F27); }
+.server-meter-fill.high { background: var(--danger); }
+.server-meter-val {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 0 0 34px;
+  text-align: right;
+}
+.server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.server-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.server-item-name { font-weight: 500; white-space: nowrap; }
+.server-item-host { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.server-item-status { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.server-item-status.ok { color: var(--success, #3DD68C); }
+.server-item-status.bad { color: var(--danger); }
+.server-item-del {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.server-item-del:hover { background: rgba(226,75,74,.12); }
 .clock-date {
   text-align: center;
   margin-bottom: 32px;
@@ -1847,6 +1980,13 @@ a:hover { text-decoration: underline; }
           <div class="answer-footer" id="answerFooter"></div>
         </div>
       </div>
+      <div class="server-monitor" id="serverMonitor" style="display:none;">
+        <div class="server-monitor-head">
+          <span class="server-monitor-title"><i data-lucide="server" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:5px;"></i>服务器监控</span>
+          <button class="server-monitor-manage" id="serverMonitorManage">管理服务器</button>
+        </div>
+        <div class="server-cards" id="serverCards"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -1951,7 +2091,7 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="llm">
@@ -2022,6 +2162,43 @@ a:hover { text-decoration: underline; }
             <button class="btn" id="cpTestBtn"><i data-lucide="zap"></i>测试连接</button>
           </div>
           <div class="setting-desc" style="margin-top:8px;font-size:12px;">保存后对已打开的页面下次注入生效；配置仅存于扩展本地 chrome.storage，与工作台 AI 回答配置无关。</div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="servers" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="server"></i>服务器监控</div>
+          <div class="setting-desc">在 newtab 首页远程监控你自己的服务器（在线状态 + CPU / 内存 / 磁盘 / 网络）。<br>需要在服务器上运行探针 agent：<code>python3 probe.py --port 8601 --token 你的Token</code>（零依赖单文件，见 <code>caid-extension/probe/probe.py</code>）。公网/穿透由你自行解决，newtab 直接访问你填写的地址。</div>
+          <div id="serverList" class="server-list"></div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">名称</label>
+              <input type="text" class="form-input" id="srvName" placeholder="例如：我的 NAS">
+            </div>
+            <div class="form-group" style="flex:1.5">
+              <label class="form-label">IP / 域名</label>
+              <input type="text" class="form-input" id="srvHost" placeholder="192.168.1.10 或 nas.example.com">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:0 0 104px;">
+              <label class="form-label">协议</label>
+              <select class="form-select" id="srvProto">
+                <option value="http">http</option>
+                <option value="https">https</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:0 0 110px;">
+              <label class="form-label">端口</label>
+              <input type="number" class="form-input" id="srvPort" value="8601" min="1" max="65535">
+            </div>
+            <div class="form-group" style="flex:2">
+              <label class="form-label">Token（探针 --token 值，可留空）</label>
+              <input type="password" class="form-input" id="srvToken" placeholder="sk-...">
+            </div>
+          </div>
+          <button class="btn primary" id="addServerBtn"><i data-lucide="plus"></i>添加服务器</button>
+          <div class="setting-desc" style="margin-top:8px;font-size:12px;">每 30 秒自动探测一次，离线自动标红；Token 仅存于扩展本地 chrome.storage。</div>
         </div>
       </div>
 

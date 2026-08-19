@@ -1672,11 +1672,189 @@ caidQs('#resetBtn').addEventListener('click', async () => {
     await db.history.clear();
   } catch(e){}
   try {
-    if (storageAvailable()) await chrome.storage.local.remove(['caidMemory']);  // 同步清空副驾任务记录/长期记忆
+    if (storageAvailable()) await chrome.storage.local.remove(['caidMemory', 'caidServers', 'caidServerStats']);  // 同步清空副驾任务/长期记忆/服务器监控
   } catch(e){}
   setTimeout(() => location.reload(), 400);
   toast('正在重置…');
 });
+
+// ============ Server Monitor ============
+const serverMonitorEl = caidQs('#serverMonitor');
+const serverCardsEl = caidQs('#serverCards');
+let serverList = [];
+let serverStats = {};
+
+async function loadServers() {
+  serverList = [];
+  serverStats = {};
+  try {
+    if (storageAvailable() && chrome.storage && chrome.storage.local) {
+      const got = await chrome.storage.local.get(['caidServers', 'caidServerStats']);
+      serverList = Array.isArray(got.caidServers) ? got.caidServers : [];
+      serverStats = (got.caidServerStats && typeof got.caidServerStats === 'object') ? got.caidServerStats : {};
+    }
+  } catch (e) { console.warn('[CAID] loadServers', e); }
+  renderServerList();
+  renderServerCards();
+}
+
+async function saveServers() {
+  try {
+    if (storageAvailable() && chrome.storage && chrome.storage.local) {
+      await chrome.storage.local.set({ caidServers: serverList, caidServerStats: serverStats });
+    }
+  } catch (e) { console.warn('[CAID] saveServers', e); }
+}
+
+function srvUrl(s) {
+  return (s.proto || 'http') + '://' + s.host + ':' + (s.port || 8601) + '/probe';
+}
+
+async function probeServer(s) {
+  const st = serverStats[s.id] || { ok: null, ms: null, data: null, err: null, ts: 0 };
+  const t0 = performance.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const headers = {};
+    if (s.token) headers['Authorization'] = 'Bearer ' + s.token;
+    const resp = await fetch(srvUrl(s), { headers, signal: ctrl.signal, cache: 'no-store' });
+    const ms = Math.round(performance.now() - t0);
+    if (!resp.ok) {
+      st.ok = false; st.ms = ms; st.err = 'HTTP ' + resp.status; st.data = null; st.ts = Date.now();
+    } else {
+      const j = await resp.json().catch(() => null);
+      if (j && j.ok === true) {
+        st.ok = true; st.ms = ms; st.data = j; st.err = null; st.ts = Date.now();
+      } else {
+        st.ok = false; st.ms = ms; st.err = '响应格式异常'; st.data = null; st.ts = Date.now();
+      }
+    }
+  } catch (e) {
+    st.ok = false; st.ms = Math.round(performance.now() - t0); st.err = '连接失败'; st.data = null; st.ts = Date.now();
+  } finally {
+    clearTimeout(timer);
+  }
+  serverStats[s.id] = st;
+  return st;
+}
+
+async function probeAll() {
+  if (!serverList.length) return;
+  await Promise.all(serverList.map(probeServer));
+  await saveServers();
+  renderServerCards();
+  renderServerList();
+}
+
+function meterHtml(label, pct, valText) {
+  if (pct === null || pct === undefined) {
+    return '<div class="server-meter-row"><span class="server-meter-label">' + label + '</span>' +
+      '<span class="server-meter-bar"></span><span class="server-meter-val">--</span></div>';
+  }
+  const cls = pct >= 85 ? 'high' : (pct >= 60 ? 'warn' : '');
+  return '<div class="server-meter-row"><span class="server-meter-label">' + label + '</span>' +
+    '<span class="server-meter-bar"><span class="server-meter-fill ' + cls + '" style="width:' + Math.min(pct, 100) + '%"></span></span>' +
+    '<span class="server-meter-val">' + valText + '</span></div>';
+}
+
+function fmtUptime(sec) {
+  if (!sec) return '--';
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return (d > 0 ? d + '天' : '') + h + '时' + m + '分';
+}
+
+function renderServerCards() {
+  if (!serverMonitorEl || !serverCardsEl) return;
+  if (!serverList.length) { serverMonitorEl.style.display = 'none'; return; }
+  serverMonitorEl.style.display = '';
+  serverCardsEl.innerHTML = serverList.map(s => {
+    const st = serverStats[s.id];
+    const online = st && st.ok;
+    const cardCls = online === false ? 'server-card offline' : 'server-card';
+    const dotCls = online === false ? 'server-dot offline' : 'server-dot';
+    let body;
+    if (online) {
+      const d = st.data;
+      const memPct = d.mem ? d.mem.percent : null;
+      const diskPct = d.disk ? d.disk.percent : null;
+      const cpuVal = d.cpu_percent !== null && d.cpu_percent !== undefined ? d.cpu_percent + '%' : '--';
+      const memVal = memPct !== null ? memPct + '%' : '--';
+      const diskVal = diskPct !== null ? diskPct + '%' : '--';
+      const addr = d.ips && d.ips[0] ? d.ips[0] : (d.hostname || '');
+      body = '<div class="server-meters">' +
+        meterHtml('CPU', d.cpu_percent, cpuVal) +
+        meterHtml('内存', memPct, memVal) +
+        meterHtml('磁盘', diskPct, diskVal) +
+        '</div>' +
+        '<div class="server-card-meta" style="margin-top:8px;margin-bottom:0;">运行 ' + fmtUptime(d.uptime) + (addr ? ' · ' + escapeHtml(addr) : '') + '</div>';
+    } else if (st && st.ok === false) {
+      body = '<div class="server-card-meta" style="margin-bottom:0;color:var(--danger);">' + escapeHtml(st.err || '离线') + (st.ms != null ? ' · ' + st.ms + 'ms' : '') + '</div>';
+    } else {
+      body = '<div class="server-card-meta" style="margin-bottom:0;">探测中…</div>';
+    }
+    const meta = st && st.ts ? new Date(st.ts).toLocaleTimeString('zh-CN', { hour12: false }) : '';
+    return '<div class="' + cardCls + '">' +
+      '<div class="server-card-head"><span class="' + dotCls + '"></span>' +
+      '<span class="server-card-name">' + escapeHtml(s.name || s.host) + '</span></div>' +
+      '<div class="server-card-host">' + escapeHtml(s.host + ':' + s.port) + '</div>' +
+      body +
+      (meta ? '<div class="server-card-meta" style="margin-top:6px;margin-bottom:0;font-size:10px;">' + (st.ok ? st.ms + 'ms · ' : '') + meta + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function renderServerList() {
+  const listEl = caidQs('#serverList');
+  if (!listEl) return;
+  if (!serverList.length) {
+    listEl.innerHTML = '<div class="setting-desc" style="margin:4px 0 8px;">尚未添加服务器。填好下方表单后点击「添加服务器」。</div>';
+    return;
+  }
+  listEl.innerHTML = serverList.map(s => {
+    const st = serverStats[s.id];
+    let statusHtml;
+    if (st && st.ok) statusHtml = '<span class="server-item-status ok">在线 ' + st.ms + 'ms</span>';
+    else if (st && st.ok === false) statusHtml = '<span class="server-item-status bad">离线</span>';
+    else statusHtml = '<span class="server-item-status">--</span>';
+    return '<div class="server-item">' +
+      '<span class="server-item-name">' + escapeHtml(s.name || s.host) + '</span>' +
+      '<span class="server-item-host">' + escapeHtml(srvUrl(s)) + '</span>' +
+      statusHtml +
+      '<button class="server-item-del" data-del="' + s.id + '">删除</button>' +
+      '</div>';
+  }).join('');
+  listEl.querySelectorAll('.server-item-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      serverList = serverList.filter(x => x.id !== btn.dataset.del);
+      delete serverStats[btn.dataset.del];
+      await saveServers();
+      renderServerList();
+      renderServerCards();
+      toast('已删除服务器');
+    });
+  });
+}
+
+function addServer() {
+  const name = caidQs('#srvName').value.trim();
+  const host = caidQs('#srvHost').value.trim();
+  const proto = caidQs('#srvProto').value;
+  const port = parseInt(caidQs('#srvPort').value, 10) || 8601;
+  const token = caidQs('#srvToken').value.trim();
+  if (!host) { toast('请填写 IP / 域名', 'error'); return; }
+  serverList.push({ id: uid(), name: name || host, proto, host, port, token });
+  caidQs('#srvName').value = '';
+  caidQs('#srvHost').value = '';
+  caidQs('#srvToken').value = '';
+  saveServers().then(() => { renderServerList(); renderServerCards(); probeAll(); });
+  toast('已添加服务器，正在探测…');
+}
+
+const addServerBtn = caidQs('#addServerBtn');
+if (addServerBtn) addServerBtn.addEventListener('click', addServer);
+const srvManageBtn = caidQs('#serverMonitorManage');
+if (srvManageBtn) srvManageBtn.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); }));
 
 // ============ Init ============
 async function init() {
@@ -1695,10 +1873,12 @@ async function init() {
   await renderSnippets();
   loadAgentTasks();
   updateCounts();
+  loadServers().then(() => probeAll());
+  setInterval(() => { if (document.visibilityState === 'visible') probeAll(); }, 30000);
 
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -1715,7 +1895,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); }), 150);
   }
 }
 
@@ -1723,7 +1903,9 @@ async function init() {
 try {
   if (storageAvailable() && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes.caidMemory) loadAgentTasks();
+      if (area !== 'local') return;
+      if (changes.caidMemory) loadAgentTasks();
+      if (changes.caidServers) loadServers();
     });
   }
 } catch (e) {}
