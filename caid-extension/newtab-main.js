@@ -1960,6 +1960,7 @@ const PLUGIN_TEMPLATE = `CAID.plugin({
 // 沙箱帧拥有独立 null 源且 CSP 允许 'unsafe-eval'，可用 new Function 运行用户代码，
 // 但无法访问任何 chrome.* API —— storage / fetch / toast 一律通过 postMessage 桥接回本页（拥有扩展权限）。
 const pluginFrameByWin = new Map();   // contentWindow -> iframe 元素（已挂载的插件帧）
+const pluginSharedStore = {};          // pluginId -> 跨视图共享对象（仅内存，刷新即清空）
 let pluginMsgSeq = 0;
 
 function pluginSandboxUrl() { return chrome.runtime.getURL('sandbox/plugin-sandbox.html'); }
@@ -2004,7 +2005,37 @@ async function handlePluginBridge(src, d) {
       const res = await fetch(d.data.url, d.data.opt);
       const text = await res.text();
       let json = null; try { json = JSON.parse(text); } catch (e) {}
-      payload = { ok: res.ok, status: res.status, text: text, json: json };
+      const headers = {};
+      try { res.headers.forEach((v, k) => { headers[k] = v; }); } catch (e) {}
+      payload = { ok: res.ok, status: res.status, statusText: res.statusText, text: text, json: json, headers: headers };
+    } else if (d.op === 'sharedGet') {
+      // 返回该插件跨视图共享对象（structured clone 深拷贝，沙箱端作为本地镜像）
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      if (!pid) payload = { error: 'unknown plugin frame' };
+      else {
+        if (!pluginSharedStore[pid] || typeof pluginSharedStore[pid] !== 'object') pluginSharedStore[pid] = {};
+        payload = pluginSharedStore[pid];
+      }
+    } else if (d.op === 'sharedSet') {
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      if (!pid) payload = { error: 'unknown plugin frame' };
+      else {
+        if (!pluginSharedStore[pid] || typeof pluginSharedStore[pid] !== 'object') pluginSharedStore[pid] = {};
+        const val = d.data && d.data.value;
+        if (val && typeof val === 'object') {
+          // 全量替换（以发送方为准），然后广播给同插件的所有帧（含发送方，幂等）
+          Object.keys(pluginSharedStore[pid]).forEach(k => delete pluginSharedStore[pid][k]);
+          Object.assign(pluginSharedStore[pid], val);
+          pluginFrameByWin.forEach((f2, win) => {
+            if (f2.dataset.pluginId === pid) {
+              win.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_SHARED_SYNC', value: pluginSharedStore[pid] }, '*');
+            }
+          });
+        }
+        payload = { ok: true };
+      }
     } else if (d.op === 'modalOpen') {
       // 插件请求打开自己的弹窗：pluginId 由帧归属反查
       const f = pluginFrameByWin.get(src);
@@ -2323,6 +2354,7 @@ function renderPluginList() {
         if (!(await caidConfirm({ title: '删除插件', message: `确定删除插件「${name}」？`, danger: true, okText: '删除', icon: 'trash-2' }))) return;
         const lst = (await getPlugins()).filter(x => x.id !== id);
         await savePlugins(lst);
+        delete pluginSharedStore[id];
         renderPluginList(); renderPluginSections();
       });
       item.querySelector('[data-act="edit"]').addEventListener('click', () => {
@@ -2474,8 +2506,29 @@ if (pluginCtxDelete) pluginCtxDelete.addEventListener('click', async () => {
   if (!(await caidConfirm({ title: '删除插件', message: `确定删除插件「${name}」？此操作不可撤销。`, danger: true, okText: '删除', icon: 'trash-2' }))) return;
   const lst = (await getPlugins()).filter(x => x.id !== id);
   await savePlugins(lst);
+  delete pluginSharedStore[id];
   renderPluginList(); renderPluginSections();
   toast('已删除插件：' + name);
+});
+// 菜单「编辑插件」：加载插件代码到编辑器并打开
+const pluginCtxEdit = caidQs('#pluginCtxEdit');
+if (pluginCtxEdit) pluginCtxEdit.addEventListener('click', () => {
+  const id = pluginCtxTargetId;
+  hidePluginCtxMenu();
+  if (!id) return;
+  getPlugins().then(list => {
+    const rec = list.find(x => x.id === id);
+    if (!rec) return;
+    caidQs('#pluginName').value = rec.name || '';
+    caidQs('#pluginIcon').value = rec.icon || '';
+    caidQs('#pluginEditor').value = rec.code || '';
+    caidQs('#pluginErr').textContent = '';
+    const cancel = caidQs('#pluginCancelEdit');
+    cancel.style.display = '';
+    cancel.dataset.editId = id;
+    caidQs('#savePluginBtn').textContent = '更新插件';
+    openPluginEditor();
+  });
 });
 
 // 新建：清空编辑器

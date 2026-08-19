@@ -593,6 +593,7 @@ a:hover { text-decoration: underline; }
   .sidebar-brand { justify-content: center; padding: 16px 0; }
   .sidebar-header { justify-content: center; padding: 14px 0; }
   .sidebar-chevron { display: none; }
+  .plugin-kebab { display: none; }   /* 文字已隐藏时更多操作按钮一并隐藏 */
   .sidebar-section.collapsed .sidebar-body { display: none !important; }
   .sidebar-body { position: fixed; left: 56px; top: 0; bottom: 0; width: 260px; background: var(--bg2); border-right: 1px solid var(--rule); z-index: 20; padding: 14px; overflow-y: auto; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
   .sidebar-footer-btn span { display: none; }
@@ -2474,6 +2475,7 @@ a:hover { text-decoration: underline; }
   </aside>
   <!-- 侧边栏插件右键菜单 -->
   <div class="ctx-menu" id="pluginCtxMenu">
+    <button class="ctx-item" id="pluginCtxEdit"><i data-lucide="pencil"></i>编辑插件</button>
     <button class="ctx-item ctx-danger" id="pluginCtxDelete">删除插件</button>
   </div>
 

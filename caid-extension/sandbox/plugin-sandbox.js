@@ -10,6 +10,7 @@
   var pending = new Map();      // reqId -> resolve
   var timers = new Set();
   var cleanups = [];
+  var sharedCache = {};         // 跨视图共享对象（同插件所有视图共享，仅当前页面会话有效）
 
   function post(msg) { parent.postMessage(Object.assign({ __caidPlugin: true }, msg), '*'); }
 
@@ -22,6 +23,19 @@
   }
 
   function makeApi(pluginId, container) {
+    // 跨视图共享对象：同插件所有视图（mount/panel/modal）经父页内存中转共享同一份数据，
+    // 任一视图 set 后父页广播给该插件其他帧。仅当前页面会话内有效，刷新即清空。
+    bridge('sharedGet', {}).then(function (v) {
+      if (v && typeof v === 'object') {
+        Object.keys(sharedCache).forEach(function (k) { delete sharedCache[k]; });
+        Object.assign(sharedCache, v);
+      }
+    }).catch(function () {});
+    var shared = new Proxy(sharedCache, {
+      set: function (t, k, v) { t[k] = v; bridge('sharedSet', { value: t }); return true; },
+      deleteProperty: function (t, k) { delete t[k]; bridge('sharedSet', { value: t }); return true; }
+    });
+
     function el(tag, props) {
       var node = document.createElement(tag);
       if (props) {
@@ -40,6 +54,7 @@
     return {
       container: container,
       el: el,
+      shared: shared,
       storage: {
         get: function (key) {
           return bridge('storageGet', { key: NS + pluginId + ':' + key })
@@ -49,7 +64,28 @@
           return bridge('storageSet', { key: NS + pluginId + ':' + key, value: val });
         }
       },
-      fetch: function (url, opt) { return bridge('fetch', { url: url, opt: opt }); },
+      // 返回标准 Response 对象（ok / status / text() / json() 与浏览器 fetch 一致）；
+      // res.raw 附带 { ok, status, statusText, text, json, headers } 兼容旧版字段
+      fetch: function (url, opt) {
+        return bridge('fetch', { url: url, opt: opt }).then(function (r) {
+          if (!r) throw new Error('fetch 桥接失败');
+          if (r.error) throw new Error(r.error);
+          var st = (typeof r.status === 'number' && r.status >= 200 && r.status <= 599) ? r.status : 200;
+          var body = String(r.text == null ? '' : r.text);
+          var res;
+          try {
+            res = new Response(body, {
+              status: st,
+              statusText: r.statusText || '',
+              headers: r.headers || {}
+            });
+          } catch (e) {
+            res = new Response(body, { status: 200 });
+          }
+          res.raw = r;   // 旧代码兼容：res.raw.text / res.raw.json / res.raw.ok / res.raw.status
+          return res;
+        });
+      },
       toast: function (msg) { post({ type: 'CAID_TOAST', msg: String(msg) }); },
       // 打开本插件的弹窗视图（父页面创建弹窗帧，mode=modal 调用 def.modal(api)）
       modal: function (opts) {
@@ -148,6 +184,14 @@
     if (d.type === 'CAID_BRIDGE_RES') {
       var resolve = pending.get(d.reqId);
       if (resolve) { pending.delete(d.reqId); resolve(d.payload); }
+      return;
+    }
+    if (d.type === 'CAID_PLUGIN_SHARED_SYNC') {
+      // 同插件其他视图更新了共享对象 → 同步本地镜像
+      if (d.value && typeof d.value === 'object') {
+        Object.keys(sharedCache).forEach(function (k) { delete sharedCache[k]; });
+        Object.assign(sharedCache, d.value);
+      }
       return;
     }
     if (d.type === 'CAID_PLUGIN_VALIDATE') {

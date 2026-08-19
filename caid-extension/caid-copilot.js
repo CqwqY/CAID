@@ -804,9 +804,12 @@
         'def fields: id (unique lowercase-kebab english), name (display name, chinese ok), icon (lucide icon name, optional), ' +
         'mount(api) sidebar view / panel(api) right-panel view / modal(api) popup view — implement AT LEAST one view. ' +
         'Views receive an api object: api.container (DOM node to append into), api.el(tag, props) (create element; ' +
-        'props: className/text/html/onClick/style/dataset/other attrs), api.storage.get(key)/set(key,val) (async per-plugin storage), ' +
-        'api.fetch(url,opt), api.toast(msg), api.setInterval/api.setTimeout (auto-cleaned), api.onUnmount(fn), api.modal({title,width}), api.closeModal(). ' +
+        'props: className/text/html/onClick/style/dataset/other attrs), api.storage.get(key)/set(key,val) (async per-plugin storage, shared across views), ' +
+        'api.shared (cross-view in-memory shared object, same reference in mount/panel/modal), ' +
+        'api.fetch(url,opt) (returns a standard Response: res.ok/res.status/await res.text()/await res.json(); res.raw has legacy fields), ' +
+        'api.toast(msg), api.setInterval/api.setTimeout (auto-cleaned), api.onUnmount(fn), api.modal({title,width}), api.closeModal(). ' +
         'Code runs in a sandbox: chrome and localStorage are undefined — always use api.storage for persistence. ' +
+        'For multi-view plugins use api.shared to pass variables between views (in-memory only). ' +
         'Put the COMPLETE plugin code in the code parameter (never abbreviate). ' +
         'It is saved automatically and appears in the new-tab workbench immediately.',
       inputSchema: mkObj({ requirement: 'string', name: 'string', code: 'string' }),

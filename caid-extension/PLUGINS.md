@@ -43,7 +43,7 @@ CAID.plugin({
 | `modal(api)` | ⬜ | **弹窗视图**。定义了它，插件才能用 `api.modal()` 打开弹窗，内容渲染在弹窗里 |
 
 > `mount` / `panel` / `modal` 至少实现一个，否则插件不会被加载。
-> 每个视图函数都会收到独立的新 `api`（各自的 `container`），但 `storage` 是共享的——同一个插件 id 的数据在三个视图里都能读到。
+> 每个视图函数都会收到独立的新 `api`（各自的 `container`，各自独立运行），但 `storage` 与 `shared` 是共享的——同一个插件 id 的持久数据和内存变量在三个视图里都能读到。
 
 > 设置面板里的「名称 / 图标」输入框可以覆盖代码里的 `name` / `icon`，方便不改代码就改名。
 
@@ -56,7 +56,8 @@ CAID.plugin({
 | `api.container` | 你的内容容器（DOM 节点），往里 `appendChild` 即可 |
 | `api.el(tag, props?)` | 创建 DOM 节点。`props` 支持 `className` / `text` / `html` / `onClick` / `style`(对象) / `dataset`(对象) / 其他属性 `setAttribute` |
 | `api.storage.get(key)` / `api.storage.set(key, val)` | 按**插件 id 隔离**的本地存储（异步，返回 Promise），不会和别的插件或 CAID 本身冲突 |
-| `api.fetch(url, opt?)` | 发起网络请求（继承扩展的跨域权限，`<all_urls>`） |
+| `api.fetch(url, opt?)` | 发起网络请求（继承扩展的跨域权限，`<all_urls>`）。**返回标准 `Response` 对象**：`res.ok` / `res.status` / `await res.text()` / `await res.json()` 与浏览器一致；另附 `res.raw`（`{ ok, status, statusText, text, json, headers }`）兼容旧版字段 |
+| `api.shared` | 跨视图共享的内存对象（见下文「多视图共享变量」） |
 | `api.toast(msg)` | 弹出一个提示 |
 | `api.setInterval(fn, ms)` / `api.setTimeout(fn, ms)` | 被自动追踪的定时器，插件停用/删除时会自动清理，**优先用这两个而非全局定时器** |
 | `api.onUnmount(fn)` | 插件被停用/删除时执行的一次性清理函数（如取消订阅、移除监听） |
@@ -69,6 +70,52 @@ CAID.plugin({
 插件**必须**通过 `api.storage` 读写持久数据，不能直接碰扩展内部存储。
 `document` / `fetch` / 全局定时器仍然可用（插件渲染和网络请求需要它们）。
 这不是安全隔离边界，而是便利性沙箱；因为代码是你自己写的，风险可控。
+
+三个视图（mount / panel / modal）各自运行在独立的沙箱帧里，**JS 变量天然隔离**——
+视图间要传数据请用共享 API，不要依赖全局变量：
+
+| 需求 | 用什么 |
+|------|--------|
+| 持久化数据（刷新后还在） | `api.storage`（按插件 id 隔离） |
+| 会话内共享变量（刷新即清空） | `api.shared`（见下） |
+
+---
+
+## 多视图共享变量（`api.shared`）
+
+`api.shared` 是同一插件三个视图**共享的同一个内存对象**：任一视图改了它的属性，其他视图立刻能读到（父页面中转 + 广播）。适合「侧边栏点按钮 → 右侧面板更新」这类联动。
+
+```js
+CAID.plugin({
+  id: 'shared-demo',
+  name: '共享计数',
+  icon: 'share-2',
+  mount(api) {
+    // 侧边栏：点击加一
+    api.shared.count = api.shared.count || 0;      // 初始化（幂等）
+    const box = api.el('div', { className: 'plugin-row' });
+    api.container.appendChild(box);
+    const btn = api.el('button', {
+      text: '加一（当前 ' + api.shared.count + '）',
+      onClick: () => {
+        api.shared.count = (api.shared.count || 0) + 1;   // 广播给其他视图
+        btn.textContent = '加一（当前 ' + api.shared.count + '）';
+      }
+    });
+    api.container.appendChild(btn);
+  },
+  panel(api) {
+    // 右侧面板：实时显示共享计数
+    const box = api.el('div', { className: 'plugin-row', text: '计数：0' });
+    api.container.appendChild(box);
+    api.setInterval(() => {
+      box.textContent = '计数：' + (api.shared.count || 0);
+    }, 500);
+  }
+});
+```
+
+> `api.shared` 只存内存：刷新页面后清空。需要跨刷新保留的数据请用 `api.storage`。
 
 ---
 
@@ -144,7 +191,7 @@ CAID.plugin({
 
 ### 4. 多视图：侧边栏 + 右侧面板 + 弹窗
 
-`mount` 管侧边栏，`panel` 管右侧面板，`modal` 管弹窗——三个视图共用同一份 `storage`：
+`mount` 管侧边栏，`panel` 管右侧面板，`modal` 管弹窗——三个视图共用同一份 `storage`（持久数据）和 `shared`（内存变量）：
 
 ```js
 CAID.plugin({

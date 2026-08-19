@@ -3,6 +3,19 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.2.6] - 2026-08-19
+
+### 修复
+- **`api.fetch` 改为返回标准 `Response`**：修复之前返回包装对象 `{ok, status, text, json}`、开发者需额外适配的问题。现在与浏览器 `fetch` 一致——`res.ok` / `res.status` / `await res.text()` / `await res.json()` 直接可用；另附 `res.raw`（`{ ok, status, statusText, text, json, headers }`）兼容旧版字段，旧插件无需改动。桥接失败或非法 status 时回退 `status: 200`。
+- **侧边栏插件更多操作按钮**：窄屏（≤900px，文字隐藏时）kebab 按钮一并隐藏，不再出现孤立的「⋮」图标。
+
+### 新增
+- **`api.shared` 跨视图共享变量**：mount / panel / modal 三个视图各自运行在独立沙箱帧、JS 变量天然隔离，现通过父页面内存中转 + 广播提供同一插件三视图**共享的内存对象**——任一视图 `api.shared.x = ...` 修改，其他视图立即同步读到（父页 `pluginSharedStore` 统一存储 + `CAID_PLUGIN_SHARED_SYNC` 广播）。仅当前页面会话内有效，刷新即清空；需要持久化请用 `api.storage`。插件删除时自动清理共享存储。
+- 侧边栏插件更多操作菜单新增「编辑插件」：右键菜单可直接把插件代码载入编辑器修改（复用现有编辑态：取消按钮 /「更新插件」按钮）。
+
+### 变更
+- 插件开发文档 `PLUGINS.md` 同步：`api.fetch` 标准 Response 说明、新增「多视图共享变量（`api.shared`）」章节与示例；副驾 `create_plugin` 工具描述同步提及 `api.shared` 与标准 Response。
+
 ## [v0.2.5] - 2026-08-19
 
 ### 新增
