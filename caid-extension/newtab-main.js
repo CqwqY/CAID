@@ -1604,7 +1604,7 @@ if (ntOverrideSwitch) ntOverrideSwitch.addEventListener('click', () => {
   toast(on ? '已开启新标签页接管' : '已关闭接管：新标签页完全恢复为浏览器默认页面', on ? 'success' : '');
 });
 
-// 关闭接管后的横幅提示：仅本次页面会话内显示（不持久化，刷新即消失）
+// 关闭接管后的横幅提示：仅本次页面会话内显示（不持久化，刷新即消失；无关闭按钮）
 let takeoverOffBannerShown = false;
 function showTakeoverOffBanner() {
   if (takeoverOffBannerShown) return;
@@ -1616,10 +1616,7 @@ function showTakeoverOffBanner() {
     banner.className = 'takeover-off-banner';
     banner.innerHTML =
       '<span class="tob-icon">ℹ</span>' +
-      '<span class="tob-text">新标签页接管已关闭，请关闭此标签页</span>' +
-      '<button type="button" class="tob-close" title="关闭提示">×</button>';
-    const closeBtn = banner.querySelector('.tob-close');
-    if (closeBtn) closeBtn.addEventListener('click', () => banner.remove());
+      '<span class="tob-text">新标签页接管已关闭，请关闭此标签页</span>';
     document.body.appendChild(banner);
   }
   requestAnimationFrame(() => banner.classList.add('show'));
