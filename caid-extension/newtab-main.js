@@ -2565,10 +2565,20 @@ const changelogBack = caidQs('#changelogBack');
 if (changelogBack) changelogBack.addEventListener('click', closeChangelog);
 
 // ============ 插件编辑器：语法高亮（textarea 透明文字 + 底层 pre 高亮同步）============
+// textarea 出现垂直滚动条时会占 ~15px 宽度，内容区比 pre 窄 → 换行点不同 → 两层逐行错位。
+// 修复：把滚动条占位宽度补偿到 pre 的 padding-right，让两层内容区等宽。
+function syncEditorScrollbarPad() {
+  const ta = caidQs('#pluginEditor');
+  const hlWrap = caidQs('.plugin-editor-hl');
+  if (!ta || !hlWrap) return;
+  const sbw = ta.offsetWidth - ta.clientWidth;   // 滚动条占位宽（无滚动条时为 0）
+  hlWrap.style.paddingRight = (12 + sbw) + 'px'; // 12 = 基础 padding，与 CSS 保持一致
+}
 function syncPluginEditorHl() {
   const ta = caidQs('#pluginEditor');
   const hl = caidQs('#pluginEditorHl');
   if (!ta || !hl) return;
+  syncEditorScrollbarPad();
   if (window.hljs) {
     try {
       const res = hljs.highlight(ta.value || ' ', { language: 'javascript' });
@@ -2607,6 +2617,7 @@ const pluginEditorTa = caidQs('#pluginEditor');
 if (pluginEditorTa) {
   pluginEditorTa.addEventListener('input', () => { syncPluginEditorHlDeb(); savePluginDraftDeb(); });
   pluginEditorTa.addEventListener('scroll', () => {
+    syncEditorScrollbarPad();
     const hl = caidQs('#pluginEditorHl');
     if (hl) { hl.scrollTop = pluginEditorTa.scrollTop; hl.scrollLeft = pluginEditorTa.scrollLeft; }
   });

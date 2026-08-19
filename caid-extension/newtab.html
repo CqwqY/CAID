@@ -1118,7 +1118,13 @@ a:hover { text-decoration: underline; }
   tab-size: 2;
   box-sizing: border-box;
 }
-.plugin-editor-hl code {
+/* 必须用 .plugin-editor-hl code.hljs 覆盖 github-dark 主题的
+   pre code.hljs { padding:1em; overflow-x:auto } —— 否则高亮层被强加 16px 内边距，
+   与 textarea 错位（主题规则具体性 (0,1,2) 高于 .plugin-editor-hl code (0,1,1)） */
+.plugin-editor-hl code.hljs {
+  display: block;
+  padding: 0;
+  overflow: visible;
   font: inherit;
   background: transparent;
   color: var(--text);
@@ -1141,6 +1147,8 @@ a:hover { text-decoration: underline; }
   line-height: 1.7;
   box-sizing: border-box;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   overflow-y: auto;
 }
 .plugin-editor-view .plugin-editor:focus { outline: 1px solid var(--accent); }
