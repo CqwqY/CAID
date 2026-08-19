@@ -352,24 +352,21 @@ chrome.action.onClicked.addListener((tab) => {
 // ---------- 新标签页动态接管（浏览器层面，可开关）----------
 // 不声明 chrome_url_overrides.newtab：该声明是静态的、无法在运行时移除——即使页面内部做
 // 「停用提示页」，本质上仍是扩展在占用新标签页（用户明确拒绝此方案）。
-// 正确做法：监听浏览器原生新标签页创建（chrome://newtab），仅当用户开启接管
-// （chrome.storage.local.caidNewtabEnabled !== false）时用 tabs.update 重定向到工作台；
+// 正确做法：监听浏览器原生新标签页创建（chrome://newtab / edge://newtab），仅当用户开启
+// 接管（chrome.storage.local.caidNewtabEnabled !== false）时用 tabs.update 重定向到工作台；
 // 关闭接管后浏览器 100% 走默认新标签页，扩展零干预。
-// 状态用 SW 内存缓存 + storage.onChanged 实时同步：用户在设置页点「取消」的瞬间，
-// SW 立刻知道接管已关闭，正在排队/即将新建的新标签页也不会再被重定向。
-let caidNewtabEnabledCache = true;   // 默认开启；未显式设置过时保持 true
-chrome.storage.local.get('caidNewtabEnabled', function (got) {
-  if (got && got.caidNewtabEnabled !== undefined) caidNewtabEnabledCache = got.caidNewtabEnabled !== false;
-});
-chrome.storage.onChanged.addListener(function (changes, area) {
-  if (area === 'local' && changes.caidNewtabEnabled) {
-    caidNewtabEnabledCache = changes.caidNewtabEnabled.newValue !== false;
-  }
-});
+// ⚠️ 开关状态不依赖 SW 内存缓存：MV3 Service Worker 有休眠-唤醒机制，唤醒时顶层代码
+// 重新执行、缓存会先被初始化为默认值，若用户此时恰好在关闭接管后立刻新建标签页，
+// 缓存可能读到旧值导致误接管。因此每次接管前实时读一次 storage（Chromium 内部有
+// 内存映射，storage.local.get 开销可忽略）。
+function isNewTabUrl(u) {
+  return u === 'chrome://newtab/' || u === 'chrome://newtab' ||
+         u === 'edge://newtab/' || u === 'edge://newtab';
+}
 
 chrome.tabs.onCreated.addListener((tab) => {
   const u = (tab.pendingUrl || tab.url || '');
-  if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
+  if (!isNewTabUrl(u)) return;
   // onCreated 触发时 pendingUrl 可能尚未稳定，稍等一拍再二次确认（tabs.get 拿到最终 url），避免误接管
   setTimeout(function () { maybeTakeoverNewTab(tab.id); }, 80);
 });
@@ -379,8 +376,10 @@ async function maybeTakeoverNewTab(tabId) {
     const tab = await chrome.tabs.get(tabId);
     if (!tab) return;
     const u = (tab.pendingUrl || tab.url || '');
-    if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
-    if (!caidNewtabEnabledCache) return; // 用户已关闭接管 → 保持浏览器默认新标签页
+    if (!isNewTabUrl(u)) return;
+    const got = await chrome.storage.local.get('caidNewtabEnabled');
+    const on = got.caidNewtabEnabled !== false; // 默认开启；未显式设置过时保持 true
+    if (!on) return; // 用户已关闭接管 → 保持浏览器默认新标签页
     await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('newtab.html') });
   } catch (e) {
     // tab 可能已被用户关闭，忽略

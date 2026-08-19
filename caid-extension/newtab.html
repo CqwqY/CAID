@@ -2155,6 +2155,42 @@ a:hover { text-decoration: underline; }
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* 关闭接管横幅提示 */
+.takeover-off-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-140%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  max-width: calc(100vw - 40px);
+  transition: transform 0.35s ease;
+}
+.takeover-off-banner.show { transform: translateX(-50%) translateY(0); }
+.tob-icon { font-style: normal; }
+.tob-text { flex: 1; }
+.tob-close {
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  color: #fff;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.tob-close:hover { background: rgba(255, 255, 255, 0.38); }
+
 /* Skeleton */
 .skeleton {
   background: linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%);
