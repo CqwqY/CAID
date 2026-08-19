@@ -9,6 +9,16 @@
   }
   window.__CAID_BOOTED = true;
 
+  // 品牌图标 inline SVG（MAIN world 无法使用 chrome.runtime.getURL，必须内联）
+  function caidIcon(size) {
+    size = size || 16;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="' + size + '" height="' + size + '" style="vertical-align:middle;margin-right:4px;display:inline-block">' +
+      '<rect fill="#10182B" width="400" height="400" rx="116" ry="116"/>' +
+      '<path fill="#5B8DFF" transform="translate(109.375 137.5)" d="M101.6366 39.1968L17.2616 -23.3032Q7.7009 -30.8206 -4.272 -28.6836Q-16.3481 -27.2388 -23.3032 -17.2616Q-30.8206 -7.7009 -28.6836 4.272Q-27.2388 16.3481 -17.2616 23.3032L35.6541 62.5L-17.2616 101.6968Q-27.2388 108.6519 -28.6836 120.728Q-30.8206 132.7009 -23.3032 142.2616Q-16.3481 152.2388 -4.272 153.6836Q7.7009 155.8206 17.2616 148.3032L101.6366 85.8032Q103.3627 84.5251 104.8811 83.0061Q106.4001 81.4877 107.6782 79.7616Q115.1956 70.2009 113.0586 58.228Q111.6138 46.1519 101.6366 39.1968Z" fill-rule="evenodd"/>' +
+      '<rect fill="#3DD68C" transform="translate(223.438 235.938)" width="76.5625" height="43.75" rx="14" ry="14"/>' +
+    '</svg>';
+  }
+
   // ---------- 跨 world 网络代理（绕过宿主页 CSP/CORS）----------
   // MAIN world 注入的副驾没有 chrome.* API，无法直接 fetch 受限域名
   // （github.com / bilibili.com 等会拦截向 api.deepseek.com 等外部 LLM 的请求）。
@@ -184,7 +194,8 @@
     }
     var btn = document.createElement('div');
     btn.id = 'caidLauncher';
-    btn.textContent = '🤖 CAID 副驾';
+    btn.textContent = '';
+    btn.innerHTML = caidIcon(16) + ' <span style="vertical-align:middle">CAID 副驾</span>';
     btn.title = '在当前页面启动 CAID 智能体副驾';
     btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647!important;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;pointer-events:auto!important;' + (panelOpen ? 'display:none!important;' : '');
     if (panelOpen) btn.setAttribute('data-panel-open', '1');
@@ -205,7 +216,7 @@
     aside.className = 'open';
     aside.innerHTML =
       '<div class="cp-head">' +
-        '<span class="cp-title">🤖 CAID 副驾</span>' +
+        '<span class="cp-title">' + caidIcon(14) + ' CAID 副驾</span>' +
         '<span class="cp-status" id="cpStatus">就绪</span>' +
         '<button class="cp-stop" id="cpStop" title="强行终止当前任务 (Ctrl+.)">⏹</button>' +
         '<button class="cp-close" id="cpSettings" title="副驾设置（LLM / 模型）">⚙</button>' +
