@@ -986,13 +986,12 @@
         var tn = ev.action && ev.action.name ? ev.action.name : '';
         var out = String(ev.action && ev.action.output || '');
         if (tn === 'done') {
-          var doneText = String(ev.action && ev.action.input && ev.action.input.text || '(无文本)');
-          div.className = 'cp-bubble cp-bubble-assistant';
-          div.innerHTML = cpEscapeHtml(doneText).replace(/\n/g, '<br>');
-        } else {
-          div.className = 'cp-evt';
-          div.innerHTML = '<span class="cp-tool">[' + cpEscapeHtml(tn) + ']</span> ' + cpEscapeHtml(out.slice(0, 240));
+          // done 步骤已由 preprocessDoneToAssistant 转成 assistant 消息，
+          // 这里不再重复渲染，否则最终答案会出现两次。
+          return;
         }
+        div.className = 'cp-evt';
+        div.innerHTML = '<span class="cp-tool">[' + cpEscapeHtml(tn) + ']</span> ' + cpEscapeHtml(out.slice(0, 240));
       }
       else if (ev.type === 'observation') { div.className = 'cp-evt'; div.textContent = '👁 ' + String(ev.content).slice(0, 300); }
       else if (ev.type === 'error') { div.className = 'cp-evt-error'; div.textContent = '❌ ' + String(ev.message); }
