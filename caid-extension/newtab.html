@@ -578,6 +578,15 @@ a:hover { text-decoration: underline; }
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
 }
+.server-empty {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--rule);
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+}
+.server-empty-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.server-empty-desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
 .server-card {
   background: var(--bg-secondary, rgba(255,255,255,.04));
   border: 1px solid var(--rule);
@@ -2168,37 +2177,20 @@ a:hover { text-decoration: underline; }
       <div class="settings-panel" data-panel="servers" style="display:none;">
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="server"></i>服务器监控</div>
-          <div class="setting-desc">在 newtab 首页远程监控你自己的服务器（在线状态 + CPU / 内存 / 磁盘 / 网络）。<br>需要在服务器上运行探针 agent：<code>python3 probe.py --port 8601 --token 你的Token</code>（零依赖单文件，见 <code>caid-extension/probe/probe.py</code>）。公网/穿透由你自行解决，newtab 直接访问你填写的地址。</div>
+          <div class="setting-desc">零部署：填一个可访问的网址（网站、NAS 管理页、或任意开放 HTTP 端口的服务），newtab 每隔 30 秒探测一次<b>是否在线 + 响应速度</b>。无需在服务器端安装任何程序。<br>进阶：如需查看 CPU / 内存 / 磁盘，可在服务器部署 <code>caid-extension/probe/probe.py</code> 后改用探针模式（当前未开放配置）。</div>
           <div id="serverList" class="server-list"></div>
           <div class="form-row">
             <div class="form-group" style="flex:1">
               <label class="form-label">名称</label>
-              <input type="text" class="form-input" id="srvName" placeholder="例如：我的 NAS">
-            </div>
-            <div class="form-group" style="flex:1.5">
-              <label class="form-label">IP / 域名</label>
-              <input type="text" class="form-input" id="srvHost" placeholder="192.168.1.10 或 nas.example.com">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group" style="flex:0 0 104px;">
-              <label class="form-label">协议</label>
-              <select class="form-select" id="srvProto">
-                <option value="http">http</option>
-                <option value="https">https</option>
-              </select>
-            </div>
-            <div class="form-group" style="flex:0 0 110px;">
-              <label class="form-label">端口</label>
-              <input type="number" class="form-input" id="srvPort" value="8601" min="1" max="65535">
+              <input type="text" class="form-input" id="srvName" placeholder="例如：我的 NAS / 博客">
             </div>
             <div class="form-group" style="flex:2">
-              <label class="form-label">Token（探针 --token 值，可留空）</label>
-              <input type="password" class="form-input" id="srvToken" placeholder="sk-...">
+              <label class="form-label">地址（完整网址）</label>
+              <input type="text" class="form-input" id="srvUrl" placeholder="https://www.baidu.com 或 http://192.168.1.10:8080">
             </div>
           </div>
-          <button class="btn primary" id="addServerBtn"><i data-lucide="plus"></i>添加服务器</button>
-          <div class="setting-desc" style="margin-top:8px;font-size:12px;">每 30 秒自动探测一次，离线自动标红；Token 仅存于扩展本地 chrome.storage。</div>
+          <button class="btn primary" id="addServerBtn"><i data-lucide="plus"></i>添加监控</button>
+          <div class="setting-desc" style="margin-top:8px;font-size:12px;">每 30 秒自动探测一次，离线自动标红；地址仅存于扩展本地 chrome.storage。</div>
         </div>
       </div>
 
