@@ -58,6 +58,7 @@ CAID.plugin({
 | `api.storage.get(key)` / `api.storage.set(key, val)` | 按**插件 id 隔离**的本地存储（异步，返回 Promise），不会和别的插件或 CAID 本身冲突 |
 | `api.fetch(url, opt?)` | 发起网络请求（继承扩展的跨域权限，`<all_urls>`）。**返回标准 `Response` 对象**：`res.ok` / `res.status` / `await res.text()` / `await res.json()` 与浏览器一致；另附 `res.raw`（`{ ok, status, statusText, text, json, headers }`）兼容旧版字段 |
 | `api.shared` | 跨视图共享的内存对象（见下文「多视图共享变量」） |
+| `api.md(text)` | 把 Markdown 文本渲染成**安全 HTML 字符串**（见下文「富文本渲染」）。用法：`api.container.innerHTML = api.md('**你好**')` |
 | `api.toast(msg)` | 弹出一个提示 |
 | `api.setInterval(fn, ms)` / `api.setTimeout(fn, ms)` | 被自动追踪的定时器，插件停用/删除时会自动清理，**优先用这两个而非全局定时器** |
 | `api.onUnmount(fn)` | 插件被停用/删除时执行的一次性清理函数（如取消订阅、移除监听） |
@@ -116,6 +117,44 @@ CAID.plugin({
 ```
 
 > `api.shared` 只存内存：刷新页面后清空。需要跨刷新保留的数据请用 `api.storage`。
+
+---
+
+## 富文本渲染（`api.md`）
+
+插件经常要展示格式化的文本（AI 回复、日志、说明……）。`api.md(text)` 把 Markdown 渲染成**安全 HTML 字符串**，直接赋给容器的 `innerHTML` 即可，样式已内置（暗色主题）：
+
+```js
+CAID.plugin({
+  id: 'md-demo',
+  name: '富文本示例',
+  icon: 'file-text',
+  mount(api) {
+    api.container.innerHTML = api.md([
+      '# 你好，CAID',
+      '',
+      '支持 **加粗**、*斜体*、`行内代码` 和 [链接](https://example.com)：',
+      '',
+      '- 列表项一',
+      '- 列表项二',
+      '',
+      '```js',
+      'console.log("代码块");',
+      '```',
+      '',
+      '> 引用块，以及表格：',
+      '',
+      '| 列A | 列B |',
+      '|-----|-----|',
+      '| 1   | 2   |'
+    ].join('\n'));
+  }
+});
+```
+
+支持语法：围栏代码块、行内代码、标题 1-4、有序/无序列表、引用块、表格、分隔线、加粗、斜体、链接。
+
+> **安全说明**：`api.md` 内部先转义再替换，链接只放行 `http(s)` 协议（`javascript:` 等一律不会渲染成可点击链接），可以放心把**不可信文本**（如用户输入、远程返回的内容）交给它渲染。**不要**用它返回的 HTML 再拼字符串二次插入。
 
 ---
 

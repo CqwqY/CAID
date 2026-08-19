@@ -3,6 +3,11 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.2.8] - 2026-08-19
+
+### 新增
+- **插件富文本渲染接口 `api.md(text)`**：把 Markdown 文本渲染成安全 HTML 字符串（先转义再替换；链接仅放行 http/https，`javascript:` 与 href 属性注入天然免疫）。支持围栏代码块（沙箱页加载 hljs 时自动高亮）、行内代码、标题 1-4、有序/无序列表、引用块、表格、分隔线、加粗/斜体、链接；样式内置（`caid-md-*`），用法 `api.container.innerHTML = api.md('**你好**')`。与副驾 `cpMd` 同源实现，PLUGINS.md 新增「富文本渲染」章节与示例，`create_plugin` 工具描述同步。
+
 ## [v0.2.7] - 2026-08-19
 
 ### 修复

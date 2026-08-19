@@ -807,6 +807,7 @@
         'props: className/text/html/onClick/style/dataset/other attrs), api.storage.get(key)/set(key,val) (async per-plugin storage, shared across views), ' +
         'api.shared (cross-view in-memory shared object, same reference in mount/panel/modal), ' +
         'api.fetch(url,opt) (returns a standard Response: res.ok/res.status/await res.text()/await res.json(); res.raw has legacy fields), ' +
+        'api.md(markdownText) (returns safe HTML string for rich text rendering: assign to api.container.innerHTML; supports code blocks/headings/lists/quotes/tables/bold/italic/links), ' +
         'api.toast(msg), api.setInterval/api.setTimeout (auto-cleaned), api.onUnmount(fn), api.modal({title,width}), api.closeModal(). ' +
         'Code runs in a sandbox: chrome and localStorage are undefined — always use api.storage for persistence. ' +
         'For multi-view plugins use api.shared to pass variables between views (in-memory only). ' +

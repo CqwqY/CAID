@@ -27,6 +27,20 @@
       padding: 4px 10px; cursor: pointer;
     }
     button:hover { background: #243349; }
+    /* api.md 渲染出的富文本样式（class 前缀 caid-md-*） */
+    .caid-md-code { background: #0f1822; border: 1px solid #22303f; border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; font-size: 12px; line-height: 1.55; }
+    .caid-md-code code { font-family: Consolas, Monaco, "Courier New", monospace; }
+    .caid-md-code[data-lang]::before { content: attr(data-lang); display: block; font-size: 11px; color: #8a93a6; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .caid-md-code-inline { background: #1b2735; border: 1px solid #2a3a4d; border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: Consolas, Monaco, "Courier New", monospace; color: #7ee0a3; }
+    .caid-md-table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
+    .caid-md-table th, .caid-md-table td { border: 1px solid #2a3a4d; padding: 4px 8px; text-align: left; }
+    .caid-md-table th { background: #1b2735; color: #e8edf6; }
+    .caid-md-quote { border-left: 3px solid #6ea8fe; margin: 8px 0; padding: 2px 10px; color: #9aa7bd; background: rgba(110,168,254,.06); }
+    .caid-md-list { margin: 8px 0 8px 20px; padding: 0; }
+    .caid-md-h { margin: 12px 0 4px; line-height: 1.3; color: #e8edf6; }
+    .caid-md-h1 { font-size: 17px; } .caid-md-h2 { font-size: 15px; } .caid-md-h3 { font-size: 14px; } .caid-md-h4 { font-size: 13px; }
+    .caid-md-p { margin: 6px 0; }
+    .caid-md-hr { border: 0; border-top: 1px solid #2a3a4d; margin: 10px 0; }
   </style>
 </head>
 <body>
