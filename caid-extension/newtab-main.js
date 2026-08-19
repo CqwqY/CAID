@@ -1559,6 +1559,50 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
   toast('设置已保存','success');
 });
 
+// ============ 常规设置：新标签页接管开关（存 chrome.storage.local.caidNewtabEnabled，默认开启）============
+async function fillGeneralForm() {
+  let ext = {};
+  try { ext = await chrome.storage.local.get('caidNewtabEnabled'); } catch (e) {}
+  const on = ext.caidNewtabEnabled !== false;
+  const sw = caidQs('#ntOverrideSwitch');
+  if (sw) {
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+}
+const ntOverrideSwitch = caidQs('#ntOverrideSwitch');
+if (ntOverrideSwitch) ntOverrideSwitch.addEventListener('click', () => {
+  ntOverrideSwitch.classList.toggle('on');
+  const on = ntOverrideSwitch.classList.contains('on');
+  ntOverrideSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+  try { chrome.storage.local.set({ caidNewtabEnabled: on }); } catch (e) {}
+  toast(on ? '已开启新标签页接管' : '已关闭新标签页接管，新标签页将显示浏览器默认页', on ? 'success' : '');
+});
+
+// 新标签页接管停用提示层：关闭接管后，作为 newtab 打开时显示（options_ui 的 #settings 入口不受影响）
+function showNewtabDisabledView() {
+  const v = caidQs('#newtabDisabledView');
+  if (!v) return;
+  v.classList.add('open');
+  if (window.lucide) lucide.createIcons();
+  const openDefault = caidQs('#ntOpenDefault');
+  if (openDefault && !openDefault.dataset.bound) {
+    openDefault.dataset.bound = '1';
+    openDefault.addEventListener('click', () => {
+      try { chrome.tabs.update({ url: 'chrome://newtab' }); }
+      catch (e) { location.replace('chrome://newtab'); }
+    });
+  }
+  const reenable = caidQs('#ntReenable');
+  if (reenable && !reenable.dataset.bound) {
+    reenable.dataset.bound = '1';
+    reenable.addEventListener('click', () => {
+      location.hash = '#settings';
+      location.reload();
+    });
+  }
+}
+
 // ============ 副驾配置（独立于 AI 回答，存 chrome.storage.local.caidLlm）============
 async function fillCopilotForm() {
   let ext = {};
@@ -1897,7 +1941,7 @@ function switchSettingsTab(name) {
   refreshIcons();
 }
 function openServerSettings() {
-  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); switchSettingsTab('servers'); });
+  openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); switchSettingsTab('servers'); });
 }
 
 const addServerBtn = caidQs('#addServerBtn');
@@ -2637,6 +2681,17 @@ if (pluginEditorTa) {
 
 // ============ Init ============
 async function init() {
+  // 新标签页接管开关：作为 newtab 打开且用户关闭接管时，只显示停用提示页，不初始化工作台
+  // （options_ui 的 #settings 入口不受开关影响，保证随时可恢复）
+  if (location.hash !== '#settings') {
+    let ext = {};
+    try { ext = await chrome.storage.local.get('caidNewtabEnabled'); } catch (e) {}
+    if (ext.caidNewtabEnabled === false) {
+      showNewtabDisabledView();
+      return;
+    }
+  }
+
   // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
   state.llmCfg = await ConfigBackup.restoreIfMissing('llmCfg', state.llmCfg);
   state.paCfg = await ConfigBackup.restoreIfMissing('paCfg', state.paCfg);
@@ -2660,7 +2715,7 @@ async function init() {
 
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -2677,7 +2732,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillGeneralForm(); fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
   }
 }
 

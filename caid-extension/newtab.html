@@ -263,6 +263,35 @@ a:hover { text-decoration: underline; }
 .sidebar-body .comp-actions { margin-bottom: 10px; }
 .settings-body { padding: 0 14px 14px; }
 .settings-body .btn { width: 100%; justify-content: center; }
+/* 设置项：横排行（文字 + 右侧开关） */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(255,255,255,0.02);
+}
+.setting-switch {
+  position: relative;
+  width: 40px; height: 22px;
+  border-radius: 14px;
+  background: var(--rule);
+  border: none; cursor: pointer;
+  flex: 0 0 auto;
+  transition: background .2s ease;
+}
+.setting-switch.on { background: var(--accent); }
+.setting-switch::after {
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff;
+  transition: transform .2s ease;
+}
+.setting-switch.on::after { transform: translateX(18px); }
 
 /* ============ Main ============ */
 .main {
@@ -1003,6 +1032,28 @@ a:hover { text-decoration: underline; }
   background: var(--bg);
 }
 .plugin-tutorial-view.open { display: flex; }
+/* 新标签页接管停用提示层 */
+.newtab-disabled-view {
+  position: fixed; inset: 0; z-index: 1200;
+  display: none;
+  align-items: center; justify-content: center;
+  background: var(--bg);
+}
+.newtab-disabled-view.open { display: flex; }
+.newtab-disabled-card {
+  max-width: 440px; width: calc(100% - 48px);
+  text-align: center;
+  padding: 40px 32px;
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  background: var(--glass-bg, rgba(22,25,38,0.55));
+  box-shadow: var(--shadow);
+  animation: fadeIn 0.2s ease;
+}
+.newtab-disabled-icon { width: 44px; height: 44px; color: var(--accent); margin-bottom: 14px; }
+.newtab-disabled-card h2 { font-size: 18px; margin-bottom: 8px; }
+.newtab-disabled-card p { color: var(--muted); font-size: 13px; margin-bottom: 20px; line-height: 1.7; }
+.newtab-disabled-actions { display: flex; flex-direction: column; gap: 10px; }
 .plugin-tutorial-body {
   flex: 1;
   min-height: 0;
@@ -2633,7 +2684,21 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab" data-tab="general">常规</button>        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+      </div>
+
+      <div class="settings-panel" data-panel="general" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="layout-dashboard"></i>新标签页</div>
+          <div class="setting-desc">CAID 扩展接管浏览器新标签页，打开新标签即显示工作台。可随时在此关闭。</div>
+          <div class="setting-row" style="margin-top:10px;">
+            <div>
+              <div style="font-weight:500;">自动接管新标签页</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">关闭后，新标签页将显示浏览器默认页面</div>
+            </div>
+            <button type="button" class="setting-switch on" id="ntOverrideSwitch" role="switch" aria-checked="true" title="切换新标签页接管"></button>
+          </div>
+        </div>
       </div>
 
       <div class="settings-panel" data-panel="llm">
@@ -2878,7 +2943,7 @@ a:hover { text-decoration: underline; }
           <li>打开浏览器 <b>设置</b>（地址栏输入 <code>chrome://settings</code>）</li>
           <li><b>外观</b> → 开启「显示主页按钮」，并把主页设为上面的地址</li>
           <li><b>启动时</b> → 选择「打开特定网页或一组网页」，添加上面的地址</li>
-          <li>若已安装 CAID 扩展：新标签页已被自动接管为本工作台，开新标签即为工作台</li>
+          <li>若已安装 CAID 扩展：新标签页已被自动接管为本工作台，开新标签即为工作台（可在 设置 → 常规 中关闭接管）</li>
         </ol>
       </div>
     </div>
@@ -2900,6 +2965,19 @@ a:hover { text-decoration: underline; }
     <div class="caid-confirm-foot">
       <button type="button" class="caid-confirm-btn" id="caidConfirmCancel">取消</button>
       <button type="button" class="caid-confirm-btn danger" id="caidConfirmOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新标签页接管停用提示层（关闭接管后新开标签页显示） -->
+<div class="newtab-disabled-view" id="newtabDisabledView">
+  <div class="newtab-disabled-card">
+    <i data-lucide="layout-dashboard" class="newtab-disabled-icon"></i>
+    <h2>CAID 工作台已暂停接管新标签页</h2>
+    <p>你在设置中关闭了「自动接管新标签页」。新标签页将显示浏览器默认页面，工作台随时可恢复。</p>
+    <div class="newtab-disabled-actions">
+      <button class="btn primary" id="ntOpenDefault"><i data-lucide="chrome"></i>打开默认新标签页</button>
+      <button class="btn" id="ntReenable"><i data-lucide="settings"></i>去设置重新启用</button>
     </div>
   </div>
 </div>
