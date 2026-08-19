@@ -235,6 +235,22 @@ a:hover { text-decoration: underline; }
 .ctx-item:hover { background: rgba(255,255,255,0.06); }
 .ctx-item.ctx-danger { color: var(--danger); }
 .ctx-item.ctx-danger:hover { background: rgba(255,90,90,0.14); }
+/* 插件右键菜单专属：提升 z-index（覆盖全局 .ctx-menu 的 z-index:300） */
+#pluginCtxMenu { z-index: 2000; }
+#pluginCtxMenu.open { display: block; }
+/* 插件 header kebab 按钮 */
+.plugin-kebab {
+  margin-left: auto;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+}
+.plugin-kebab:hover { opacity: 1; background: rgba(255,255,255,0.08); }
+.plugin-kebab svg { width: 16px; height: 16px; }
 .sidebar-body {
   padding: 0 14px 14px;
   animation: fadeIn 0.18s ease;
@@ -2164,7 +2180,7 @@ a:hover { text-decoration: underline; }
     </div>
   </aside>
   <!-- 侧边栏插件右键菜单 -->
-  <div class="ctx-menu" id="pluginCtxMenu" hidden>
+  <div class="ctx-menu" id="pluginCtxMenu">
     <button class="ctx-item ctx-danger" id="pluginCtxDelete">删除插件</button>
   </div>
 

@@ -1993,6 +1993,11 @@ async function savePlugins(list) {
 function injectPluginSection(def) {
   const sections = caidQs('#sidebarSections') || caidQs('.sidebar-sections');
   if (!sections) return;
+  // 防重复注入：registry 已有则跳过
+  if (pluginRegistry[def.id]) return;
+  // DOM 残留同名区块则先清理
+  const stale = caidQs('.sidebar-section[data-comp="plugin:' + def.id + '"]');
+  if (stale) stale.remove();
   const sec = document.createElement('div');
   sec.className = 'sidebar-section';
   sec.dataset.comp = 'plugin:' + def.id;
@@ -2000,6 +2005,7 @@ function injectPluginSection(def) {
     '<div class="sidebar-header">' +
       '<span class="sidebar-icon"><i data-lucide="' + escapeHtml(def.icon || 'puzzle') + '"></i></span>' +
       '<span class="sidebar-title">' + escapeHtml(def.name || def.id) + '</span>' +
+      '<span class="plugin-kebab" title="更多操作"><i data-lucide="more-vertical"></i></span>' +
       '<span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>' +
     '</div>' +
     '<div class="sidebar-body"><div class="plugin-body"></div></div>';
@@ -2008,16 +2014,27 @@ function injectPluginSection(def) {
   else sections.appendChild(sec);
   const collapsed = state.uiPrefs.collapsed && state.uiPrefs.collapsed['plugin:' + def.id];
   if (collapsed) sec.classList.add('collapsed');
-  sec.querySelector('.sidebar-header').addEventListener('click', () => {
+  sec.querySelector('.sidebar-header').addEventListener('click', (e) => {
+    // kebab 按钮单独处理，不触发折叠
+    if (e.target.closest('.plugin-kebab')) return;
     sec.classList.toggle('collapsed');
     state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
     state.uiPrefs.collapsed['plugin:' + def.id] = sec.classList.contains('collapsed');
     LS.set('uiPrefs', state.uiPrefs);
   });
-  // 右键菜单：删除插件
-  sec.addEventListener('contextmenu', (e) => {
+  // 右键 header 区域：删除插件
+  const header = sec.querySelector('.sidebar-header');
+  header.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     showPluginCtxMenu(e.clientX, e.clientY, def.id, def.name || def.id);
+  });
+  // kebab 按钮：左键弹出菜单
+  const kebab = sec.querySelector('.plugin-kebab');
+  if (kebab) kebab.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = kebab.getBoundingClientRect();
+    showPluginCtxMenu(r.left, r.bottom + 4, def.id, def.name || def.id);
   });
   const body = sec.querySelector('.plugin-body');
   const iframe = document.createElement('iframe');
@@ -2027,6 +2044,7 @@ function injectPluginSection(def) {
   iframe.style.border = '0';
   iframe.style.minHeight = '60px';
   iframe.style.background = 'transparent';
+  iframe.src = pluginSandboxUrl();          // 关键：不设 src 帧停在 about:blank，沙箱页不加载
   body.appendChild(iframe);
   mountPluginInFrame(iframe, def.code, def.id);
   pluginRegistry[def.id] = { def: def, iframe: iframe, mounted: true };
@@ -2044,9 +2062,12 @@ function removePluginSection(id) {
   if (sec) sec.remove();
 }
 
+let _pluginRenderToken = 0;
 function renderPluginSections() {
+  const myToken = ++_pluginRenderToken;
   Object.keys(pluginRegistry).forEach(removePluginSection);
   return getPlugins().then(list => {
+    if (myToken !== _pluginRenderToken) return;   // 有更新的渲染任务在跑，本次作废
     list.filter(p => p.enabled !== false).forEach(p => {
       if (p.code) injectPluginSection(p);
     });
@@ -2199,7 +2220,7 @@ function showPluginCtxMenu(x, y, id, name) {
   pluginCtxTargetId = id;
   const del = caidQs('#pluginCtxDelete');
   if (del) del.textContent = '删除「' + name + '」';
-  menu.hidden = false;
+  menu.classList.add('open');
   const rect = menu.getBoundingClientRect();
   let left = x, top = y;
   if (left + rect.width > window.innerWidth) left = x - rect.width;
@@ -2209,12 +2230,12 @@ function showPluginCtxMenu(x, y, id, name) {
 }
 function hidePluginCtxMenu() {
   const menu = caidQs('#pluginCtxMenu');
-  if (menu) menu.hidden = true;
+  if (menu) menu.classList.remove('open');
   pluginCtxTargetId = null;
 }
 document.addEventListener('click', (e) => {
   const menu = caidQs('#pluginCtxMenu');
-  if (menu && !menu.hidden && !menu.contains(e.target)) hidePluginCtxMenu();
+  if (menu && menu.classList.contains('open') && !menu.contains(e.target)) hidePluginCtxMenu();
 });
 window.addEventListener('scroll', hidePluginCtxMenu, true);
 const pluginCtxDelete = caidQs('#pluginCtxDelete');
