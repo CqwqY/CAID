@@ -7,3 +7,6 @@ _*.ps1
 debug.html
 debug_block.js
 *.log
+
+# Local workspace data (never push)
+.workbuddy/
