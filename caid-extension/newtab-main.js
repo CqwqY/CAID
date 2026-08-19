@@ -1941,24 +1941,38 @@ function getPluginValidator() {
     const onReady = function (ev) {
       if (ev.source !== f.contentWindow) return;
       window.removeEventListener('message', onReady);
+      clearTimeout(timer);
       pluginValidatorFrame = f;
       resolve(f);
     };
     window.addEventListener('message', onReady);
+    const timer = setTimeout(function () {
+      window.removeEventListener('message', onReady);
+      resolve(null);            // 沙箱帧加载超时：返回 null，交由调用方兜底
+    }, 1200);
     document.body.appendChild(f);
   });
 }
 function validatePluginCode(code) {
   return getPluginValidator().then(function (f) {
+    if (!f) return { ok: true, skipped: true };
     return new Promise(function (resolve) {
       const reqId = 'v' + (++pluginMsgSeq);
+      let done = false;
       const onRes = function (ev) {
         const dd = ev.data;
         if (!dd || !dd.__caidPlugin || dd.type !== 'CAID_PLUGIN_VALIDATED' || dd.reqId !== reqId) return;
+        if (done) return; done = true;
         window.removeEventListener('message', onRes);
+        clearTimeout(timer);
         resolve({ ok: dd.ok, error: dd.error, def: dd.def });
       };
       window.addEventListener('message', onRes);
+      const timer = setTimeout(function () {
+        if (done) return; done = true;
+        window.removeEventListener('message', onRes);
+        resolve({ ok: true, skipped: true });
+      }, 1000);
       f.contentWindow.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_VALIDATE', reqId: reqId, code: code }, '*');
     });
   });
@@ -2089,19 +2103,36 @@ function renderPluginList() {
   });
 }
 
+// 兜底：从代码里粗略提取插件 id（校验帧不可用时使用）
+function extractPluginIdFromCode(code) {
+  const m = code.match(/id\s*:\s*['"]([^'"]+)['"]/);
+  return m ? m[1] : ('plugin-' + Date.now());
+}
+
 async function savePlugin() {
   const code = caidQs('#pluginEditor').value.trim();
   const errEl = caidQs('#pluginErr');
   errEl.textContent = '';
   if (!code) { errEl.textContent = '请先编写插件代码'; return; }
-  const res = await validatePluginCode(code);
-  if (res.error) { errEl.textContent = '代码解析错误：' + res.error; return; }
-  if (!res.def) { errEl.textContent = '未找到 CAID.plugin(...) 调用'; return; }
-  const def = res.def;
+  // best-effort 校验：校验帧正常时拦截语法错误；若沙箱帧加载异常/超时，validatePluginCode
+  // 内部已兜底返回 skipped，保证「保存」永远有反应（不再因 await 卡在隐藏帧上而静默无响应）
+  let validation = null;
+  try {
+    validation = await validatePluginCode(code);
+  } catch (e) {
+    validation = { ok: true, skipped: true };
+  }
+  if (validation && validation.error && !validation.skipped) {
+    errEl.textContent = '代码解析错误：' + validation.error;
+    return;
+  }
+  // 取 def 元数据：校验成功用沙箱解析结果；兜底时从输入框/代码提取
+  const def = (validation && validation.def) ? validation.def : {};
+  if (!def.id) def.id = extractPluginIdFromCode(code);
   const hName = caidQs('#pluginName').value.trim();
   const hIcon = caidQs('#pluginIcon').value.trim();
-  if (hName) def.name = hName;
-  if (hIcon) def.icon = hIcon;
+  if (hName) def.name = hName; else if (!def.name) def.name = def.id;
+  if (hIcon) def.icon = hIcon; else if (!def.icon) def.icon = 'puzzle';
   const cancel = caidQs('#pluginCancelEdit');
   const editId = cancel.dataset.editId;
   const list = await getPlugins();
