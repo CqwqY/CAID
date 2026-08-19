@@ -11,6 +11,13 @@
   var timers = new Set();
   var cleanups = [];
   var sharedCache = {};         // 跨视图共享对象（同插件所有视图共享，仅当前页面会话有效）
+  // 挂载上下文（由父页 CAID_PLUGIN_MOUNT 携带）：版本 / 名称 / 主题 / 脱敏设置
+  var pluginCtx = { version: '', pluginId: '', name: '', isDark: true, settings: {} };
+  // 事件回调注册表
+  var settingsCbs = [];
+  var themeCbs = [];
+  var eventCbs = [];
+  var shortcutCbs = {};         // 快捷键组合 -> [cb]
 
   function post(msg) { parent.postMessage(Object.assign({ __caidPlugin: true }, msg), '*'); }
 
@@ -101,7 +108,67 @@
       closeModal: function () { post({ type: 'CAID_PLUGIN_MODAL_CLOSE' }); },
       setInterval: function (fn, ms) { var id = setInterval(fn, ms); timers.add(id); return id; },
       setTimeout: function (fn, ms) { var id = setTimeout(fn, ms); timers.add(id); return id; },
-      onUnmount: function (fn) { if (typeof fn === 'function') cleanups.push(fn); }
+      onUnmount: function (fn) { if (typeof fn === 'function') cleanups.push(fn); },
+      // ---------- 信息与工具 API ----------
+      getPluginId: function () { return pluginCtx.pluginId; },
+      getVersion: function () { return pluginCtx.version; },
+      getLocale: function () { return (navigator.language || 'zh-CN'); },
+      // 带插件前缀的日志（沙箱内直打，不桥接——对象经 postMessage 会 structured clone 失败）
+      log: function () {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('[CAID插件:' + (pluginCtx.name || pluginCtx.pluginId) + ']');
+        console.log.apply(console, args);
+      },
+      isDarkMode: function () { return !!pluginCtx.isDark; },
+      // 主题切换监听（当前扩展为固定暗色主题；未来加入浅色主题后父页广播生效）
+      onThemeChange: function (fn) { if (typeof fn === 'function') themeCbs.push(fn); },
+      // 设置变化监听（回传的是脱敏后的设置，apiKey 等敏感字段已打码）
+      onSettingsChange: function (fn) { if (typeof fn === 'function') settingsCbs.push(fn); },
+      // 获取父页 CSS 变量值（如 api.css('--accent')）
+      css: function (key) {
+        if (typeof key !== 'string' || key.indexOf('--') !== 0) return Promise.resolve('');
+        return bridge('css', { key: key }).then(function (r) { return (r && r.value) || ''; });
+      },
+      // 复制到剪贴板（沙箱 null 源无 navigator.clipboard，桥回父页 secure context）
+      copyToClipboard: function (text) {
+        return bridge('copy', { text: String(text == null ? '' : text) });
+      },
+      // 在新标签页打开 URL（父页校验 http/https 白名单）
+      openURL: function (url) {
+        return bridge('openURL', { url: String(url == null ? '' : url) });
+      },
+      // 自定义确认对话框（替代原生 confirm；桥回父页复用 CAID 弹窗，返回 Promise<boolean>）
+      confirm: function (msg, opts) {
+        var o = opts || {};
+        return bridge('confirm', {
+          message: String(msg == null ? '' : msg),
+          title: o.title, okText: o.okText, cancelText: o.cancelText, danger: !!o.danger, icon: o.icon
+        }).then(function (r) { return !!(r && r.ok); });
+      },
+      // 插件间事件广播/监听（广播式：任何插件可发、任何插件可听同名事件）
+      emitPluginEvent: function (name, payload) {
+        if (!name) return Promise.resolve({ ok: false });
+        return bridge('emitEvent', { name: String(name), payload: payload });
+      },
+      onPluginEvent: function (fn) { if (typeof fn === 'function') eventCbs.push(fn); },
+      // 导入/导出本插件数据（父页校验 schema + 大小上限）
+      exportData: function () {
+        return bridge('exportData', {}).then(function (r) { return r && r.data; });
+      },
+      importData: function (data) {
+        return bridge('importData', { data: data });
+      },
+      // 浏览器原生通知（父页走 chrome.notifications，每插件节流 10 秒 1 条）
+      showNotification: function (opts) {
+        var o = opts || {};
+        return bridge('notify', { title: String(o.title || ''), body: String(o.body || '') });
+      },
+      // 注册页面内快捷键（降级方案：仅工作台页面内有效，非浏览器全局；组合键格式如 Ctrl+K）
+      registerShortcut: function (key, cb) {
+        if (typeof key !== 'string' || !key || typeof cb !== 'function') return;
+        (shortcutCbs[key] = shortcutCbs[key] || []).push(cb);
+        return bridge('registerShortcut', { key: key });
+      }
     };
   }
 
@@ -110,6 +177,11 @@
     timers.clear();
     cleanups.forEach(function (fn) { try { fn(); } catch (e) {} });
     cleanups = [];
+    // 事件回调随视图挂载生命周期清理（同视图多次重挂会重新注册）
+    settingsCbs = [];
+    themeCbs = [];
+    eventCbs = [];
+    shortcutCbs = {};
   }
 
   function reportSize() {
@@ -313,12 +385,43 @@
       }
       return;
     }
+    if (d.type === 'CAID_PLUGIN_SETTINGS_CHANGE') {
+      // 父页设置保存后广播（已脱敏：apiKey 等打码）
+      if (d.settings && typeof d.settings === 'object') pluginCtx.settings = d.settings;
+      settingsCbs.slice().forEach(function (fn) { try { fn(pluginCtx.settings); } catch (e) {} });
+      return;
+    }
+    if (d.type === 'CAID_PLUGIN_THEME_CHANGE') {
+      pluginCtx.isDark = !!d.isDark;
+      themeCbs.slice().forEach(function (fn) { try { fn(pluginCtx.isDark); } catch (e) {} });
+      return;
+    }
+    if (d.type === 'CAID_PLUGIN_EVENT') {
+      // 插件间事件广播（广播式：任何插件可发，任何插件可听）
+      var evt = { name: d.name, payload: d.payload };
+      eventCbs.slice().forEach(function (fn) { try { fn(evt); } catch (e) {} });
+      return;
+    }
+    if (d.type === 'CAID_PLUGIN_SHORTCUT') {
+      // 页面内快捷键触发（降级方案，非浏览器全局）
+      var sl = shortcutCbs[d.key];
+      if (sl) sl.slice().forEach(function (fn) { try { fn(); } catch (e) {} });
+      return;
+    }
     if (d.type === 'CAID_PLUGIN_VALIDATE') {
       var r = runCode(d.code, d.pluginId, 'validate');
       post({ type: 'CAID_PLUGIN_VALIDATED', reqId: d.reqId, ok: r.ok, error: r.error, def: r.def });
       return;
     }
     if (d.type === 'CAID_PLUGIN_MOUNT') {
+      // 挂载上下文：版本 / 名称 / 主题 / 脱敏设置
+      pluginCtx = {
+        version: d.version || '',
+        pluginId: d.pluginId || '',
+        name: d.pluginName || d.pluginId || '',
+        isDark: d.isDark !== false,
+        settings: d.settings || {}
+      };
       var m = runCode(d.code, d.pluginId, d.mode || 'mount');
       post({ type: m.ok ? 'CAID_PLUGIN_READY' : 'CAID_PLUGIN_ERROR', reqId: d.reqId, error: m.error, def: m.def });
       return;

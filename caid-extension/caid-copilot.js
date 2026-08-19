@@ -809,6 +809,12 @@
         'api.fetch(url,opt) (returns a standard Response: res.ok/res.status/await res.text()/await res.json(); res.raw has legacy fields), ' +
         'api.md(markdownText) (returns safe HTML string for rich text rendering: assign to api.container.innerHTML; supports code blocks/headings/lists/quotes/tables/bold/italic/links), ' +
         'api.toast(msg), api.setInterval/api.setTimeout (auto-cleaned), api.onUnmount(fn), api.modal({title,width}), api.closeModal(). ' +
+        'Advanced api: api.getPluginId(), api.getVersion(), api.getLocale(), api.isDarkMode(), api.onThemeChange(cb), ' +
+        'api.onSettingsChange(cb) (receives DESENSITIZED settings, apiKey masked), api.log(...args) (console with plugin prefix), ' +
+        'api.css(cssVarName) (read a CSS variable like --accent, must start with --), api.copyToClipboard(text), api.openURL(url) (http/https only), ' +
+        'api.confirm(msg, opts) (custom confirm dialog, returns Promise<boolean>), api.emitPluginEvent(name,payload)/api.onPluginEvent(cb) (cross-plugin broadcast), ' +
+        'api.exportData()/api.importData(data) (backup/migrate this plugin\'s storage), api.showNotification({title,body}) (throttled 1/10s per plugin), ' +
+        'api.registerShortcut(\'Ctrl+K\', cb) (in-page shortcut only, not browser-global; needs a modifier key). ' +
         'Code runs in a sandbox: chrome and localStorage are undefined — always use api.storage for persistence. ' +
         'For multi-view plugins use api.shared to pass variables between views (in-memory only). ' +
         'Put the COMPLETE plugin code in the code parameter (never abbreviate). ' +

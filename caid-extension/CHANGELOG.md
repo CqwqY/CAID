@@ -3,6 +3,19 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.2.9] - 2026-08-19
+
+### 新增
+- **插件高级 API 全面落地**（安全评审后实现，跳过 `getTabInfo`/`executeScript` 两个隐私/高危项）：
+  - 信息类：`api.getPluginId()`、`api.getVersion()`、`api.getLocale()`、`api.isDarkMode()`、`api.log(...)`（带插件前缀）
+  - 监听类：`api.onSettingsChange(cb)`（**回传脱敏设置**，apiKey 等敏感字段打码）、`api.onThemeChange(cb)`（当前固定暗色，接口保留）
+  - 工具类：`api.css('--var')`（读父页 CSS 变量，校验 `--` 前缀）、`api.copyToClipboard(text)`、`api.openURL(url)`（仅 http/https 白名单）、`api.confirm(msg, opts)`（复用 CAID 弹窗，返回 `Promise<boolean>`）
+  - 通信类：`api.emitPluginEvent(name, payload)` / `api.onPluginEvent(cb)`（插件间广播式通信）
+  - 数据类：`api.exportData()` / `api.importData(data)`（仅本插件命名空间，500KB 上限）
+  - 通知类：`api.showNotification(opts)`（`chrome.notifications`，每插件 10 秒限 1 条）
+  - 快捷键：`api.registerShortcut('Ctrl+K', cb)`（**页面内**快捷键降级方案，非浏览器全局，需带修饰键）
+- manifest 新增 `notifications` 权限；删除插件时清理通知节流与快捷键注册残留。
+
 ## [v0.2.8] - 2026-08-19
 
 ### 新增

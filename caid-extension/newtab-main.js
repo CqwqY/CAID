@@ -1555,6 +1555,11 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
   };
   LS.set('llmCfg', state.llmCfg);
   ConfigBackup.save('llmCfg', state.llmCfg);
+  // 设置变化 → 广播脱敏设置给所有插件帧（api.onSettingsChange 触发）
+  const masked = desensitizeSettings(state.llmCfg);
+  pluginFrameByWin.forEach((f2, win) => {
+    try { win.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_SETTINGS_CHANGE', settings: masked }, '*'); } catch (e) {}
+  });
   closeModal('settingsModal');
   toast('设置已保存','success');
 });
@@ -1963,6 +1968,72 @@ const pluginFrameByWin = new Map();   // contentWindow -> iframe 元素（已挂
 const pluginSharedStore = {};          // pluginId -> 跨视图共享对象（仅内存，刷新即清空）
 let pluginMsgSeq = 0;
 
+// 扩展版本号（api.getVersion 用）：manifest 版本优先，读取失败回退空串
+let pluginVersion = '';
+try { pluginVersion = chrome.runtime.getManifest().version || ''; } catch (e) {}
+
+// 设置脱敏：只把非敏感字段暴露给插件，apiKey/secret/token 等一律打码
+function desensitizeSettings(cfg) {
+  const c = cfg || {};
+  const out = {};
+  const SENSITIVE = /(api[_-]?key|secret|token|password|authorization)/i;
+  for (const k of Object.keys(c)) {
+    if (SENSITIVE.test(k)) out[k] = c[k] ? (String(c[k]).slice(0, 3) + '****' + String(c[k]).slice(-3)) : '';
+    else out[k] = c[k];
+  }
+  return out;
+}
+
+// 插件通知节流表：pluginId -> 上次通知时间戳
+const pluginNotifyTs = {};
+// 页面内快捷键注册表：'Ctrl+K' -> [pluginId,...]（降级方案，非浏览器全局）
+const pluginShortcutHandlers = {};
+// 快捷键触发防抖表：combo -> 上次触发时间
+const pluginShortcutLastTrigger = {};
+
+// 页面内快捷键解析：把 KeyboardEvent 归一化为 'Ctrl+K' 风格组合串
+function normalizeShortcut(e) {
+  const parts = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.metaKey) parts.push('Meta');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  const k = e.key;
+  if (k === ' ' || k === 'Spacebar') parts.push('Space');
+  else if (k && k.length === 1) parts.push(k.toUpperCase());
+  else if (k) parts.push(k.length > 1 ? k : k.toUpperCase());
+  return parts.join('+');
+}
+
+// 删除插件时清理运行时残留：通知节流、快捷键注册
+function cleanupPluginRuntime(id) {
+  delete pluginNotifyTs[id];
+  for (const combo of Object.keys(pluginShortcutHandlers)) {
+    const arr = pluginShortcutHandlers[combo];
+    const i = arr ? arr.indexOf(id) : -1;
+    if (i !== -1) arr.splice(i, 1);
+    if (arr && !arr.length) delete pluginShortcutHandlers[combo];
+  }
+}
+
+// 页面级 keydown：命中插件注册的快捷键 → 广播给对应插件帧（需主区域/文档聚焦，沙箱帧内按键无法上浮）
+document.addEventListener('keydown', (e) => {
+  if (!Object.keys(pluginShortcutHandlers).length) return;
+  const combo = normalizeShortcut(e);
+  const pids = pluginShortcutHandlers[combo];
+  if (!pids || !pids.length) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const now = Date.now();
+  if (now - (pluginShortcutLastTrigger[combo] || 0) < 250) return;   // 防抖：连按不重复触发
+  pluginShortcutLastTrigger[combo] = now;
+  pluginFrameByWin.forEach((f2, win) => {
+    if (pids.indexOf(f2.dataset.pluginId) !== -1) {
+      try { win.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_SHORTCUT', key: combo }, '*'); } catch (err) {}
+    }
+  });
+});
+
 function pluginSandboxUrl() { return chrome.runtime.getURL('sandbox/plugin-sandbox.html'); }
 
 // 全局监听：处理来自沙箱帧的桥接请求 / toast / 高度同步 / 运行错误
@@ -2042,6 +2113,139 @@ async function handlePluginBridge(src, d) {
       const pluginId = f ? f.dataset.pluginId : null;
       if (!pluginId) payload = { ok: false, error: 'unknown plugin frame' };
       else payload = await openPluginModal(pluginId, d.data || {});
+    } else if (d.op === 'css') {
+      // 读取父页 CSS 变量值（沙箱是独立文档读不到；校验 -- 前缀防任意属性探测）
+      const key = d.data && d.data.key;
+      if (typeof key === 'string' && key.indexOf('--') === 0) {
+        payload = { value: getComputedStyle(document.documentElement).getPropertyValue(key).trim() };
+      } else {
+        payload = { value: '' };
+      }
+    } else if (d.op === 'copy') {
+      // 复制到剪贴板：沙箱 null 源无 navigator.clipboard，扩展页是 secure context 可用
+      try {
+        await navigator.clipboard.writeText(String((d.data && d.data.text) || ''));
+        payload = { ok: true };
+      } catch (e) {
+        // 兜底：textarea + execCommand（用户手势链下仍可用）
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = String((d.data && d.data.text) || '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          payload = { ok: true };
+        } catch (e2) {
+          payload = { ok: false, error: '剪贴板不可用' };
+        }
+      }
+    } else if (d.op === 'openURL') {
+      // 新标签页打开 URL：协议白名单 http/https，防 chrome://、javascript:、file://
+      const u = String((d.data && d.data.url) || '');
+      if (/^https?:\/\//i.test(u)) {
+        try { await chrome.tabs.create({ url: u }); payload = { ok: true }; }
+        catch (e) { payload = { ok: false, error: e.message }; }
+      } else {
+        payload = { ok: false, error: '仅允许 http/https 链接' };
+      }
+    } else if (d.op === 'confirm') {
+      // 自定义确认对话框（复用 CAID 弹窗；返回 Promise<boolean>）
+      const dd = d.data || {};
+      const ok = await caidConfirm({
+        title: dd.title || '插件确认',
+        message: dd.message || '确认继续？',
+        okText: dd.okText || '确认',
+        cancelText: dd.cancelText || '取消',
+        danger: !!dd.danger,
+        icon: dd.icon || 'alert-circle'
+      });
+      payload = { ok: ok };
+    } else if (d.op === 'emitEvent') {
+      // 插件间事件广播：发给所有插件帧（广播式，任何插件可听）
+      const name = d.data && d.data.name;
+      if (name) {
+        pluginFrameByWin.forEach((f2, win) => {
+          try {
+            win.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_EVENT', name: String(name), payload: d.data && d.data.payload }, '*');
+          } catch (e) {}
+        });
+      }
+      payload = { ok: true };
+    } else if (d.op === 'exportData') {
+      // 导出本插件全部数据（caidPlugin:<id>: 前缀的 storage 项）
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      if (!pid) payload = { error: 'unknown plugin frame' };
+      else {
+        const prefix = 'caidPlugin:' + pid + ':';
+        const all = await chrome.storage.local.get(null);
+        const data = {};
+        for (const k of Object.keys(all)) {
+          if (k.indexOf(prefix) === 0) data[k.slice(prefix.length)] = all[k];
+        }
+        payload = { data: data };
+      }
+    } else if (d.op === 'importData') {
+      // 导入本插件数据：只允许写入 caidPlugin:<id>: 命名空间，拒绝越权键；大小上限 500KB
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      const data = (d.data && d.data.data) || null;
+      if (!pid) payload = { error: 'unknown plugin frame' };
+      else if (!data || typeof data !== 'object' || Array.isArray(data)) payload = { ok: false, error: '数据格式错误' };
+      else if (JSON.stringify(data).length > 500 * 1024) payload = { ok: false, error: '数据超过 500KB 上限' };
+      else {
+        try {
+          const prefix = 'caidPlugin:' + pid + ':';
+          const toSet = {};
+          for (const k of Object.keys(data)) {
+            const key = String(k);
+            if (key.indexOf('caidPlugin:') === 0) continue;   // 拒绝注入其他插件命名空间
+            toSet[prefix + key] = data[k];
+          }
+          await chrome.storage.local.set(toSet);
+          payload = { ok: true };
+        } catch (e) {
+          payload = { ok: false, error: e.message };
+        }
+      }
+    } else if (d.op === 'notify') {
+      // 浏览器原生通知：chrome.notifications，每插件节流 10 秒 1 条
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      if (!pid) payload = { error: 'unknown plugin frame' };
+      else {
+        const now = Date.now();
+        const last = pluginNotifyTs[pid] || 0;
+        if (now - last < 10000) {
+          payload = { ok: false, error: '通知过于频繁（10 秒 1 条）' };
+        } else {
+          pluginNotifyTs[pid] = now;
+          try {
+            const dd = d.data || {};
+            await chrome.notifications.create('caid-plugin-' + pid + '-' + now, {
+              type: 'basic',
+              iconUrl: chrome.runtime.getURL('icons/icon-400.png'),
+              title: String(dd.title || 'CAID 插件'),
+              message: String(dd.body || ''),
+              priority: 1
+            });
+            payload = { ok: true };
+          } catch (e) {
+            payload = { ok: false, error: e.message };
+          }
+        }
+      }
+    } else if (d.op === 'registerShortcut') {
+      // 页面内快捷键（降级方案）：父页监听 keydown，命中后转发给对应插件帧
+      const f = pluginFrameByWin.get(src);
+      const pid = f ? f.dataset.pluginId : null;
+      const key = d.data && d.data.key;
+      if (pid && key) {
+        if (!pluginShortcutHandlers[key]) pluginShortcutHandlers[key] = [];
+        if (pluginShortcutHandlers[key].indexOf(pid) === -1) pluginShortcutHandlers[key].push(pid);
+      }
+      payload = { ok: true };
     }
   } catch (e) {
     payload = { error: e.message };
@@ -2084,7 +2288,7 @@ function openPluginModal(pluginId, opts) {
     if (window.lucide) lucide.createIcons();
 
     pluginModalMap[pluginId] = { backdrop: backdrop, iframe: iframe, onKey: onKey };
-    mountPluginInFrame(iframe, rec.code, pluginId, 'modal');
+    mountPluginInFrame(iframe, rec.code, pluginId, 'modal', rec.name);
     return { ok: true };
   });
 }
@@ -2099,14 +2303,20 @@ function closePluginModalByPlugin(pluginId) {
 }
 
 // 等待沙箱帧就绪后挂载插件代码（mode: mount 侧边栏 / panel 右侧面板 / modal 弹窗）
-function mountPluginInFrame(iframe, code, pluginId, mode) {
+function mountPluginInFrame(iframe, code, pluginId, mode, pluginName) {
   iframe.dataset.pluginId = pluginId || '';
   iframe.dataset.mode = mode || 'mount';
   const onReady = function (ev) {
     if (ev.source !== iframe.contentWindow) return;
     window.removeEventListener('message', onReady);
     pluginFrameByWin.set(iframe.contentWindow, iframe);
-    iframe.contentWindow.postMessage({ __caidPlugin: true, type: 'CAID_PLUGIN_MOUNT', reqId: 'm' + (++pluginMsgSeq), code: code, pluginId: pluginId, mode: mode || 'mount' }, '*');
+    iframe.contentWindow.postMessage({
+      __caidPlugin: true, type: 'CAID_PLUGIN_MOUNT', reqId: 'm' + (++pluginMsgSeq),
+      code: code, pluginId: pluginId, mode: mode || 'mount',
+      version: pluginVersion, pluginName: pluginName || pluginId || '',
+      isDark: true,   // 当前扩展固定暗色主题
+      settings: desensitizeSettings(state.llmCfg)
+    }, '*');
   };
   window.addEventListener('message', onReady);
 }
@@ -2255,7 +2465,7 @@ function injectPluginZone(def) {
   if (window.lucide) lucide.createIcons();
   const reg = pluginRegistry[def.id];
   if (reg) reg.iframe = iframe;
-  mountPluginInFrame(iframe, def.code, def.id);
+  mountPluginInFrame(iframe, def.code, def.id, 'mount', def.name);
 }
 
 function removePluginSection(id) {
@@ -2305,7 +2515,7 @@ function injectRightPanel(rec) {
     }).catch(() => {});
     removeRightPanel(rec.id, false);
   });
-  mountPluginInFrame(iframe, rec.code, rec.id, 'panel');
+  mountPluginInFrame(iframe, rec.code, rec.id, 'panel', rec.name);
 }
 
 function removeRightPanel(id, quiet) {
@@ -2388,6 +2598,7 @@ function renderPluginList() {
         const lst = (await getPlugins()).filter(x => x.id !== id);
         await savePlugins(lst);
         delete pluginSharedStore[id];
+        cleanupPluginRuntime(id);
         renderPluginList(); renderPluginSections();
       });
       item.querySelector('[data-act="edit"]').addEventListener('click', () => {
@@ -2540,6 +2751,7 @@ if (pluginCtxDelete) pluginCtxDelete.addEventListener('click', async () => {
   const lst = (await getPlugins()).filter(x => x.id !== id);
   await savePlugins(lst);
   delete pluginSharedStore[id];
+  cleanupPluginRuntime(id);
   renderPluginList(); renderPluginSections();
   toast('已删除插件：' + name);
 });

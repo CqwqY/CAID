@@ -64,6 +64,22 @@ CAID.plugin({
 | `api.onUnmount(fn)` | 插件被停用/删除时执行的一次性清理函数（如取消订阅、移除监听） |
 | `api.modal(opts?)` | 打开本插件的弹窗（需定义 `modal(api)` 视图）。`opts`：`{ title, width }`，返回 Promise |
 | `api.closeModal()` | 关闭当前弹窗（在 `modal` 视图内调用） |
+| `api.getPluginId()` | 返回当前插件 id（日志、调试、上报用） |
+| `api.getVersion()` | 返回 CAID 扩展版本号（如 `0.2.9`），做版本兼容判断 |
+| `api.getLocale()` | 返回当前语言（`navigator.language`，如 `zh-CN`），做多语言适配 |
+| `api.isDarkMode()` | 返回是否暗色主题（当前扩展固定暗色，恒为 `true`） |
+| `api.onThemeChange(cb)` | 监听主题切换，回调 `cb(isDark)`（当前无浅色主题，接口保留） |
+| `api.onSettingsChange(cb)` | 监听设置保存，回调 `cb(settings)`。**回传的是脱敏设置**：`apiKey` 等敏感字段已打码（如 `sk-****678`），不要指望拿到完整密钥 |
+| `api.log(...args)` | 带插件前缀的日志：控制台输出 `[CAID插件:插件名] ...`，多插件调试不混乱 |
+| `api.css(key)` | 读取父页 CSS 变量值（如 `api.css('--accent')` → `#5b8dff`）。`key` 必须以 `--` 开头 |
+| `api.copyToClipboard(text)` | 复制文本到剪贴板（返回 Promise） |
+| `api.openURL(url)` | 在新标签页打开 URL（只允许 `http/https`，`javascript:` 等会被拒绝） |
+| `api.confirm(msg, opts?)` | 自定义确认对话框（替代原生 `confirm`，复用 CAID 弹窗）。返回 `Promise<boolean>`。`opts`：`{ title, okText, cancelText, danger, icon }` |
+| `api.emitPluginEvent(name, payload)` / `api.onPluginEvent(cb)` | 插件间事件广播/监听。任何插件发、任何插件听（见下文「插件间通信」） |
+| `api.exportData()` | 导出本插件全部存储数据（Promise → 对象） |
+| `api.importData(data)` | 导入本插件存储数据（只允许写入本插件命名空间，超 500KB 拒绝） |
+| `api.showNotification(opts)` | 浏览器原生通知。`opts`：`{ title, body }`。**每插件 10 秒限 1 条**，防刷屏 |
+| `api.registerShortcut(key, cb)` | 注册**页面内**快捷键（降级方案，见下文「快捷键」） |
 
 ### 沙箱说明（轻量）
 
@@ -155,6 +171,85 @@ CAID.plugin({
 支持语法：围栏代码块、行内代码、标题 1-4、有序/无序列表、引用块、表格、分隔线、加粗、斜体、链接。
 
 > **安全说明**：`api.md` 内部先转义再替换，链接只放行 `http(s)` 协议（`javascript:` 等一律不会渲染成可点击链接），可以放心把**不可信文本**（如用户输入、远程返回的内容）交给它渲染。**不要**用它返回的 HTML 再拼字符串二次插入。
+
+---
+
+## 高级 API 详解
+
+### 监听设置与主题
+
+```js
+mount(api) {
+  // 用户在设置页保存 AI 配置后触发（回调收到的是脱敏设置）
+  api.onSettingsChange((s) => {
+    console.log('provider:', s.provider, 'model:', s.model, 'apiKey:', s.apiKey);  // apiKey 已打码
+  });
+  // 主题切换监听（当前固定暗色，接口保留）
+  api.onThemeChange((isDark) => { console.log('主题:', isDark ? '暗色' : '浅色'); });
+}
+```
+
+### 确认对话框与剪贴板
+
+```js
+mount(api) {
+  const btn = api.el('button', {
+    text: '危险操作',
+    onClick: async () => {
+      const ok = await api.confirm('确定要删除吗？', { title: '警告', danger: true, okText: '删除' });
+      if (ok) { /* 执行操作 */ }
+      await api.copyToClipboard('复制的内容');   // 返回 Promise
+    }
+  });
+  api.container.appendChild(btn);
+}
+```
+
+### 插件间通信
+
+`emitPluginEvent(name, payload)` 会把事件广播给**所有插件**（含自己），任何插件用 `onPluginEvent(cb)` 都能收到：
+
+```js
+// 插件 A：发出事件
+api.emitPluginEvent('app:theme', { color: 'blue' });
+
+// 插件 B：监听事件
+api.onPluginEvent((e) => {
+  if (e.name === 'app:theme') console.log('收到:', e.payload);
+});
+```
+
+> ⚠️ 广播式通信：事件名是约定字符串，任何插件都可以发、可以听。适合同一开发者自己插件之间的协作；不要用它传递敏感数据（其他插件可能也在监听）。
+
+### 数据导入导出
+
+```js
+// 导出：拿到本插件全部存储数据
+const data = await api.exportData();       // { key1: val1, key2: val2, ... }
+
+// 导入：写回本插件存储（只允许本插件命名空间，超 500KB 拒绝）
+await api.importData(data);
+```
+
+> 配合 `api.md` 可以把数据渲染成文本让你手动保存/粘贴备份，实现「复制 → 换机器 → 粘贴恢复」。
+
+### 快捷键
+
+```js
+api.registerShortcut('Ctrl+K', () => {
+  api.toast('按了 Ctrl+K！');
+});
+```
+
+> ⚠️ **这是页面内快捷键**（降级方案）：只在 CAID 工作台页面里、页面获得焦点时生效，**不是浏览器全局**。`registerShortcut` 只支持带修饰键的组合（如 `Ctrl+K`、`Alt+Shift+X`），无修饰的裸键不会触发。MV3 限制下浏览器级快捷键只能静态声明在 manifest 里，无法由插件运行时注册。
+
+### 通知
+
+```js
+api.showNotification({ title: '任务完成', body: '你的番茄钟结束了' });
+```
+
+> 走浏览器原生通知（需扩展「通知」权限，已在 manifest 声明）。每插件 **10 秒限 1 条**，超频会被静默拒绝（返回 `{ ok:false }`）。
 
 ---
 
