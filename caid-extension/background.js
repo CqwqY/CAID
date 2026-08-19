@@ -349,6 +349,33 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) ensureCopilotOpen(tab.id);
 });
 
+// ---------- 新标签页动态接管（浏览器层面，可开关）----------
+// 不声明 chrome_url_overrides.newtab：该声明是静态的、无法在运行时移除——即使页面内部做
+// 「停用提示页」，本质上仍是扩展在占用新标签页（用户明确拒绝此方案）。
+// 正确做法：监听浏览器原生新标签页创建（chrome://newtab），仅当用户开启接管
+// （chrome.storage.local.caidNewtabEnabled !== false）时用 tabs.update 重定向到工作台；
+// 关闭接管后浏览器 100% 走默认新标签页，扩展零干预。
+chrome.tabs.onCreated.addListener((tab) => {
+  const u = (tab.pendingUrl || tab.url || '');
+  if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
+  // onCreated 触发时 pendingUrl 可能尚未稳定，稍等一拍再二次确认（tabs.get 拿到最终 url），避免误接管
+  setTimeout(function () { maybeTakeoverNewTab(tab.id); }, 80);
+});
+
+async function maybeTakeoverNewTab(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab) return;
+    const u = (tab.pendingUrl || tab.url || '');
+    if (u !== 'chrome://newtab/' && u !== 'chrome://newtab') return;
+    const got = await chrome.storage.local.get('caidNewtabEnabled');
+    if (got.caidNewtabEnabled === false) return; // 用户已关闭接管 → 保持浏览器默认新标签页
+    await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('newtab.html') });
+  } catch (e) {
+    // tab 可能已被用户关闭，忽略
+  }
+}
+
 // 关键改进：在任意标签页加载完成时检查是否有待续传上下文（caidHandoff）。
 // background service worker 永远有完整 chrome.storage.session 权限，
 // 不再依赖 content.js（某些页面会报 "Access to storage is not allowed from this context"）。

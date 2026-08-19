@@ -1576,32 +1576,22 @@ if (ntOverrideSwitch) ntOverrideSwitch.addEventListener('click', () => {
   const on = ntOverrideSwitch.classList.contains('on');
   ntOverrideSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
   try { chrome.storage.local.set({ caidNewtabEnabled: on }); } catch (e) {}
-  toast(on ? '已开启新标签页接管' : '已关闭新标签页接管，新标签页将显示浏览器默认页', on ? 'success' : '');
+  if (!on) {
+    // 关闭接管立即生效：把已打开的 CAID 工作台标签页（当前设置页与 #settings 选项入口除外）
+    // 导航回浏览器默认新标签页，让用户直接看到"取消接管"的结果
+    try {
+      chrome.tabs.query({ url: chrome.runtime.getURL('newtab.html') + '*' }, (tabs) => {
+        if (!tabs || !tabs.length) return;
+        tabs.forEach((t) => {
+          if (!t.id || t.active) return;
+          if (String(t.url || '').indexOf('#settings') !== -1) return;
+          chrome.tabs.update(t.id, { url: 'chrome://newtab' });
+        });
+      });
+    } catch (e) {}
+  }
+  toast(on ? '已开启新标签页接管' : '已关闭接管：新标签页完全恢复为浏览器默认页面', on ? 'success' : '');
 });
-
-// 新标签页接管停用提示层：关闭接管后，作为 newtab 打开时显示（options_ui 的 #settings 入口不受影响）
-function showNewtabDisabledView() {
-  const v = caidQs('#newtabDisabledView');
-  if (!v) return;
-  v.classList.add('open');
-  if (window.lucide) lucide.createIcons();
-  const openDefault = caidQs('#ntOpenDefault');
-  if (openDefault && !openDefault.dataset.bound) {
-    openDefault.dataset.bound = '1';
-    openDefault.addEventListener('click', () => {
-      try { chrome.tabs.update({ url: 'chrome://newtab' }); }
-      catch (e) { location.replace('chrome://newtab'); }
-    });
-  }
-  const reenable = caidQs('#ntReenable');
-  if (reenable && !reenable.dataset.bound) {
-    reenable.dataset.bound = '1';
-    reenable.addEventListener('click', () => {
-      location.hash = '#settings';
-      location.reload();
-    });
-  }
-}
 
 // ============ 副驾配置（独立于 AI 回答，存 chrome.storage.local.caidLlm）============
 async function fillCopilotForm() {
@@ -2665,16 +2655,8 @@ if (pluginEditorTa) {
 
 // ============ Init ============
 async function init() {
-  // 新标签页接管开关：作为 newtab 打开且用户关闭接管时，只显示停用提示页，不初始化工作台
-  // （options_ui 的 #settings 入口不受开关影响，保证随时可恢复）
-  if (location.hash !== '#settings') {
-    let ext = {};
-    try { ext = await chrome.storage.local.get('caidNewtabEnabled'); } catch (e) {}
-    if (ext.caidNewtabEnabled === false) {
-      showNewtabDisabledView();
-      return;
-    }
-  }
+  // （新标签页接管已改为 background 动态接管：newtab.html 只在开关开启或用户主动打开时出现，
+  //   不再需要此处的自检与停用提示页）
 
   // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
   state.llmCfg = await ConfigBackup.restoreIfMissing('llmCfg', state.llmCfg);

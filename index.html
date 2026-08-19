@@ -1902,7 +1902,7 @@ a:hover { text-decoration: underline; }
           <li>打开浏览器 <b>设置</b>（地址栏输入 <code>chrome://settings</code>）</li>
           <li><b>外观</b> → 开启「显示主页按钮」，并把主页设为上面的地址</li>
           <li><b>启动时</b> → 选择「打开特定网页或一组网页」，添加上面的地址</li>
-          <li>若已安装 CAID 扩展：新标签页已被自动接管为本工作台，开新标签即为工作台</li>
+          <li>若已安装 CAID 扩展：新标签页默认被接管为本工作台（可在 设置 → 常规 中关闭，关闭后完全恢复浏览器默认新标签页）</li>
         </ol>
       </div>
     </div>
@@ -2351,11 +2351,11 @@ document.addEventListener('keydown', (e) => {
 
 // 设为首页 / 新标签页弹窗（扩展内提示新标签已被接管，网页版则提供可复制的地址）
 function openHomepageModal() {
-  var urlEl = document.getElementById('homeUrl');
-  if (urlEl) {
-    var inExt = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
-    urlEl.textContent = inExt ? '（CAID 扩展已接管新标签页，开新标签即为本工作台）' : 'https://graduate.dpdns.org/';
-  }
+    var urlEl = document.getElementById('homeUrl');
+    if (urlEl) {
+      var inExt = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+      urlEl.textContent = inExt ? '（CAID 扩展已接管新标签页，可在 设置 → 常规 中关闭接管）' : 'https://graduate.dpdns.org/';
+    }
   var copyBtn = document.getElementById('copyHomeUrl');
   if (copyBtn && !copyBtn.dataset.bound) {
     copyBtn.dataset.bound = '1';
@@ -2375,14 +2375,14 @@ function openHomepageModal() {
       homeSteps.innerHTML =
         '<li>地址栏输入 <code>edge://settings/startHome</code> 打开「开始、主页和新建选项卡页」</li>' +
         '<li>开启<b>显示主页按钮</b>，并把主页设为上面的地址</li>' +
-        '<li>同一页的<b>新建选项卡页</b>已被 CAID 扩展自动接管（若已安装扩展），开新标签即为工作台</li>' +
+        '<li>同一页的<b>新建选项卡页</b>已被 CAID 扩展接管（若已安装扩展，可在 设置 → 常规 中关闭），开新标签即为工作台</li>' +
         '<li>若还想让<b>启动时</b>打开本页：地址栏输入 <code>edge://settings/startup</code> → 「打开特定页面或一组页面」→ 添加上面的地址</li>';
     } else {
       homeSteps.innerHTML =
         '<li>地址栏输入 <code>chrome://settings/appearance</code> 打开「外观」</li>' +
         '<li>开启<b>显示主页按钮</b>，并把主页设为上面的地址</li>' +
         '<li>地址栏输入 <code>chrome://settings/onStartup</code> → 选择「打开特定网页或一组网页」，添加上面的地址</li>' +
-        '<li>若已安装 CAID 扩展：新标签页已被自动接管为本工作台，开新标签即为工作台</li>';
+        '<li>若已安装 CAID 扩展：新标签页默认被接管为本工作台（可在 设置 → 常规 中关闭，关闭后完全恢复浏览器默认新标签页）</li>';
     }
   }
   openModal('homepageModal');
