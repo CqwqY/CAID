@@ -152,6 +152,115 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // ---------- 迷你 Markdown 渲染（副驾回答富文本化；XSS 安全：先转义再替换）----------
+  // 支持：围栏代码块（window.hljs 存在时高亮）、行内代码、标题 1-4、有序/无序列表、
+  // 引用块、表格、分隔线、加粗/斜体、链接（仅 http/https）。
+  // 流式容错：未闭合的围栏/标记原样降级为字面文本，不抛错。
+  function cpMd(src) {
+    var text = String(src == null ? '' : src);
+    if (!text.trim()) return '';
+    // 先按 ``` 围栏切块：奇数下标是代码块内容（用原始文本，保证 hljs 高亮正确），
+    // 偶数下标是普通文本（转义后交给块级渲染）。
+    var parts = text.split(/```/);
+    var out = '';
+    for (var p = 0; p < parts.length; p++) {
+      if (p % 2 === 1) {
+        var c = parts[p], lang = '';
+        var nl = c.indexOf('\n');
+        var first = nl === -1 ? c : c.slice(0, nl);
+        if (/^[\w-]*$/.test(first.trim())) { lang = first.trim(); c = nl === -1 ? '' : c.slice(nl + 1); }
+        var codeHtml = cpEscapeHtml(c);
+        if (lang && window.hljs && window.hljs.highlight && window.hljs.getLanguage && window.hljs.getLanguage(lang)) {
+          try { codeHtml = window.hljs.highlight(c, { language: lang }).value; } catch (e) { codeHtml = cpEscapeHtml(c); }
+        }
+        out += '<pre class="cp-md-code"' + (lang ? ' data-lang="' + cpEscapeHtml(lang) + '"' : '') + '><code>' + codeHtml + '</code></pre>';
+      } else {
+        out += cpMdBlocks(cpEscapeHtml(parts[p]));
+      }
+    }
+    return out;
+  }
+  function cpMdBlocks(esc) {
+    var lines = esc.split('\n');
+    var out = [], i = 0, n = lines.length;
+    while (i < n) {
+      var line = lines[i];
+      // 表格块：首行含 | 且下一行是 |-...-| 分隔行
+      if (line.indexOf('|') !== -1 && i + 1 < n &&
+          /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].indexOf('-') !== -1 && lines[i + 1].indexOf('|') !== -1) {
+        var rows = [];
+        while (i < n && lines[i].indexOf('|') !== -1 && lines[i].trim() !== '') { rows.push(lines[i]); i++; }
+        if (rows.length >= 2) {
+          var parseRow = function (r) {
+            return r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
+          };
+          var heads = parseRow(rows[0]);
+          var tb = '<table class="cp-md-table"><thead><tr>' +
+            heads.map(function (h) { return '<th>' + h + '</th>'; }).join('') +
+            '</tr></thead><tbody>';
+          for (var r = 2; r < rows.length; r++) {
+            var cells = parseRow(rows[r]);
+            tb += '<tr>' + cells.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>';
+          }
+          out.push(tb + '</tbody></table>');
+          continue;
+        }
+      }
+      // 引用块：连续 > 行
+      if (/^\s*&gt;\s?/.test(line)) {
+        var quotes = [];
+        while (i < n && /^\s*&gt;\s?/.test(lines[i])) { quotes.push(lines[i].replace(/^\s*&gt;\s?/, '')); i++; }
+        out.push('<blockquote class="cp-md-quote">' + quotes.map(cpMdInline).join('<br>') + '</blockquote>');
+        continue;
+      }
+      // 有序/无序列表：连续列表行
+      if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+        var ol = /^\s*\d+[.)]\s+/.test(line);
+        var items = [], tag = ol ? 'ol' : 'ul';
+        while (i < n && (/^\s*[-*+]\s+/.test(lines[i]) || /^\s*\d+[.)]\s+/.test(lines[i]))) {
+          var it = lines[i].replace(/^\s*[-*+]\s+/, '').replace(/^\s*\d+[.)]\s+/, '');
+          items.push('<li>' + cpMdInline(it) + '</li>');
+          i++;
+        }
+        out.push('<' + tag + ' class="cp-md-list">' + items.join('') + '</' + tag + '>');
+        continue;
+      }
+      // 标题 1-4
+      var hm = line.match(/^(#{1,4})\s+(.*)$/);
+      if (hm) {
+        var lvl = hm[1].length;
+        out.push('<h' + lvl + ' class="cp-md-h cp-md-h' + lvl + '">' + cpMdInline(hm[2]) + '</h' + lvl + '>');
+        i++;
+        continue;
+      }
+      // 分隔线
+      if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+        out.push('<hr class="cp-md-hr">');
+        i++;
+        continue;
+      }
+      // 普通段落：连续非空行（遇到块结构开头则交给外层循环）
+      var para = [];
+      while (i < n && lines[i].trim() !== '') {
+        var l2 = lines[i];
+        if (/^\s*[-*+]\s+/.test(l2) || /^\s*\d+[.)]\s+/.test(l2) || /^\s*&gt;\s?/.test(l2) || /^#{1,4}\s+/.test(l2) || /^\s*([-*_])\1{2,}\s*$/.test(l2)) break;
+        para.push(l2); i++;
+      }
+      if (para.length) {
+        out.push('<p class="cp-md-p">' + cpMdInline(para.join('\n')).replace(/\n/g, '<br>') + '</p>');
+      } else { i++; }
+    }
+    return out.join('\n');
+  }
+  // 行内样式（输入已转义，输出安全）：行内代码 → 粗体 → 斜体 → 链接（仅 http/https 防 javascript:）
+  function cpMdInline(s) {
+    return s
+      .replace(/`([^`]+)`/g, '<code class="cp-md-code-inline">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"']+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
   // 内联设置面板：直接在主站 DOM 的副驾面板里展开，彻底绕开被拦截器拦的 chrome-extension://newtab.html 导航
   function toggleSettings() {
     var panel = document.getElementById('cpSettingsPanel');
@@ -190,7 +299,26 @@
 #caidExtCopilot .cp-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
 #caidExtCopilot .cp-bubble{padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word;max-width:100%;}
 #caidExtCopilot .cp-bubble-user{background:#16324f;align-self:flex-end;}
-#caidExtCopilot .cp-bubble-assistant{background:#13233a;}
+#caidExtCopilot .cp-bubble-assistant{background:#13233a;white-space:normal;}
+#caidExtCopilot .cp-bubble-assistant a{color:#7fb0e0;text-decoration:none;word-break:break-all;}
+#caidExtCopilot .cp-md-p{margin:0 0 8px;line-height:1.65;}
+#caidExtCopilot .cp-md-p:last-child{margin-bottom:0;}
+#caidExtCopilot .cp-md-h{margin:10px 0 6px;font-weight:600;line-height:1.35;}
+#caidExtCopilot .cp-md-h1{font-size:16px;} #caidExtCopilot .cp-md-h2{font-size:15px;}
+#caidExtCopilot .cp-md-h3{font-size:14px;} #caidExtCopilot .cp-md-h4{font-size:13.5px;}
+#caidExtCopilot .cp-md-hr{border:0;border-top:1px solid #1f3650;margin:10px 0;}
+#caidExtCopilot .cp-md-code{display:block;margin:8px 0;padding:8px 10px;background:#08111c;border:1px solid #1f3650;border-radius:8px;overflow:auto;max-height:280px;}
+#caidExtCopilot .cp-md-code code{font:11.5px/1.5 ui-monospace,Consolas,monospace;color:#d6e8ff;}
+#caidExtCopilot .cp-md-code[data-lang]:before{content:attr(data-lang);display:block;font-size:10px;color:#5b7187;margin-bottom:4px;text-transform:uppercase;}
+#caidExtCopilot .cp-md-code-inline{padding:1px 5px;border-radius:4px;background:#0b1a2a;border:1px solid #1f3650;font:11px/1.4 ui-monospace,Consolas,monospace;color:#9fe1cb;}
+#caidExtCopilot .cp-md-list{margin:6px 0 8px;padding-left:20px;}
+#caidExtCopilot .cp-md-list li{margin:3px 0;line-height:1.6;}
+#caidExtCopilot .cp-md-quote{margin:6px 0 8px;padding:6px 10px;border-left:3px solid #2a6bb8;background:#0f2036;color:#b9cfe8;border-radius:0 6px 6px 0;}
+#caidExtCopilot .cp-md-table{width:100%;margin:8px 0;border-collapse:collapse;font-size:12px;}
+#caidExtCopilot .cp-md-table th,#caidExtCopilot .cp-md-table td{border:1px solid #1f3650;padding:5px 8px;text-align:left;line-height:1.5;}
+#caidExtCopilot .cp-md-table th{background:#10243b;color:#d6e8ff;font-weight:600;}
+#caidExtCopilot .cp-md-table td{background:transparent;}
+#caidExtCopilot .cp-md-table tr:nth-child(2n) td{background:#0f1c2e;}
 #caidExtCopilot .cp-evt-error{color:#ff8a8a;}
 #caidExtCopilot .cp-tool{display:inline-block;padding:1px 6px;border-radius:4px;background:#1f3650;color:#9fe1cb;font-size:11px;margin-right:4px;}
 #caidExtCopilot .cp-tool-call{padding:6px 8px;border-radius:8px;background:#0b2a22;color:#9fe1cb;font-size:11px;margin:0 14px 6px;word-break:break-word;}
@@ -307,7 +435,7 @@
   function logBubble(role, text) {
     const div = document.createElement('div');
     div.className = 'cp-bubble ' + (role === 'user' ? 'cp-bubble-user' : 'cp-bubble-assistant');
-    div.innerHTML = cpEscapeHtml(text).replace(/\n/g, '<br>');
+    div.innerHTML = (role === 'user') ? cpEscapeHtml(text).replace(/\n/g, '<br>') : cpMd(text);
     logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -1059,7 +1187,7 @@
     displayEvents.forEach(function (ev) {
       var div = document.createElement('div');
       if (ev.type === 'user') { div.className = 'cp-bubble cp-bubble-user'; div.innerHTML = cpEscapeHtml(String(ev.content || '')).replace(/\n/g, '<br>'); }
-      else if (ev.type === 'assistant') { div.className = 'cp-bubble cp-bubble-assistant'; div.innerHTML = cpEscapeHtml(String(ev.content || '')).replace(/\n/g, '<br>'); }
+      else if (ev.type === 'assistant') { div.className = 'cp-bubble cp-bubble-assistant'; div.innerHTML = cpMd(String(ev.content || '')); }
       else if (ev.type === 'step') {
         var tn = ev.action && ev.action.name ? ev.action.name : '';
         var out = String(ev.action && ev.action.output || '');
