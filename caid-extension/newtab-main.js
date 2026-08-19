@@ -2275,6 +2275,26 @@ function renderPluginSections() {
       if (p.code) injectPluginSection(p);
       if (p.code && p.hasPanel && !p.panelHidden) injectRightPanel(p);
     });
+    // 兼容副驾/外部保存的插件：缺 hasPanel/hasModal 元数据 → 沙箱校验补齐并写回，
+    // 补注入右侧面板（若校验出 def.panel() 且用户未手动移除过）
+    list.filter(p => p.code && p.hasPanel === undefined && p.hasModal === undefined)
+      .forEach(p => {
+        validatePluginCode(p.code).then(v => {
+          if (!v || !v.def) return;
+          return getPlugins().then(lst => {
+            const rec = lst.find(x => x.id === p.id);
+            if (rec && (rec.hasPanel !== !!v.def.hasPanel || rec.hasModal !== !!v.def.hasModal)) {
+              rec.hasPanel = !!v.def.hasPanel;
+              rec.hasModal = !!v.def.hasModal;
+              return savePlugins(lst);
+            }
+          }).then(() => {
+            if (v.def.hasPanel && !p.panelHidden && !caidQs('.right-panel-card[data-pid="' + p.id + '"]')) {
+              injectRightPanel({ ...p, hasPanel: true, hasModal: !!v.def.hasModal });
+            }
+          });
+        }).catch(() => {});
+      });
   });
 }
 

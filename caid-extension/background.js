@@ -20,6 +20,42 @@ function bytesToBase64(bytes) {
 var activeAgentTabs = new Map();       // tabId → { goal, fromUrl, ts }
 var _autoFollowCooldown = new Map();   // tabId → ts（5s 内不重复注入）
 
+// ---------- 副驾右键 skill：浏览器右键菜单 ----------
+// 在网页选中文本后右键，可「用 CAID 副驾处理」或「让副驾制作插件」。
+// MV3 SW 每次冷启动都会重跑顶层代码，故 removeAll + create 保证幂等注册。
+chrome.contextMenus.removeAll(function () {
+  chrome.contextMenus.create({
+    id: 'caid-ctx-handle',
+    title: '用 CAID 副驾处理选中内容',
+    contexts: ['selection']
+  });
+  chrome.contextMenus.create({
+    id: 'caid-ctx-plugin',
+    title: '让 CAID 副驾制作插件',
+    contexts: ['selection']
+  });
+});
+chrome.contextMenus.onClicked.addListener(function (info, tab) {
+  if (!tab || !tab.id) return;
+  if (info.menuItemId !== 'caid-ctx-handle' && info.menuItemId !== 'caid-ctx-plugin') return;
+  var text = String(info.selectionText || '').trim();
+  if (!text) return;
+  console.log('[CAID-R] 右键菜单点击:', info.menuItemId, 'text=', text.slice(0, 60));
+  var mode = info.menuItemId === 'caid-ctx-plugin' ? 'plugin' : 'handle';
+  // 1) 确保副驾已注入并打开面板（bootCopilot 内部 await 串行，完成后监听已就绪）
+  ensureCopilotOpen(tab.id).then(function () {
+    // 2) 稍等面板/监听完全落地后再投递文本（executeScript 返回≠UI 渲染完成）
+    setTimeout(function () {
+      try {
+        chrome.tabs.sendMessage(tab.id, { type: 'CAID_CONTEXT_TEXT', text: text, mode: mode }, function () {
+          // content.js 不运行的环境（扩展页等）：忽略，右侧投递走 DOM dataset 兜底也在 content.js 内完成
+          if (chrome.runtime.lastError) console.warn('[CAID-R] 右键菜单 sendMessage:', chrome.runtime.lastError.message);
+        });
+      } catch (e) { console.warn('[CAID-R] 右键菜单 sendMessage 异常:', e.message || e); }
+    }, 400);
+  });
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'BOOT_COPILOT') {
     const tabId = sender.tab && sender.tab.id;
@@ -242,6 +278,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         while (m.history.length > 20) m.history.shift();
         chrome.storage.local.set({ caidMemory: m }, function () { sendResponse({ ok: true }); });
       } else { sendResponse({ ok: false }); }
+    });
+    return true;
+  }
+
+  // ---------- 副驾自制插件：把 create_plugin 工具生成的插件写入扩展插件系统 ----------
+  // 插件列表存在 chrome.storage.local.caidPlugins（与 newtab 插件系统共用），
+  // 按 id 去重（同 id 覆盖为更新，否则新增）。后台保存的 rec 缺 hasPanel/hasModal 元数据，
+  // 由 newtab 侧首次渲染时沙箱校验补齐（见 newtab-main.js validatePluginCode）。
+  if (msg && msg.type === 'CAID_PLUGIN_SAVE') {
+    var np = msg.plugin;
+    if (!np || !np.code) { sendResponse({ ok: false, error: 'plugin or code missing' }); return true; }
+    var rec = {
+      id: String(np.id || ('cp_' + Date.now().toString(36))).slice(0, 64),
+      name: String(np.name || '副驾插件').slice(0, 60),
+      icon: String(np.icon || 'puzzle').slice(0, 40),
+      enabled: np.enabled !== false,
+      panelHidden: false,
+      code: String(np.code)
+    };
+    if (!/^[a-zA-Z0-9_-]+$/.test(rec.id)) rec.id = 'cp_' + Date.now().toString(36);
+    chrome.storage.local.get(['caidPlugins'], function (got) {
+      var list = Array.isArray(got && got.caidPlugins) ? got.caidPlugins : [];
+      var idx = -1;
+      for (var i = 0; i < list.length; i++) { if (list[i] && list[i].id === rec.id) { idx = i; break; } }
+      if (idx >= 0) list[idx] = rec; else list.push(rec);
+      chrome.storage.local.set({ caidPlugins: list }, function () {
+        if (chrome.runtime.lastError) sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        else sendResponse({ ok: true, id: rec.id, name: rec.name, total: list.length });
+      });
     });
     return true;
   }

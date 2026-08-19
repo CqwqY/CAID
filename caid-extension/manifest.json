@@ -3,7 +3,7 @@
   "name": "CAID 程序员工作台",
   "version": "0.1.0",
   "description": "继承魔改版 Page-Agent 的程序员工作台：接管新标签页，并在任意网页提供跨页智能体副驾。",
-  "permissions": ["storage", "scripting", "tabs", "activeTab"],
+  "permissions": ["storage", "scripting", "tabs", "activeTab", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "chrome_url_overrides": {
     "newtab": "newtab.html"

@@ -46,10 +46,38 @@
   var _fetchPending = new Map();
   window.addEventListener('message', function (ev) {
     var d = ev.data;
-    if (!d || d.__caidType !== 'CAID_FETCH_RESP') return;
-    var p = _fetchPending.get(d.id);
-    if (p) { _fetchPending.delete(d.id); p(d); }
+    if (!d || !d.__caidType) return;
+    if (d.__caidType === 'CAID_FETCH_RESP') {
+      var p = _fetchPending.get(d.id);
+      if (p) { _fetchPending.delete(d.id); p(d); }
+      return;
+    }
+    if (d.__caidType === 'CAID_CONTEXT_TEXT') {
+      // 右键菜单投递的选中文本：面板尚未构建时暂存，buildPanel 后消费
+      window.__caidCtxPending = { text: String(d.text || ''), mode: d.mode === 'plugin' ? 'plugin' : 'handle' };
+      try { _consumeCtxPending(); } catch (e) {}
+      return;
+    }
   });
+  // 消费右键文本：填入输入框 + 打开面板 + 聚焦（mode=plugin 时附上「制作插件」指令前缀）
+  function _consumeCtxPending() {
+    var p = window.__caidCtxPending;
+    if (!p || !p.text) return;
+    var inputEl = document.getElementById('cpInput');
+    if (!inputEl) return; // 面板还没构建，等 buildPanel 后再消费
+    window.__caidCtxPending = null;
+    try {
+      var cp = document.getElementById('caidExtCopilot');
+      if (cp) cp.classList.add('open');
+      var launcher = document.getElementById('caidLauncher');
+      if (launcher) { launcher.setAttribute('data-panel-open', '1'); launcher.style.display = 'none'; }
+      inputEl.value = (p.mode === 'plugin' ? '请帮我制作一个 CAID 插件：' : '') + p.text;
+      inputEl.focus();
+      var lg = document.getElementById('cpLog');
+      if (lg) { lg.scrollTop = lg.scrollHeight; }
+      console.log('[CAID-R] 右键文本已填入输入框, mode=', p.mode);
+    } catch (e) { console.warn('[CAID-R] 消费右键文本失败:', e.message || e); }
+  }
   function caidNet(url, init) {
     return new Promise(function (resolve, reject) {
       // 扩展页（如自己接管的 newtab）的 MAIN world 拥有完整 chrome.*：
@@ -248,6 +276,15 @@
     return aside;
   }
   buildPanel();
+  // 消费右键文本：window 暂存（postMessage 直达）+ DOM dataset（content.js 兜底，两 world 共享 DOM）
+  try {
+    var _ds = document.documentElement.getAttribute('data-caid-ctx-pending');
+    if (_ds) {
+      document.documentElement.removeAttribute('data-caid-ctx-pending');
+      try { var _dp = JSON.parse(_ds); if (_dp && _dp.text) window.__caidCtxPending = { text: _dp.text, mode: _dp.mode }; } catch (e2) {}
+    }
+    _consumeCtxPending();
+  } catch (e3) { console.warn('[CAID-R] 消费右键文本(dataset)失败:', e3.message || e3); }
   // content.js 不运行在扩展页 / 接管的 new标签页：这些环境没有 #caidLauncher，这里自建一个。
   if (!document.getElementById('caidLauncher')) {
     var _cpEl0 = document.getElementById('caidExtCopilot');
@@ -292,7 +329,7 @@
     }
   };
 
-  // ---------- 11 个 customTools（9 个移植自主站 buildCaidCustomTools + remember_fact / forget_fact 长期记忆）----------
+  // ---------- 12 个 customTools（9 个移植自主站 + remember_fact / forget_fact 长期记忆 + create_plugin 自制插件）----------
   const tools = {
     execute_javascript: {
       description:
@@ -629,6 +666,47 @@
         var json = JSON.stringify(data, null, 2);
         if (json.length > 8000) json = json.slice(0, 8000) + '\n... (截断，共 ' + json.length + ' 字符)';
         return '📋 页面数据提取 (' + type + '):\n' + json;
+      }
+    },
+
+    create_plugin: {
+      description:
+        'Create a CAID workbench plugin from the user requirement and SAVE it to the extension plugin system. ' +
+        'A plugin is a single JavaScript snippet calling CAID.plugin(def) EXACTLY once. ' +
+        'def fields: id (unique lowercase-kebab english), name (display name, chinese ok), icon (lucide icon name, optional), ' +
+        'mount(api) sidebar view / panel(api) right-panel view / modal(api) popup view — implement AT LEAST one view. ' +
+        'Views receive an api object: api.container (DOM node to append into), api.el(tag, props) (create element; ' +
+        'props: className/text/html/onClick/style/dataset/other attrs), api.storage.get(key)/set(key,val) (async per-plugin storage), ' +
+        'api.fetch(url,opt), api.toast(msg), api.setInterval/api.setTimeout (auto-cleaned), api.onUnmount(fn), api.modal({title,width}), api.closeModal(). ' +
+        'Code runs in a sandbox: chrome and localStorage are undefined — always use api.storage for persistence. ' +
+        'Put the COMPLETE plugin code in the code parameter (never abbreviate). ' +
+        'It is saved automatically and appears in the new-tab workbench immediately.',
+      inputSchema: mkObj({ requirement: 'string', name: 'string', code: 'string' }),
+      execute: async function (input) {
+        var code = String(input && input.code || '').trim();
+        var requirement = String(input && input.requirement || '').trim();
+        var name = String(input && input.name || '').trim() || '副驾插件';
+        if (!code) throw new Error('create_plugin: code is required');
+        // 从代码提取 id / icon（缺省自动生成）
+        var mId = code.match(/id\s*:\s*['"]([^'"]+)['"]/);
+        var pid = mId ? mId[1] : ('cp_' + Date.now().toString(36));
+        var icon = 'puzzle';
+        var mIcon = code.match(/icon\s*:\s*['"]([^'"]+)['"]/);
+        if (mIcon) icon = mIcon[1];
+        if (this && this.__cpRender && this.__cpRender.renderCode) this.__cpRender.renderCode(code, 'javascript', 'CAID 插件：' + name);
+        // 尝试保存到扩展插件系统（经 caidRequestBg 桥：扩展页直连 background / 普通页走 content.js DOM 桥）
+        var saved = null;
+        try {
+          saved = await caidRequestBg({ type: 'CAID_PLUGIN_SAVE', plugin: { id: pid, name: name, icon: icon, code: code, enabled: true } });
+        } catch (e) { console.warn('[CAID-R] create_plugin 保存失败:', e.message || e); }
+        if (saved && saved.ok) {
+          return '✅ 插件「' + name + '」(id=' + pid + ') 已保存到扩展插件系统，现有 ' + saved.total + ' 个插件。' +
+            '打开或刷新新标签页，即可在侧边栏看到并使用它。' +
+            (requirement ? '\n\n需求回顾：' + requirement : '');
+        }
+        return '⚠️ 当前页面没有可用的扩展桥接，插件未能自动保存。代码已展示在代码区，' +
+          '请复制代码后到新标签页 → 设置 → 插件 → 新建 → 粘贴 → 保存即可使用。' +
+          (requirement ? '\n\n需求回顾：' + requirement : '');
       }
     }
   };

@@ -253,11 +253,28 @@
 
   // background 自动跟随进入新标签（target=_blank）后，经此消息让本（旧）标签的 agent 停止。
   // ISOLATED world 收到 runtime 消息后派发 DOM 事件，MAIN world 的 caid-copilot.js 监听并 forceStop。
+  // 同时处理右键菜单 CAID_CONTEXT_TEXT：把选中文本投递给 MAIN world 的副驾（面板已存在则
+  // postMessage；否则先落 DOM dataset，副驾初始化时消费 —— 两 world 隔离但 DOM 共享，可靠）。
   try {
     chrome.runtime.onMessage.addListener(function (msg) {
       if (msg && msg.type === 'CAID_STOP_AGENT') {
         console.log('[CAID-content] 收到 CAID_STOP_AGENT，派发 __caid_force_stop 停止本页 agent');
         try { window.dispatchEvent(new CustomEvent('__caid_force_stop')); } catch (e) {}
+      }
+      if (msg && msg.type === 'CAID_CONTEXT_TEXT') {
+        console.log('[CAID-content] 收到右键文本, mode=', msg.mode, 'text=', String(msg.text || '').slice(0, 60));
+        var payload = { text: String(msg.text || ''), mode: msg.mode === 'plugin' ? 'plugin' : 'handle' };
+        try {
+          var cpPanel = document.getElementById('caidExtCopilot');
+          if (cpPanel) {
+            window.postMessage({ __caidType: 'CAID_CONTEXT_TEXT', text: payload.text, mode: payload.mode }, '*');
+          } else {
+            // 副驾尚未注入完成：落 DOM dataset 兜底，MAIN world 的 caid-copilot.js 初始化时消费
+            document.documentElement.setAttribute('data-caid-ctx-pending', JSON.stringify(payload));
+          }
+        } catch (e2) {
+          console.warn('[CAID-content] 投递右键文本失败:', e2.message || e2);
+        }
       }
     });
   } catch (e) {}
