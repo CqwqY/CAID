@@ -2323,7 +2323,6 @@ function renderPluginList() {
           caidQs('#pluginIcon').value = rec.icon || '';
           caidQs('#pluginEditor').value = rec.code || '';
           caidQs('#pluginErr').textContent = '';
-          syncPluginEditorHl();
           const cancel = caidQs('#pluginCancelEdit');
           cancel.style.display = '';
           cancel.dataset.editId = id;
@@ -2391,7 +2390,6 @@ async function savePlugin() {
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
   caidQs('#pluginIcon').value = '';
-  syncPluginEditorHl();
   clearPluginDraft();
   cancel.style.display = 'none';
   delete cancel.dataset.editId;
@@ -2404,7 +2402,6 @@ const pluginTplBtn = caidQs('#pluginTplBtn');
 if (pluginTplBtn) pluginTplBtn.addEventListener('click', () => {
   caidQs('#pluginEditor').value = PLUGIN_TEMPLATE;
   caidQs('#pluginErr').textContent = '';
-  syncPluginEditorHl();
 });
 const savePluginBtn = caidQs('#savePluginBtn');
 if (savePluginBtn) savePluginBtn.addEventListener('click', savePlugin);
@@ -2413,7 +2410,6 @@ if (pluginCancelEdit) pluginCancelEdit.addEventListener('click', () => {
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
   caidQs('#pluginIcon').value = '';
-  syncPluginEditorHl();
   clearPluginDraft();
   pluginCancelEdit.style.display = 'none';
   delete pluginCancelEdit.dataset.editId;
@@ -2478,7 +2474,6 @@ if (pluginNewBtn) pluginNewBtn.addEventListener('click', () => {
   caidQs('#pluginEditor').value = '';
   caidQs('#pluginName').value = '';
   caidQs('#pluginIcon').value = '';
-  syncPluginEditorHl();
   clearPluginDraft();
   if (pluginCancelEdit) { pluginCancelEdit.style.display = 'none'; delete pluginCancelEdit.dataset.editId; }
   caidQs('#savePluginBtn').textContent = '保存为新插件';
@@ -2608,34 +2603,9 @@ if (sidebarChangelogBtn) sidebarChangelogBtn.addEventListener('click', openChang
 const changelogBack = caidQs('#changelogBack');
 if (changelogBack) changelogBack.addEventListener('click', closeChangelog);
 
-// ============ 插件编辑器：语法高亮（textarea 透明文字 + 底层 pre 高亮同步）============
-// textarea 出现垂直滚动条时会占 ~15px 宽度，内容区比 pre 窄 → 换行点不同 → 两层逐行错位。
-// 修复：把滚动条占位宽度补偿到 pre 的 padding-right，让两层内容区等宽。
-function syncEditorScrollbarPad() {
-  const ta = caidQs('#pluginEditor');
-  const hlWrap = caidQs('.plugin-editor-hl');
-  if (!ta || !hlWrap) return;
-  const sbw = ta.offsetWidth - ta.clientWidth;   // 滚动条占位宽（无滚动条时为 0）
-  hlWrap.style.paddingRight = (12 + sbw) + 'px'; // 12 = 基础 padding，与 CSS 保持一致
-}
-function syncPluginEditorHl() {
-  const ta = caidQs('#pluginEditor');
-  const hl = caidQs('#pluginEditorHl');
-  if (!ta || !hl) return;
-  syncEditorScrollbarPad();
-  if (window.hljs) {
-    try {
-      const res = hljs.highlight(ta.value || ' ', { language: 'javascript' });
-      hl.innerHTML = res.value;
-      hl.className = 'hljs';
-    } catch (e) { hl.textContent = ta.value || ' '; }
-  } else {
-    hl.textContent = ta.value || ' ';
-  }
-  hl.scrollTop = ta.scrollTop;
-  hl.scrollLeft = ta.scrollLeft;
-}
-const syncPluginEditorHlDeb = debounce(syncPluginEditorHl, 120);
+// ============ 插件编辑器：单层 textarea（2026-08-19 移除语法高亮层）============
+// 此前采用「textarea 透明文字 + 底层 pre hljs 高亮」双层结构，换行/滚动条占位差异
+// 导致两层逐行错位、无法根治 → 移除高亮层，textarea 直接显示文字，天然零错位。
 
 // ============ 插件编辑器：草稿缓存（输入防抖落盘；保存/取消/新建时清除）============
 const PLUGIN_DRAFT_KEY = 'caidPluginDraft';
@@ -2652,19 +2622,13 @@ function restorePluginDraft() {
   const ta = caidQs('#pluginEditor'); if (ta) ta.value = d.code || '';
   const n = caidQs('#pluginName'); if (n) n.value = d.name || '';
   const ic = caidQs('#pluginIcon'); if (ic) ic.value = d.icon || '';
-  syncPluginEditorHl();
   return true;
 }
 function clearPluginDraft() { LS.del(PLUGIN_DRAFT_KEY); }
 
 const pluginEditorTa = caidQs('#pluginEditor');
 if (pluginEditorTa) {
-  pluginEditorTa.addEventListener('input', () => { syncPluginEditorHlDeb(); savePluginDraftDeb(); });
-  pluginEditorTa.addEventListener('scroll', () => {
-    syncEditorScrollbarPad();
-    const hl = caidQs('#pluginEditorHl');
-    if (hl) { hl.scrollTop = pluginEditorTa.scrollTop; hl.scrollLeft = pluginEditorTa.scrollLeft; }
-  });
+  pluginEditorTa.addEventListener('input', () => { savePluginDraftDeb(); });
   // Tab 插入两空格缩进，不跳出编辑器
   pluginEditorTa.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
