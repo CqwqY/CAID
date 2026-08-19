@@ -46,6 +46,9 @@
       "matches": ["<all_urls>"]
     }
   ],
+  "sandbox": {
+    "pages": ["sandbox/plugin-sandbox.html"]
+  },
   "options_ui": {
     "page": "newtab.html#settings",
     "open_in_tab": true
