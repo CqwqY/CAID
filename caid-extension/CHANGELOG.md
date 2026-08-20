@@ -6,12 +6,13 @@
 ## [v0.3.3] - 2026-08-20
 
 ### 修复
-- **副驾桥接超时**：`caidRequestBg` 超时从 3s 提升到 8s，给 MV3 Service Worker 冷启动足够唤醒时间。
-- **`manage_todo` 本地兜底**：桥接不可用时不再直接报错，改为写入 `localStorage.todos`（newtab 的 `persistTodos` 读取相同 key 会自动同步），确保"帮我记一下"即使在桥接异常时也不丢失。
+- **副驾桥接从 CustomEvent 改为 postMessage**：`caidRequestBg` / `caidSendToBg` 在站外页面（MAIN world → ISOLATED world）的通信从 `CustomEvent` 切换到 `window.postMessage`，解决 `CustomEvent.detail` 跨世界时属性丢失导致桥接静默失败的问题。content.js 同步更新为 `message` 事件监听。
+- **`manage_todo` 桥接重试**：首次桥接失败时自动等 2s 重试一次（SW 可能刚唤醒），重试仍失败才报错。
+- **移除无效 localStorage 兜底**：之前写的 localStorage 兜底实际写到了宿主页面的 localStorage（不同源），数据到不了工作台，已移除。
 
 ### 变更
 - **副驾脱离主站**：主站（graduate.dpdns.org）已停维，副驾不再引用主站地址。
-  - `navigate_to_main_site` 工具改名为 `go_to_workbench`，跳转目标改为扩展自己的 newtab 页面（`chrome-extension://[id]/newtab.html`）。
+  - `navigate_to_main_site` 工具改名为 `go_to_workbench`，跳转目标改为扩展自己的 newtab 页面。
   - 移除 `MAIN_URL` 硬编码主站地址，改读 `window.__CAID_OPTIONS_URL`。
   - systemPrompt 中 `navigate_to_main_site` 引用同步更新为 `go_to_workbench`。
   - 设置面板文案移除"同步回主站"提示。

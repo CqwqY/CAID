@@ -874,6 +874,12 @@
         if (input && input.id != null) payload.id = String(input.id);
         var resp = null;
         try { resp = await caidRequestBg(payload); } catch (e) { console.warn('[CAID-R] manage_todo 桥接失败:', e && e.message || e); }
+        // 首次失败时重试一次（SW 可能刚唤醒）
+        if (!resp || !resp.ok) {
+          console.warn('[CAID-R] manage_todo 首次桥接失败，2s 后重试...');
+          await new Promise(function (r) { setTimeout(r, 2000); });
+          try { resp = await caidRequestBg(payload); } catch (e2) { console.warn('[CAID-R] manage_todo 重试失败:', e2 && e2.message || e2); }
+        }
         if (resp && resp.ok) {
           if (action === 'add' && resp.todo) {
             return '✅ 已添加待办：「' + resp.todo.text + '」（优先级：' + resp.todo.priority + '，id=' + resp.todo.id + '）。当前共 ' + resp.total + ' 条，' + resp.done + ' 条已完成。打开新标签页即可在待办区看到。';
@@ -890,28 +896,7 @@
           if (action === 'clear_done') return '✅ 已清理已完成待办。当前剩 ' + resp.total + ' 条。';
           return '✅ 待办操作完成。';
         }
-        // 桥接不可用：localStorage 兜底（newtab 的 persistTodos 会读取相同 key 同步）
-        var LS_KEY = 'todos';
-        var localList = [];
-        try { var raw = localStorage.getItem(LS_KEY); if (raw) localList = JSON.parse(raw) || []; } catch (e2) {}
-        if (action === 'add') {
-          var tText = String(input && input.text || '').trim().slice(0, 200);
-          if (!tText) throw new Error('manage_todo: text required for add');
-          var tPri = String(input && input.priority || 'mid');
-          if (tPri !== 'high' && tPri !== 'mid' && tPri !== 'low') tPri = 'mid';
-          var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: tPri, createdAt: Date.now() };
-          localList.unshift(item);
-          try { localStorage.setItem(LS_KEY, JSON.stringify(localList)); } catch (e3) {}
-          return '✅ 已添加待办：「' + tText + '」（优先级：' + tPri + '）。⚠️ 扩展桥接暂不可用，已写入本地存储，打开新标签页即可在待办区看到。';
-        }
-        if (action === 'list') {
-          if (!localList.length) return '📋 当前待办列表为空。';
-          var lines2 = localList.map(function (t) {
-            return '[' + (t.done ? 'x' : ' ') + '] ' + t.text + ' (优先级:' + t.priority + ', id=' + t.id + ')';
-          });
-          return '📋 待办列表（共 ' + localList.length + ' 条，' + localList.filter(function (t) { return t.done; }).length + ' 条已完成）：\n' + lines2.join('\n');
-        }
-        return '⚠️ 扩展桥接不可用，待办操作未能同步。请确认 CAID 扩展已安装并启用。';
+        return '⚠️ 扩展桥接不可用，待办未能写入工作台。请确认 CAID 扩展已安装并启用，然后重试。';
       }
     }
   };
@@ -1034,8 +1019,8 @@
   };
 
   // ---------- 通用 background 消息桥 ----------
-  // 与 caidRequestNavigate 同理：扩展页（MAIN world 有 chrome API）直接发消息；
-  // 正则网页（MAIN world 无 chrome API）改派发 __caid_bg_message DOM 事件，由 content.js（ISOLATED world）转发。
+  // 扩展页（MAIN world 有 chrome API）直接发消息；
+  // 正则网页（MAIN world 无 chrome API）改用 postMessage，由 content.js（ISOLATED world）转发。
   // 用途：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等消息。
   function caidSendToBg(msg) {
     try {
@@ -1045,14 +1030,14 @@
       }
     } catch (e) {}
     try {
-      window.dispatchEvent(new CustomEvent('__caid_bg_message', { detail: msg }));
+      window.postMessage({ __caid: true, kind: 'bg_message', msg: msg }, '*');
     } catch (e) {}
   }
 
   // ---------- 有响应的 background 请求桥（Promise 版）----------
   // 扩展页 MAIN world 自带 chrome API → 直连 sendMessage(msg, cb)；
-  // 正则网页 MAIN world 无 chrome.* → 派发 __caid_bg_request（带 reqId），
-  // content.js 转发后回派 __caid_bg_response，按 reqId 匹配 resolve。3s 超时兜底 resolve(null)。
+  // 正则网页 MAIN world 无 chrome.* → 用 postMessage（比 CustomEvent 跨世界更可靠），
+  // content.js 转发后回 postMessage，按 reqId 匹配 resolve。8s 超时兜底 resolve(null)。
   var _bgReqSeq = 0;
   function caidRequestBg(msg) {
     return new Promise(function (resolve) {
@@ -1068,22 +1053,22 @@
       var reqId = 'r' + (++_bgReqSeq) + '_' + Date.now().toString(36);
       var timer = null;
       var onResp = function (e) {
-        var d = e && e.detail;
-        if (!d || d.reqId !== reqId) return;
-        window.removeEventListener('__caid_bg_response', onResp);
+        if (!e.data || !e.data.__caid || e.data.kind !== 'bg_response') return;
+        if (e.data.reqId !== reqId) return;
+        window.removeEventListener('message', onResp);
         if (timer) clearTimeout(timer);
-        resolve(d.resp || null);
+        resolve(e.data.resp || null);
       };
-      window.addEventListener('__caid_bg_response', onResp);
+      window.addEventListener('message', onResp);
       timer = setTimeout(function () {
-        window.removeEventListener('__caid_bg_response', onResp);
+        window.removeEventListener('message', onResp);
         console.warn('[CAID-R] caidRequestBg 超时（8s 无响应）:', msg && msg.type);
         resolve(null);
       }, 8000);
       try {
-        window.dispatchEvent(new CustomEvent('__caid_bg_request', { detail: { reqId: reqId, msg: msg } }));
+        window.postMessage({ __caid: true, kind: 'bg_request', reqId: reqId, msg: msg }, '*');
       } catch (e) {
-        window.removeEventListener('__caid_bg_response', onResp);
+        window.removeEventListener('message', onResp);
         if (timer) clearTimeout(timer);
         resolve(null);
       }

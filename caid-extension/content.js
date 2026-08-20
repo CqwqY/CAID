@@ -210,27 +210,28 @@
     }
   });
 
-  // 通用 background 消息桥：MAIN world（caid-copilot.js，无 chrome.*）通过 DOM 事件转发任意消息给 background。
+  // 通用 background 消息桥：MAIN world（caid-copilot.js，无 chrome.*）通过 postMessage 转发任意消息给 background。
   // caidSendToBg 在扩展页直连 chrome.runtime.sendMessage（content.js 不运行），
-  // 在正则网页派发 __caid_bg_message 事件 → 本监听器转发。
+  // 在正则网页 postMessage → 本监听器转发。
   // 消息类型：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等。
-  window.addEventListener('__caid_bg_message', function (e) {
-    var msg = e && e.detail;
-    if (!msg || !msg.type) return;
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'bg_message' || !d.msg || !d.msg.type) return;
     try {
       if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
-      chrome.runtime.sendMessage(msg);
+      chrome.runtime.sendMessage(d.msg);
     } catch (err) {
       console.error('[CAID-content] 转发 bg_message 失败:', err.message || err);
     }
   });
 
   // 有响应的请求桥：MAIN world 需要 background 返回数据时（如读取长期记忆 CAID_MEMORY_GET），
-  // 派发 __caid_bg_request（detail: {reqId, msg}）；本监听器转发并拿到 sendResponse 后
-  // 回派 __caid_bg_response（detail: {reqId, resp}），MAIN world 按 reqId 匹配 resolve。
-  window.addEventListener('__caid_bg_request', function (e) {
-    var d = e && e.detail;
-    if (!d || !d.msg || !d.msg.type || !d.reqId) return;
+  // 用 postMessage（比 CustomEvent 跨 MAIN/ISOLATED 世界更可靠）。
+  // MAIN world → postMessage({__caid, kind:'bg_request', reqId, msg}) → 本监听器转发到 background
+  // → sendResponse → 回 postMessage({__caid, kind:'bg_response', reqId, resp}) → MAIN world 按 reqId 匹配 resolve。
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'bg_request' || !d.msg || !d.msg.type || !d.reqId) return;
     try {
       if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
       chrome.runtime.sendMessage(d.msg, function (resp) {
@@ -238,10 +239,11 @@
           console.warn('[CAID-content] bg_request 转发失败:', chrome.runtime.lastError.message);
           resp = null;
         }
-        try { window.dispatchEvent(new CustomEvent('__caid_bg_response', { detail: { reqId: d.reqId, resp: resp || null } })); } catch (e2) {}
+        try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: resp || null }, '*'); } catch (e2) {}
       });
     } catch (err) {
       console.error('[CAID-content] 转发 bg_request 失败:', err.message || err);
+      try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*'); } catch (e3) {}
     }
   });
 
