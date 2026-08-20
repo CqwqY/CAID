@@ -960,13 +960,13 @@
         // 心跳：刷新 AGENT_ACTIVE 的 ts，保证 tabs.onUpdated 的 linked 判定恒新鲜——
         // 否则长任务（>5min）后 AGENT_ACTIVE 过期，同页跳转/新标签的 auto-follow 会静默失效（"无反应"）。
         caidSendToBg({ type: 'AGENT_ACTIVE', goal: h.goal, fromUrl: h.fromUrl });
-        window.dispatchEvent(new CustomEvent('__caid_store_handoff', { detail: h }));
+        window.postMessage({ __caid: true, kind: 'store_handoff', handoff: h }, '*');
         caidSendToBg({ type: 'CHECKPOINT', handoff: h });  // 扩展页直连 background（content.js 不运行时兜底）
       }
     } catch (e) {}
   }
   function clearCheckpoint() {
-    try { window.dispatchEvent(new CustomEvent('__caid_clear_handoff')); } catch (e) {}
+    try { window.postMessage({ __caid: true, kind: 'clear_handoff' }, '*'); } catch (e) {}
     caidSendToBg({ type: 'CLEAR_CHECKPOINT' });
   }
 
@@ -1435,7 +1435,7 @@
     var model = (m && m.value) ? m.value.trim() : 'qwen3.5-plus';
     var baseUrl = (u && u.value) ? u.value.trim() : '';
     var cfg = { model: model, baseURL: baseUrl, apiKey: useFree ? 'NA' : apiKey, custom: !useFree };
-    try { window.dispatchEvent(new CustomEvent('__caid_save_settings', { detail: cfg })); } catch (e) {}
+    try { window.postMessage({ __caid: true, kind: 'save_settings', cfg: cfg }, '*'); } catch (e) {}
     // 立即更新本会话配置，便于当前副驾恢复后使用
     window.__CAID_LLM_CFG = cfg;
     if (config) { config.model = cfg.model; config.baseURL = cfg.baseURL; config.apiKey = cfg.apiKey; }

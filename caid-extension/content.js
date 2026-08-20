@@ -21,20 +21,32 @@
   try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('newtab.html#settings'); } catch (e) {}
 
   // ---------- storage 双路径：直接访问优先，失败时经 background 代理 ----------
-  // 某些场景下（如扩展 context invalidated 后恢复、特定页面上下文）content script 的
-  // chrome.storage.session 会报 "Access to storage is not allowed from this context"，
+  // chrome.storage.session 在某些页面上下文会报 "Access to storage is not allowed from this context"，
   // 此时回退到 sendMessage 让 background（service worker，永远有完整权限）代为读写。
+  // ⚠️ 关键：chrome.storage.session.X 的回调是异步的，不能在回调里 throw（逃逸 try-catch），
+  // 必须在回调内直接走 fallback。
   function sessionGet(keys) {
     return new Promise(function (resolve) {
-      try {
-        if (chrome && chrome.storage && chrome.storage.session) {
+      if (chrome && chrome.storage && chrome.storage.session) {
+        try {
           chrome.storage.session.get(keys, function (got) {
-            if (chrome.runtime.lastError) throw new Error(chrome.runtime.lastError.message);
-            resolve(got);
+            if (chrome.runtime.lastError) {
+              console.log('[CAID-content] session.get 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
+              try {
+                chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
+                  resolve(resp && resp.data || {});
+                });
+              } catch (e2) { resolve({}); }
+            } else { resolve(got); }
           });
-        } else { throw new Error('no-session'); }
-      } catch (e) {
-        console.log('[CAID-content] session.get 直接访问失败, 回退 background 代理:', e.message || e);
+        } catch (e) {
+          try {
+            chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
+              resolve(resp && resp.data || {});
+            });
+          } catch (e2) { resolve({}); }
+        }
+      } else {
         try {
           chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
             resolve(resp && resp.data || {});
@@ -45,15 +57,22 @@
   }
   function sessionSet(data) {
     return new Promise(function (resolve) {
-      try {
-        if (chrome && chrome.storage && chrome.storage.session) {
+      if (chrome && chrome.storage && chrome.storage.session) {
+        try {
           chrome.storage.session.set(data, function () {
-            if (chrome.runtime.lastError) throw new Error(chrome.runtime.lastError.message);
-            resolve(true);
+            if (chrome.runtime.lastError) {
+              console.log('[CAID-content] session.set 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
+              try {
+                chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+              } catch (e2) { resolve(false); }
+            } else { resolve(true); }
           });
-        } else { throw new Error('no-session'); }
-      } catch (e) {
-        console.log('[CAID-content] session.set 直接访问失败, 回退 background 代理:', e.message || e);
+        } catch (e) {
+          try {
+            chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+          } catch (e2) { resolve(false); }
+        }
+      } else {
         try {
           chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
         } catch (e2) { resolve(false); }
@@ -62,14 +81,22 @@
   }
   function sessionRemove(keys) {
     return new Promise(function (resolve) {
-      try {
-        if (chrome && chrome.storage && chrome.storage.session) {
+      if (chrome && chrome.storage && chrome.storage.session) {
+        try {
           chrome.storage.session.remove(keys, function () {
-            resolve(true);
+            if (chrome.runtime.lastError) {
+              console.log('[CAID-content] session.remove 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
+              try {
+                chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+              } catch (e2) { resolve(false); }
+            } else { resolve(true); }
           });
-        } else { throw new Error('no-session'); }
-      } catch (e) {
-        console.log('[CAID-content] session.remove 直接访问失败, 回退 background 代理:', e.message || e);
+        } catch (e) {
+          try {
+            chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+          } catch (e2) { resolve(false); }
+        }
+      } else {
         try {
           chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
         } catch (e2) { resolve(false); }
@@ -152,24 +179,25 @@
     }
   });
 
-  // MAIN world 的副驾内联设置表单通过此事件把配置写入扩展存储
+  // MAIN world 的副驾内联设置表单通过 postMessage 把配置写入扩展存储
   // （MAIN world 无 chrome.*，由 ISOLATED world 用 chrome.storage.local 写入）
-  window.addEventListener('__caid_save_settings', function (e) {
-    var cfg = e && e.detail;
-    if (!cfg) return;
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'save_settings' || !d.cfg) return;
     try {
       if (!chrome || !chrome.storage || !chrome.storage.local) return;
-      console.log('[CAID-content] 收到 __caid_save_settings，写入 chrome.storage.local.caidLlm');
-      chrome.storage.local.set({ caidLlm: cfg });
+      console.log('[CAID-content] 收到 save_settings，写入 chrome.storage.local.caidLlm');
+      chrome.storage.local.set({ caidLlm: d.cfg });
     } catch (ex) {
       console.warn('[CAID-content] save_settings failed:', ex.message || ex);
     }
   });
 
-  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具通过此事件把断点续传上下文传给 ISOLATED world 写入 storage.session
-  window.addEventListener('__caid_store_handoff', function (e) {
-    var h = e && e.detail;
-    if (!h) return;
+  // MAIN world 的 navigate_to_url / open_url_in_new_tab 工具通过 postMessage 把断点续传上下文传给 ISOLATED world 写入 storage.session
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'store_handoff' || !d.handoff) return;
+    var h = d.handoff;
     console.log('[CAID-R] store_handoff: 写入续传上下文, goal=', h.goal, ' toUrl=', h.toUrl);
     sessionSet({ caidHandoff: h }).then(function () {
       console.log('[CAID-R] store_handoff: 写入完成');
@@ -247,8 +275,10 @@
     }
   });
 
-  // MAIN world 的副驾在任务正常结束 / 被强行终止时派发此事件，清除续传上下文，避免误触发
-  window.addEventListener('__caid_clear_handoff', function () {
+  // MAIN world 的副驾在任务正常结束 / 被强行终止时通过 postMessage 清除续传上下文
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'clear_handoff') return;
     sessionRemove(['caidHandoff']).catch(function () {});
   });
 
