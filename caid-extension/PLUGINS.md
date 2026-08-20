@@ -80,6 +80,7 @@ CAID.plugin({
 | `api.importData(data)` | 导入本插件存储数据（只允许写入本插件命名空间，超 500KB 拒绝） |
 | `api.showNotification(opts)` | 浏览器原生通知。`opts`：`{ title, body }`。**每插件 10 秒限 1 条**，防刷屏 |
 | `api.registerShortcut(key, cb)` | 注册**页面内**快捷键（降级方案，见下文「快捷键」） |
+| `api.setSize(opts?)` | **主动调整自身渲染尺寸**。`opts`：`{ height?, width?, minHeight?, maxHeight? }`（单位 px，均可选）。见下文「调整渲染尺寸」 |
 
 ### 沙箱说明（轻量）
 
@@ -171,6 +172,54 @@ CAID.plugin({
 支持语法：围栏代码块、行内代码、标题 1-4、有序/无序列表、引用块、表格、分隔线、加粗、斜体、链接。
 
 > **安全说明**：`api.md` 内部先转义再替换，链接只放行 `http(s)` 协议（`javascript:` 等一律不会渲染成可点击链接），可以放心把**不可信文本**（如用户输入、远程返回的内容）交给它渲染。**不要**用它返回的 HTML 再拼字符串二次插入。
+
+---
+
+## 调整渲染尺寸（`api.setSize`）
+
+插件容器（`iframe`）默认 `min-height: 60px`，内容多高自动撑多高（ResizeObserver 实时上报）。当你需要**主动控制**尺寸时调用 `api.setSize`：
+
+```js
+CAID.plugin({
+  id: 'resize-demo',
+  name: '尺寸演示',
+  icon: 'maximize-2',
+  mount(api) {
+    api.setSize({ height: 200 });             // 固定高度 200px，内容溢出会滚动
+    api.setSize({ minHeight: 100, maxHeight: 400 }); // 弹性高度 100-400px
+    api.setSize({ width: 320 });              // 固定宽度 320px（默认撑满父容器）
+    api.setSize({});                           // 全部留空，等于无操作
+
+    // 也可以动态调整：根据按钮点击切换高度
+    const box = api.el('div', { className: 'plugin-row' });
+    api.container.appendChild(box);
+    box.textContent = '点按钮切换高度';
+    api.container.appendChild(api.el('button', {
+      text: '切换到 400px',
+      onClick: (e) => {
+        api.setSize({ height: 400 });
+        e.target.textContent = '已切到 400px';
+      }
+    }));
+  }
+});
+```
+
+### 参数说明
+
+| 参数 | 类型 | 范围 | 说明 |
+|------|------|------|------|
+| `height` | number \| undefined | 40-2000 | 固定高度（px） |
+| `width` | number \| undefined | 80-2000 | 固定宽度（px） |
+| `minHeight` | number \| undefined | 40-2000 | 最小高度（px） |
+| `maxHeight` | number \| undefined | 80-2000 | 最大高度（px） |
+
+### 注意事项
+
+- **只对 `mount` / `panel` 视图生效**。`modal` 视图尺寸由弹窗容器决定，调用无效。
+- 数值会自动 clamp 到安全范围，传 `null` 或 `undefined` 不会覆盖已有值。
+- **自动尺寸 vs 手动尺寸**：不调用 `api.setSize` 时，ResizeObserver 会自动按内容高度调整；一旦调用了 `height`，自动调整对该字段失效（你接管了）。
+- 想恢复自动：调用 `api.setSize({ height: undefined })` 无效（仍保持原值），如需还原请刷新插件或用 `minHeight` 代替固定 `height`。
 
 ---
 

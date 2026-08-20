@@ -1023,7 +1023,35 @@
   // 正则网页（MAIN world 无 chrome API）改用 postMessage，由 content.js（ISOLATED world）转发。
   // 用途：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等消息。
   function caidSendToBg(msg) {
+    // 扩展页：关键存储操作直接写入，不依赖 SW 存活
     try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        if (msg && msg.type === 'CHECKPOINT' && msg.handoff) {
+          try { chrome.storage.session.set({ caidHandoff: msg.handoff }); } catch (e) {}
+          // 同时写入持久化 agent 跟踪表（防止 SW 丢失 activeAgentTabs Map）
+          try {
+            chrome.storage.session.get(['caidAgentTabs'], function (got) {
+              var tabs = (got && got.caidAgentTabs) || {};
+              // 注意：此处无 tabId，仅更新 handoff 关联的 agent 状态
+              // 实际 AGENT_ACTIVE 仍走 caidSendToBg 消息让 SW 记录
+            });
+          } catch (e2) {}
+        } else if (msg && msg.type === 'CLEAR_CHECKPOINT') {
+          try { chrome.storage.session.remove(['caidHandoff']); } catch (e) {}
+        } else if (msg && msg.type === 'CAID_MEMORY_ADD_HISTORY') {
+          try {
+            chrome.storage.local.get('caidMemory', function (got) {
+              var m = (got && got.caidMemory) || { facts: [], history: [] };
+              if (!Array.isArray(m.history)) m.history = [];
+              var hItem = { goal: String(msg.goal || ''), result: String(msg.result || ''), url: String(msg.url || ''), ts: Date.now() };
+              if (msg.summary) hItem.summary = String(msg.summary);
+              if (m.history.length >= 50) m.history.shift();
+              m.history.push(hItem);
+              chrome.storage.local.set({ caidMemory: m });
+            });
+          } catch (e3) {}
+        }
+      }
       if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
         chrome.runtime.sendMessage(msg);
         return;
@@ -1035,14 +1063,115 @@
   }
 
   // ---------- 有响应的 background 请求桥（Promise 版）----------
-  // 扩展页 MAIN world 自带 chrome API → 直连 sendMessage(msg, cb)；
+  // 扩展页 MAIN world 自带 chrome API → 存储类操作直接用 chrome.storage.local，
+  // 网络/导航类操作仍走 chrome.runtime.sendMessage（需 SW 扩展网络特权）；
   // 正则网页 MAIN world 无 chrome.* → 用 postMessage（比 CustomEvent 跨世界更可靠），
   // content.js 转发后回 postMessage，按 reqId 匹配 resolve。8s 超时兜底 resolve(null)。
   var _bgReqSeq = 0;
+
+  // 扩展页直接处理存储操作（不走 SW，避免 MV3 SW 被销毁导致桥接失败）
+  function _tryDirectStorage(msg) {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return null;
+    if (!msg || !msg.type) return null;
+    var op = msg.type;
+    if (op === 'CAID_TODO_OP') {
+      return new Promise(function (resolve) {
+        var tAction = String(msg.action || '').trim();
+        chrome.storage.local.get(['todos'], function (got) {
+          if (chrome.runtime.lastError) { resolve({ ok: false, error: chrome.runtime.lastError.message }); return; }
+          var list = Array.isArray(got && got.todos) ? got.todos : [];
+          var result = { ok: true, action: tAction };
+          if (tAction === 'add') {
+            var tText = String(msg.text || '').trim().slice(0, 200);
+            if (!tText) { resolve({ ok: false, error: 'text required for add' }); return; }
+            var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: String(msg.priority || 'mid'), createdAt: Date.now() };
+            list.unshift(item); result.todo = item;
+          } else if (tAction === 'complete') {
+            var hit = null;
+            for (var i = 0; i < list.length; i++) { if (String(list[i].id) === String(msg.id || '')) { list[i].done = !list[i].done; hit = list[i]; break; } }
+            if (!hit) { resolve({ ok: false, error: 'todo not found' }); return; }
+            result.todo = hit;
+          } else if (tAction === 'delete') {
+            var before = list.length;
+            list = list.filter(function (t) { return String(t.id) !== String(msg.id || ''); });
+            if (list.length === before) { resolve({ ok: false, error: 'todo not found' }); return; }
+          } else if (tAction === 'clear_done') {
+            list = list.filter(function (t) { return !t.done; });
+          } else if (tAction !== 'list') {
+            resolve({ ok: false, error: 'unknown action: ' + tAction }); return;
+          }
+          result.todos = list; result.total = list.length; result.done = list.filter(function (t) { return t.done; }).length;
+          chrome.storage.local.set({ todos: list }, function () {
+            if (chrome.runtime.lastError) { resolve({ ok: false, error: chrome.runtime.lastError.message }); return; }
+            resolve(result);
+          });
+        });
+      });
+    }
+    if (op === 'CAID_MEMORY_GET') {
+      return new Promise(function (resolve) {
+        chrome.storage.local.get('caidMemory', function (got) {
+          var m = (got && got.caidMemory) || { facts: [], history: [] };
+          if (!Array.isArray(m.facts)) m.facts = [];
+          if (!Array.isArray(m.history)) m.history = [];
+          resolve({ ok: true, memory: m });
+        });
+      });
+    }
+    if (op === 'CAID_MEMORY_ADD_FACT' || op === 'CAID_MEMORY_DEL_FACT' || op === 'CAID_MEMORY_ADD_HISTORY' || op === 'CAID_MEMORY_CLEAR_ALL') {
+      return new Promise(function (resolve) {
+        chrome.storage.local.get('caidMemory', function (got) {
+          var m = (got && got.caidMemory) || { facts: [], history: [] };
+          if (!Array.isArray(m.facts)) m.facts = [];
+          if (!Array.isArray(m.history)) m.history = [];
+          if (op === 'CAID_MEMORY_ADD_FACT') {
+            var ft = String(msg.fact || '').trim();
+            if (ft && !m.facts.some(function (f) { return String(f && f.text || '') === ft; })) {
+              m.facts.push({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: ft, ts: Date.now() });
+            }
+          } else if (op === 'CAID_MEMORY_DEL_FACT') {
+            var kw = String(msg.keyword || '').trim().toLowerCase();
+            m.facts = m.facts.filter(function (f) { return String(f && f.text || '').toLowerCase().indexOf(kw) === -1; });
+          } else if (op === 'CAID_MEMORY_ADD_HISTORY') {
+            var hItem = { goal: String(msg.goal || ''), result: String(msg.result || ''), url: String(msg.url || ''), ts: Date.now() };
+            if (msg.summary) hItem.summary = String(msg.summary);
+            if (m.history.length >= 50) m.history.shift();
+            m.history.push(hItem);
+          } else if (op === 'CAID_MEMORY_CLEAR_ALL') {
+            m = { facts: [], history: [] };
+          }
+          chrome.storage.local.set({ caidMemory: m }, function () { resolve({ ok: true, memory: m }); });
+        });
+      });
+    }
+    if (op === 'CAID_PLUGIN_SAVE') {
+      return new Promise(function (resolve) {
+        chrome.storage.local.get('caidPlugins', function (got) {
+          var plugins = (got && got.caidPlugins) || {};
+          var p = msg.plugin || {};
+          if (p && p.id) plugins[p.id] = p;
+          chrome.storage.local.set({ caidPlugins: plugins }, function () { resolve({ ok: true }); });
+        });
+      });
+    }
+    if (op === 'CAID_LAYOUT_SAVE') {
+      return new Promise(function (resolve) {
+        chrome.storage.local.set({ caidLayout: msg.layout }, function () {
+          if (chrome.runtime.lastError) { resolve({ ok: false, error: chrome.runtime.lastError.message }); return; }
+          resolve({ ok: true });
+        });
+      });
+    }
+    return null;
+  }
+
   function caidRequestBg(msg) {
     return new Promise(function (resolve) {
       try {
         if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+          // 扩展页：存储类操作直接走 chrome.storage.local（零延迟、无 SW 依赖）
+          var directP = _tryDirectStorage(msg);
+          if (directP) { directP.then(resolve); return; }
           chrome.runtime.sendMessage(msg, function (resp) {
             if (chrome.runtime.lastError) { console.warn('[CAID-R] caidRequestBg lastError:', chrome.runtime.lastError.message); resolve(null); }
             else resolve(resp || null);

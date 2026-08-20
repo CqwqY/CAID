@@ -1258,11 +1258,15 @@ function renderTodos(filter = '') {
   list.innerHTML = items.map(t => `
     <div class="todo-item ${t.done ? 'done' : ''}" data-id="${t.id}">
       <div class="todo-check"><i data-lucide="check"></i></div>
-      <div class="todo-text">${escapeHtml(t.text)}</div>
+      <div class="todo-text" data-full="${escapeHtml(t.text)}">${escapeHtml(t.text)}</div>
       <span class="todo-priority ${t.priority||'mid'}">${pLabel[t.priority||'mid']}</span>
       <button class="todo-del" title="删除"><i data-lucide="x"></i></button>
     </div>
   `).join('');
+  // 检测哪些待办被截断（scrollHeight > clientHeight），加上 ellipsis 提示
+  list.querySelectorAll('.todo-text').forEach(el => {
+    if (el.scrollHeight > el.clientHeight + 1) el.classList.add('ellipsis');
+  });
   list.querySelectorAll('.todo-item').forEach(el => {
     const id = el.dataset.id;
     const t = state.todos.find(x => x.id === id);
@@ -1280,8 +1284,57 @@ function renderTodos(filter = '') {
       renderTodos(filter);
       updateCounts();
     });
+    // 点击文本（被截断时）打开详情弹窗
+    el.querySelector('.todo-text').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTodoDetail(t);
+    });
   });
   refreshIcons();
+}
+
+// 待办详情弹窗：展示完整文本 + 优先级 + 创建时间 + 完成/删除按钮
+let _todoDetailCurrentId = null;
+function openTodoDetail(t) {
+  if (!t) return;
+  _todoDetailCurrentId = t.id;
+  const dlg = caidQs('#todoDetailDlg');
+  if (!dlg) return;
+  const pLabel = { high:'高', mid:'中', low:'低' };
+  const pClass = t.priority || 'mid';
+  const prioEl = caidQs('#todoDetailPriority');
+  if (prioEl) { prioEl.className = 'todo-priority ' + pClass; prioEl.textContent = pLabel[pClass] || '中'; }
+  caidQs('#todoDetailBody').textContent = t.text;
+  // 创建时间元信息
+  const meta = caidQs('#todoDetailMeta');
+  if (meta) {
+    const created = t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN') : '';
+    meta.textContent = (t.done ? '已完成' : '未完成') + (created ? ' · 创建于 ' + created : '');
+  }
+  // 完成/取消完成按钮文案
+  const toggleBtn = caidQs('#todoDetailToggle');
+  if (toggleBtn) toggleBtn.textContent = t.done ? '取消完成' : '完成';
+  // 关闭逻辑
+  const close = () => { dlg.classList.remove('open'); _todoDetailCurrentId = null; };
+  caidQs('#todoDetailCloseBtn').onclick = close;
+  dlg.onclick = (e) => { if (e.target === dlg) close(); };
+  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  // 完成/删除按钮
+  toggleBtn.onclick = () => {
+    const cur = state.todos.find(x => x.id === _todoDetailCurrentId);
+    if (cur) { cur.done = !cur.done; persistTodos(); renderTodos(); }
+    close();
+  };
+  caidQs('#todoDetailDelete').onclick = () => {
+    const id = _todoDetailCurrentId;
+    state.todos = state.todos.filter(x => x.id !== id);
+    persistTodos();
+    renderTodos();
+    updateCounts();
+    close();
+  };
+  dlg.classList.add('open');
 }
 caidQs('#addTodoBtn').addEventListener('click', () => {
   const v = caidQs('#todoInput').value.trim();
@@ -2036,8 +2089,15 @@ window.addEventListener('message', function (ev) {
   } else if (d.type === 'CAID_TOAST') {
     if (typeof toast === 'function') toast(d.msg);
   } else if (d.type === 'CAID_PLUGIN_SIZE') {
+    // 插件主动 setSize 或自动 reportSize（ResizeObserver）都走这条路径
     const f = pluginFrameByWin.get(src);
-    if (f) f.style.height = Math.max(60, d.height) + 'px';
+    if (!f) return;
+    // mode=modal：尺寸由弹窗容器决定，忽略插件传来的尺寸指令
+    if (f.dataset.mode === 'modal') return;
+    if (typeof d.height === 'number') f.style.height = Math.max(40, d.height) + 'px';
+    if (typeof d.width === 'number') f.style.width = Math.max(80, d.width) + 'px';
+    if (typeof d.minHeight === 'number') f.style.minHeight = Math.max(40, d.minHeight) + 'px';
+    if (typeof d.maxHeight === 'number') f.style.maxHeight = Math.max(80, d.maxHeight) + 'px';
   } else if (d.type === 'CAID_PLUGIN_MODAL_CLOSE') {
     // 插件在 modal 视图内调用 api.closeModal()：按帧归属关闭对应弹窗
     const f = pluginFrameByWin.get(src);

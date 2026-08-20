@@ -106,6 +106,19 @@
       },
       // 关闭当前弹窗（仅在 modal 视图内调用有效）
       closeModal: function () { post({ type: 'CAID_PLUGIN_MODAL_CLOSE' }); },
+      // 主动调整自身渲染尺寸（单位 px，可选 height / width / minHeight / maxHeight）
+      // 父页面据此设置 iframe 的 style，覆盖默认 60px min-height。
+      // 仅对 mount / panel 视图生效；modal 视图尺寸由弹窗容器决定，调用无效。
+      setSize: function (opts) {
+        var o = opts || {};
+        post({
+          type: 'CAID_PLUGIN_SIZE',
+          height: typeof o.height === 'number' ? Math.max(40, Math.min(2000, o.height)) : null,
+          width: typeof o.width === 'number' ? Math.max(80, Math.min(2000, o.width)) : null,
+          minHeight: typeof o.minHeight === 'number' ? Math.max(40, Math.min(2000, o.minHeight)) : null,
+          maxHeight: typeof o.maxHeight === 'number' ? Math.max(80, Math.min(2000, o.maxHeight)) : null
+        });
+      },
       setInterval: function (fn, ms) { var id = setInterval(fn, ms); timers.add(id); return id; },
       setTimeout: function (fn, ms) { var id = setTimeout(fn, ms); timers.add(id); return id; },
       onUnmount: function (fn) { if (typeof fn === 'function') cleanups.push(fn); },

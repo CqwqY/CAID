@@ -1821,6 +1821,22 @@ a:hover { text-decoration: underline; }
 .todo-text {
   flex: 1;
   font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  word-break: break-word;
+}
+.todo-item .todo-text.ellipsis::after {
+  content: '展开';
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  -webkit-box-orient: vertical;
 }
 .todo-priority {
   font-size: 10px;
@@ -1915,6 +1931,65 @@ a:hover { text-decoration: underline; }
 .caid-confirm-btn.danger:hover { background: #ff6f89; }
 @keyframes caidConfirmFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes caidConfirmPop { from { transform: scale(.94) translateY(6px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+/* ============ 待办详情弹窗 ============ */
+.todo-detail-backdrop {
+  position: fixed; inset: 0; z-index: 4800;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center;
+  animation: caidConfirmFade .16s ease;
+}
+.todo-detail-backdrop.open { display: flex; }
+.todo-detail {
+  background: var(--bg2, #12151f);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+  width: min(520px, calc(100vw - 32px));
+  max-height: 80vh;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: caidConfirmPop .18s cubic-bezier(.2,.9,.3,1.15);
+}
+.todo-detail-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--rule, rgba(255,255,255,0.08));
+}
+.todo-detail-head .todo-priority { font-size: 11px; padding: 3px 8px; }
+.todo-detail-title {
+  flex: 1; font-size: 13px; font-weight: 600; color: var(--muted, #8b93a7);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.todo-detail-body {
+  padding: 16px 20px; font-size: 14px; line-height: 1.7;
+  color: var(--ink, #e6e8f0); white-space: pre-wrap; word-break: break-word;
+  overflow-y: auto; max-height: 60vh;
+}
+.todo-detail-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 16px; border-top: 1px solid var(--rule, rgba(255,255,255,0.08));
+}
+.todo-detail-meta { font-size: 11px; color: var(--muted, #8b93a7); }
+.todo-detail-actions { display: flex; gap: 8px; }
+.todo-detail-btn {
+  padding: 6px 14px; border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--rule, rgba(255,255,255,0.08));
+  background: var(--bg3, #1b1f2c); color: var(--ink, #e6e8f0);
+  font-size: 12px; cursor: pointer; transition: background .15s, transform .1s;
+}
+.todo-detail-btn:hover { background: rgba(255,255,255,0.08); }
+.todo-detail-btn:active { transform: scale(.97); }
+.todo-detail-btn.primary { background: var(--accent2, #3dd68c); border-color: var(--accent2, #3dd68c); color: #0a0b14; }
+.todo-detail-btn.primary:hover { background: #4ee89d; }
+.todo-detail-btn.danger { background: var(--danger, #ff5c7a); border-color: var(--danger, #ff5c7a); color: #fff; }
+.todo-detail-btn.danger:hover { background: #ff6f89; }
+.todo-detail-close {
+  background: none; border: none; color: var(--muted, #8b93a7);
+  cursor: pointer; padding: 4px; border-radius: 8px; display: inline-flex;
+}
+.todo-detail-close:hover { color: var(--ink, #e6e8f0); background: rgba(255,255,255,0.06); }
+.todo-detail-close svg { width: 16px; height: 16px; }
 
 /* ============ Modal ============ */
 .modal-backdrop {
@@ -2958,7 +3033,77 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
+<!-- Todo Detail Dialog: 点击被截断的待办卡片展示完整内容 -->
+<div class="todo-detail-backdrop" id="todoDetailDlg">
+  <div class="todo-detail" role="dialog" aria-modal="true">
+    <div class="todo-detail-head">
+      <span class="todo-priority" id="todoDetailPriority">中</span>
+      <span class="todo-detail-title" id="todoDetailTitle">待办详情</span>
+      <button class="todo-detail-close" id="todoDetailCloseBtn" title="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="todo-detail-body" id="todoDetailBody"></div>
+    <div class="todo-detail-foot">
+      <span class="todo-detail-meta" id="todoDetailMeta"></span>
+      <div class="todo-detail-actions">
+        <button type="button" class="todo-detail-btn primary" id="todoDetailToggle">完成</button>
+        <button type="button" class="todo-detail-btn danger" id="todoDetailDelete">删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/err-report.js"></script>
 <script src="newtab-main.js"></script>
+<!-- CAID 副驾 bootstrap（扩展页 newtab 专用）
+     chrome.scripting.executeScript 无法注入扩展自己的 chrome-extension:// 页面，
+     故 newtab 页面自行加载副驾脚本 + 设置全局变量。
+     caid-copilot.js 的 caidNet/caidRequestBg 已检测 chrome.runtime 直连 background，
+     无需 content.js 桥接（扩展页 MAIN world 自带 chrome API）。 -->
+<script>
+(function () {
+  if (window.__CAID_NEWTAB_BOOTSTRAP) return;
+  window.__CAID_NEWTAB_BOOTSTRAP = true;
+  window.__CAID_OPTIONS_URL = chrome.runtime.getURL('newtab.html#settings');
+
+  (async function () {
+    try {
+      // 1) 读取 LLM 配置（与 bootCopilot 的 chrome.storage.local.get(['caidLlm']) 一致）
+      const { caidLlm } = await chrome.storage.local.get('caidLlm');
+      window.__CAID_LLM_CFG = caidLlm || {};
+      console.log('[CAID] newtab bootstrap: LLM 配置已加载, isCustom=', !!(caidLlm && caidLlm.baseURL && caidLlm.apiKey));
+
+      // 2) 读取 handoff（仅消费显式导航意图：toUrl 非空，来自 navigate_to_url/open_url_in_new_tab）
+      //    checkpoint/auto 类 handoff（toUrl=null）不消费——避免 agent 在别的 tab 运行时误续跑
+      const { caidHandoff } = await chrome.storage.session.get('caidHandoff');
+      if (caidHandoff && caidHandoff.toUrl && (!caidHandoff.ts || Date.now() - caidHandoff.ts <= 120000)) {
+        window.__CAID_HANDOFF = caidHandoff;
+        chrome.storage.session.remove('caidHandoff');
+        console.log('[CAID] newtab bootstrap: 消费 handoff, goal=', caidHandoff.goal);
+      } else {
+        console.log('[CAID] newtab bootstrap: 无有效 handoff（正常启动，非续传）');
+      }
+
+      // 3) 动态加载副驾脚本（zod-v4 已由 <script> 标签加载，需补 page-agent + caid-copilot）
+      await new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'lib/page-agent.headless.js';
+        s.onload = resolve;
+        s.onerror = function () { reject(new Error('page-agent.headless.js 加载失败')); };
+        document.head.appendChild(s);
+      });
+      await new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'caid-copilot.js';
+        s.onload = resolve;
+        s.onerror = function () { reject(new Error('caid-copilot.js 加载失败')); };
+        document.head.appendChild(s);
+      });
+      console.log('[CAID] newtab bootstrap: 副驾脚本全部加载完成');
+    } catch (e) {
+      console.warn('[CAID] newtab bootstrap 失败:', e && e.message || e);
+    }
+  })();
+})();
+</script>
 </body>
 </html>

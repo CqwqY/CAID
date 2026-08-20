@@ -3,6 +3,28 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.3.5] - 2026-08-20
+
+### 修复
+- **扩展页副驾注入失败**（`bootCopilot failed: Cannot access contents of url "chrome-extension://..."`）：
+  - 根因：`chrome.scripting.executeScript` 无法注入扩展自身的 `chrome-extension://` 页面（newtab.html）。
+  - 解决：newtab 页面新增 **bootstrap 脚本**，自行按序加载 `page-agent.headless.js` → `caid-copilot.js`，读取 `chrome.storage.local.caidLlm` → `window.__CAID_LLM_CFG`、`chrome.storage.session.caidHandoff` → `window.__CAID_HANDOFF`，完全绕过 `executeScript`。
+  - `background.js` 的 `tabs.onUpdated` 对 newtab 不再调 `bootCopilot`、不消费 handoff；`bootCopilot` 跳过逻辑更健壮（先查 `tabUrl` 参数，`tabs.get` 失败时不阻塞；跳过时若携带 handoff 存入 `storage.session` 给 bootstrap 读取）。
+- **待办桥接 `The message port closed before a response was received`**：
+  - 根因：MV3 Service Worker 在 `chrome.storage.local.get` → `chrome.storage.local.set` 之间被 Chrome 销毁，`sendResponse` 永不触发。
+  - 解决：`content.js` 与 `caid-copilot.js` 中所有存储类操作（`CAID_TODO_OP` / `CAID_MEMORY_*` / `CAID_SERVER_*` / `CAID_PLUGIN_SAVE` / `CAID_LAYOUT_SAVE` / `CHECKPOINT` 等）**直接用 `chrome.storage.local`**，完全绕过 SW。`caidRequestBg` 在扩展页先走 `_tryDirectStorage`，网络/导航类才走 `chrome.runtime.sendMessage`；正则网页通过 `postMessage` 让 content.js 直接操作 storage 后回 `bg_response`。
+
+### 新增
+- **插件 `api.setSize(opts)` API**：插件可主动调整自身渲染尺寸，覆盖默认的 `min-height: 60px`。
+  - 入口：`api.setSize({ height?, width?, minHeight?, maxHeight? })`，所有参数可选、数值范围限制在 40-2000px（height/minHeight）和 80-2000px（width/maxHeight）。
+  - 仅对 `mount` / `panel` 视图生效；`modal` 视图尺寸由弹窗容器决定，调用无效。
+  - 父页面 `CAID_PLUGIN_SIZE` 处理器升级：支持 `height` / `width` / `minHeight` / `maxHeight` 四字段；自动 `reportSize`（ResizeObserver）只传 `height`，不会误覆盖其他字段（`typeof === 'number'` 校验）。
+- **待办详情弹窗**：侧边栏待办过长被截断时点击卡片弹窗显示完整内容。
+  - `.todo-text` 加 `-webkit-line-clamp:2` 两行省略；被截断的卡片自动加 `.ellipsis` 类并显示「展开」提示。
+  - 新增 `.todo-detail-*` 全套弹窗样式（backdrop 模糊 + 卡片阴影，与 `caid-confirm` 一致）+ HTML 结构（优先级标签、完整内容、创建时间、完成/删除按钮）。
+  - `renderTodos` 后检测 `scrollHeight > clientHeight` 给被截断的待办加 `.ellipsis` 类；点击 `.todo-text` 调用 `openTodoDetail(t)` 弹窗。
+  - 弹窗支持：Esc 关闭、点击背景关闭、完成/取消完成、删除。
+
 ## [v0.3.3] - 2026-08-20
 
 ### 修复

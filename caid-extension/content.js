@@ -241,13 +241,36 @@
   // 通用 background 消息桥：MAIN world（caid-copilot.js，无 chrome.*）通过 postMessage 转发任意消息给 background。
   // caidSendToBg 在扩展页直连 chrome.runtime.sendMessage（content.js 不运行），
   // 在正则网页 postMessage → 本监听器转发。
-  // 消息类型：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT 等。
+  // 消息类型：AGENT_ACTIVE / AGENT_INACTIVE / CHECKPOINT / CLEAR_CHECKPOINT / CAID_MEMORY_ADD_HISTORY 等。
+  // 关键存储类操作直接在 content.js 处理（content script 有 chrome.storage 权限），不依赖 SW。
   window.addEventListener('message', function (e) {
     var d = e && e.data;
     if (!d || !d.__caid || d.kind !== 'bg_message' || !d.msg || !d.msg.type) return;
+    var msg = d.msg;
+    // ---- 存储类操作：直接在 content.js 处理 ----
+    if (msg.type === 'CHECKPOINT' && msg.handoff) {
+      try { if (chrome && chrome.storage && chrome.storage.session) chrome.storage.session.set({ caidHandoff: msg.handoff }); } catch (e) {}
+    } else if (msg.type === 'CLEAR_CHECKPOINT') {
+      try { if (chrome && chrome.storage && chrome.storage.session) chrome.storage.session.remove(['caidHandoff']); } catch (e) {}
+    } else if (msg.type === 'CAID_MEMORY_ADD_HISTORY') {
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get('caidMemory', function (got) {
+            var m = (got && got.caidMemory) || { facts: [], history: [] };
+            if (!Array.isArray(m.history)) m.history = [];
+            var hItem = { goal: String(msg.goal || ''), result: String(msg.result || ''), url: String(msg.url || ''), ts: Date.now() };
+            if (msg.summary) hItem.summary = String(msg.summary);
+            if (m.history.length >= 50) m.history.shift();
+            m.history.push(hItem);
+            chrome.storage.local.set({ caidMemory: m });
+          });
+        }
+      } catch (e) {}
+    }
+    // ---- 非存储类操作：仍走 SW 转发 ----
     try {
       if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
-      chrome.runtime.sendMessage(d.msg);
+      chrome.runtime.sendMessage(msg);
     } catch (err) {
       console.error('[CAID-content] 转发 bg_message 失败:', err.message || err);
     }
@@ -255,23 +278,213 @@
 
   // 有响应的请求桥：MAIN world 需要 background 返回数据时（如读取长期记忆 CAID_MEMORY_GET），
   // 用 postMessage（比 CustomEvent 跨 MAIN/ISOLATED 世界更可靠）。
-  // MAIN world → postMessage({__caid, kind:'bg_request', reqId, msg}) → 本监听器转发到 background
-  // → sendResponse → 回 postMessage({__caid, kind:'bg_response', reqId, resp}) → MAIN world 按 reqId 匹配 resolve。
+  // 关键优化：存储类操作（CAID_TODO_OP / CAID_MEMORY_* / CAID_SERVER_* / CAID_SESSION_*）
+  // 由 content.js 直接处理（content script 有 chrome.storage 权限），绕过 SW 桥接——
+  // MV3 SW 随时可能被销毁导致 "message port closed before a response was received"。
+  // MAIN world → postMessage({__caid, kind:'bg_request', reqId, msg}) → 本监听器 → 直接操作 storage
+  // → 回 postMessage({__caid, kind:'bg_response', reqId, resp}) → MAIN world 按 reqId 匹配 resolve。
   window.addEventListener('message', function (e) {
     var d = e && e.data;
     if (!d || !d.__caid || d.kind !== 'bg_request' || !d.msg || !d.msg.type || !d.reqId) return;
-    try {
-      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
-      chrome.runtime.sendMessage(d.msg, function (resp) {
-        if (chrome.runtime.lastError) {
-          console.warn('[CAID-content] bg_request 转发失败:', chrome.runtime.lastError.message);
-          resp = null;
-        }
+    var msg = d.msg;
+    var handled = false;
+    // ---- 存储类操作：直接在 content.js 处理，不依赖 SW ----
+    if (msg.type === 'CAID_TODO_OP') {
+      handled = true;
+      var tAction = String(msg.action || '').trim();
+      var doTodoOp = function () {
+        return new Promise(function (resolve) {
+          try {
+            if (!chrome || !chrome.storage || !chrome.storage.local) {
+              resolve({ ok: false, error: 'chrome.storage.local 不可用' });
+              return;
+            }
+            chrome.storage.local.get(['todos'], function (got) {
+              if (chrome.runtime.lastError) {
+                resolve({ ok: false, error: chrome.runtime.lastError.message });
+                return;
+              }
+              var list = Array.isArray(got && got.todos) ? got.todos : [];
+              var result = { ok: true, action: tAction };
+              if (tAction === 'add') {
+                var tText = String(msg.text || '').trim().slice(0, 200);
+                if (!tText) { resolve({ ok: false, error: 'text required for add' }); return; }
+                var tPri = String(msg.priority || 'mid');
+                if (tPri !== 'high' && tPri !== 'mid' && tPri !== 'low') tPri = 'mid';
+                var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: tPri, createdAt: Date.now() };
+                list.unshift(item);
+                result.todo = item;
+              } else if (tAction === 'complete') {
+                var cId = String(msg.id || '');
+                var hit = null;
+                for (var i = 0; i < list.length; i++) { if (String(list[i].id) === cId) { list[i].done = !list[i].done; hit = list[i]; break; } }
+                if (!hit) { resolve({ ok: false, error: 'todo not found: ' + cId }); return; }
+                result.todo = hit;
+              } else if (tAction === 'delete') {
+                var dId = String(msg.id || '');
+                var before = list.length;
+                list = list.filter(function (t) { return String(t.id) !== dId; });
+                if (list.length === before) { resolve({ ok: false, error: 'todo not found: ' + dId }); return; }
+              } else if (tAction === 'clear_done') {
+                list = list.filter(function (t) { return !t.done; });
+              } else if (tAction === 'list') {
+                // list 不需要修改 list
+              } else {
+                resolve({ ok: false, error: 'unknown action: ' + tAction });
+                return;
+              }
+              result.todos = list;
+              result.total = list.length;
+              result.done = list.filter(function (t) { return t.done; }).length;
+              chrome.storage.local.set({ todos: list }, function () {
+                if (chrome.runtime.lastError) { resolve({ ok: false, error: chrome.runtime.lastError.message }); return; }
+                resolve(result);
+              });
+            });
+          } catch (ex) { resolve({ ok: false, error: String(ex && ex.message || ex) }); }
+        });
+      };
+      doTodoOp().then(function (resp) {
         try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: resp || null }, '*'); } catch (e2) {}
       });
-    } catch (err) {
-      console.error('[CAID-content] 转发 bg_request 失败:', err.message || err);
-      try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*'); } catch (e3) {}
+    } else if (msg.type === 'CAID_MEMORY_GET') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.get('caidMemory', function (got) {
+          var m = (got && got.caidMemory) || { facts: [], history: [] };
+          if (!Array.isArray(m.facts)) m.facts = [];
+          if (!Array.isArray(m.history)) m.history = [];
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true, memory: m } }, '*');
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    } else if (msg.type === 'CAID_MEMORY_ADD_FACT' || msg.type === 'CAID_MEMORY_DEL_FACT' ||
+               msg.type === 'CAID_MEMORY_ADD_HISTORY' || msg.type === 'CAID_MEMORY_CLEAR_ALL') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.get('caidMemory', function (got) {
+          var m = (got && got.caidMemory) || { facts: [], history: [] };
+          if (!Array.isArray(m.facts)) m.facts = [];
+          if (!Array.isArray(m.history)) m.history = [];
+          if (msg.type === 'CAID_MEMORY_ADD_FACT') {
+            var factText = String(msg.fact || '').trim();
+            if (factText) {
+              var exists = m.facts.some(function (f) { return String(f && f.text || '') === factText; });
+              if (!exists) m.facts.push({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: factText, ts: Date.now() });
+            }
+          } else if (msg.type === 'CAID_MEMORY_DEL_FACT') {
+            var kw = String(msg.keyword || '').trim().toLowerCase();
+            m.facts = m.facts.filter(function (f) { return String(f && f.text || '').toLowerCase().indexOf(kw) === -1; });
+          } else if (msg.type === 'CAID_MEMORY_ADD_HISTORY') {
+            var hItem = { goal: String(msg.goal || ''), result: String(msg.result || ''), url: String(msg.url || ''), ts: Date.now() };
+            if (msg.summary) hItem.summary = String(msg.summary);
+            if (m.history.length >= 50) m.history.shift();
+            m.history.push(hItem);
+          } else if (msg.type === 'CAID_MEMORY_CLEAR_ALL') {
+            m = { facts: [], history: [] };
+          }
+          chrome.storage.local.set({ caidMemory: m }, function () {
+            window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true, memory: m } }, '*');
+          });
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    } else if (msg.type === 'CAID_SERVER_GET' || msg.type === 'CAID_SERVER_ADD' || msg.type === 'CAID_SERVER_DEL' || msg.type === 'CAID_SERVER_UPDATE' || msg.type === 'CAID_SERVER_CLEAR') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.get('caidServers', function (got) {
+          var servers = (got && got.caidServers) || [];
+          if (msg.type === 'CAID_SERVER_ADD') {
+            var newItem = { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: String(msg.name || ''), url: String(msg.url || ''), type: String(msg.type || 'file' || 'file'), priority: String(msg.priority || 'mid' || 'mid'), createdAt: Date.now() };
+            servers.push(newItem);
+          } else if (msg.type === 'CAID_SERVER_DEL') {
+            var sId = String(msg.id || '');
+            servers = servers.filter(function (s) { return String(s.id) !== sId; });
+          } else if (msg.type === 'CAID_SERVER_UPDATE') {
+            var uId = String(msg.id || '');
+            for (var si = 0; si < servers.length; si++) {
+              if (String(servers[si].id) === uId) {
+                if (msg.name != null) servers[si].name = String(msg.name);
+                if (msg.url != null) servers[si].url = String(msg.url);
+                if (msg.enabled != null) servers[si].enabled = !!msg.enabled;
+                break;
+              }
+            }
+          } else if (msg.type === 'CAID_SERVER_CLEAR') {
+            servers = [];
+          }
+          chrome.storage.local.set({ caidServers: servers }, function () {
+            window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true, servers: servers } }, '*');
+          });
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    } else if (msg.type === 'CAID_PLUGIN_SAVE') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.get('caidPlugins', function (got) {
+          var plugins = (got && got.caidPlugins) || {};
+          var p = msg.plugin || {};
+          if (p && p.id) plugins[p.id] = p;
+          chrome.storage.local.set({ caidPlugins: plugins }, function () {
+            window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true } }, '*');
+          });
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    } else if (msg.type === 'CAID_LAYOUT_SAVE') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.set({ caidLayout: msg.layout }, function () {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: chrome.runtime.lastError.message } }, '*');
+          } else {
+            window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true } }, '*');
+          }
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    }
+    // ---- 非存储类操作：仍走 SW 桥接（LLM fetch / navigate 等需要扩展网络特权）----
+    if (!handled) {
+      try {
+        if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+        chrome.runtime.sendMessage(d.msg, function (resp) {
+          if (chrome.runtime.lastError) {
+            console.warn('[CAID-content] bg_request 转发失败:', chrome.runtime.lastError.message);
+            resp = null;
+          }
+          try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: resp || null }, '*'); } catch (e2) {}
+        });
+      } catch (err) {
+        console.error('[CAID-content] 转发 bg_request 失败:', err.message || err);
+        try { window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*'); } catch (e3) {}
+      }
     }
   });
 

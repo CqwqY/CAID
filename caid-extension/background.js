@@ -57,6 +57,7 @@ chrome.contextMenus.onClicked.addListener(function (info, tab) {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log('[CAID-bg] onMessage:', msg && msg.type, 'from tab=', sender.tab && sender.tab.id);
   if (msg && msg.type === 'BOOT_COPILOT') {
     const tabId = sender.tab && sender.tab.id;
     console.log('[CAID-R] BOOT_COPILOT 收到, tabId=', tabId, ' handoff?', !!(msg.handoff));
@@ -462,13 +463,11 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     var linked = !!(st && now - st.ts < 300000);
 
     if (isNewTab) {
-      // A) newtab：始终启动副驾；仅消费"显式导航意图"的 handoff（h.toUrl 非空，来自 navigate_to_url）。
-      // checkpoint/auto 类 handoff（toUrl=null）不消费——否则 agent 在别的 tab 运行时，
-      // 用户随手开个新标签页都会被误续跑。
-      var consumeA = fresh && h.toUrl;
-      if (consumeA) chrome.storage.session.remove(['caidHandoff']);
-      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, handoff=', !!consumeA);
-      bootCopilot(tabId, tab.url, consumeA ? h : null);
+      // A) newtab（chrome-extension:// 页面）：chrome.scripting.executeScript 无法注入扩展自身页面，
+      //    故 newtab.html 内嵌 bootstrap 脚本自行加载副驾（page-agent + caid-copilot）+ 消费 handoff。
+      //    background 此处仅记录日志，不调 bootCopilot、不消费 handoff（让页面 bootstrap 读取）。
+      var hasExplicitHandoff = fresh && h.toUrl;
+      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, 副驾由页面 bootstrap 自行加载, handoff=', !!hasExplicitHandoff);
     } else if (fresh && (h.toUrl || linked) && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
       // B) 普通页面 + 有效 handoff + (显式导航意图 或 本 tab/opener 有活跃 agent) + 非来源页 → 续跑
       chrome.storage.session.remove(['caidHandoff']);
@@ -565,13 +564,24 @@ async function ensureCopilotOpen(tabId) {
 
 async function bootCopilot(tabId, tabUrl, handoff) {
   // chrome.scripting.executeScript 无法注入扩展自己的 chrome-extension:// 页面
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab && tab.url && tab.url.startsWith('chrome-extension://')) {
-      console.log('[CAID-bg] bootCopilot: 跳过扩展页');
-      return;
+  // newtab.html 内嵌 bootstrap 脚本自行加载副驾 + 消费 handoff
+  var isExt = !!(tabUrl && tabUrl.indexOf('chrome-extension://') === 0);
+  if (!isExt) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && tab.url && tab.url.indexOf('chrome-extension://') === 0) isExt = true;
+    } catch (e) {
+      console.warn('[CAID-bg] bootCopilot: tabs.get 失败, 继续尝试注入:', e.message || e);
     }
-  } catch (e) {}
+  }
+  if (isExt) {
+    console.log('[CAID-bg] bootCopilot: 跳过扩展页（副驾由页面 bootstrap 自行加载）');
+    // 若携带 handoff，存入 chrome.storage.session 让页面 bootstrap 读取（避免续传上下文丢失）
+    if (handoff) {
+      try { await chrome.storage.session.set({ caidHandoff: handoff }); } catch (e) {}
+    }
+    return;
+  }
   try {
 
     // 0) 先在目标页 F12 控制台打印可见日志（background 的 console.log 只出现在 SW 控制台，用户看不到）
