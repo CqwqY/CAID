@@ -846,6 +846,54 @@
           '请复制代码后到新标签页 → 设置 → 插件 → 新建 → 粘贴 → 保存即可使用。' +
           (requirement ? '\n\n需求回顾：' + requirement : '');
       }
+    },
+    manage_todo: {
+      description:
+        'Manage the user\'s todo list on the CAID new-tab workbench. Todos persist across pages and sessions. ' +
+        'Actions: ' +
+        '"add" — requires text; optional priority (high/mid/low, default mid). Adds a todo that appears immediately in the workbench todo panel. ' +
+        'USE "add" whenever the user mentions a task, reminder, or to-do ("帮我记一下…","提醒我…","待会儿要…","明天要…"). ' +
+        '"list" — returns all todos with id/text/done/priority. ' +
+        '"complete" — requires id; toggles a todo\'s done state. ' +
+        '"delete" — requires id; removes a todo. ' +
+        '"clear_done" — removes all completed todos. ' +
+        'Always confirm what you did in one short sentence after the call.',
+      inputSchema: z.object({
+        action: z.string().describe('add | list | complete | delete | clear_done'),
+        text: z.string().optional().describe('todo text, required for add (max 200 chars)'),
+        priority: z.string().optional().describe('high | mid | low, default mid, only for add'),
+        id: z.string().optional().describe('todo id, required for complete/delete')
+      }),
+      execute: async function (input) {
+        var action = String(input && input.action || '').trim();
+        if (!action) throw new Error('manage_todo: action is required (add/list/complete/delete/clear_done)');
+        var payload = { type: 'CAID_TODO_OP', action: action };
+        if (input && input.text != null) payload.text = String(input.text);
+        if (input && input.priority != null) payload.priority = String(input.priority);
+        if (input && input.id != null) payload.id = String(input.id);
+        var resp = null;
+        try { resp = await caidRequestBg(payload); } catch (e) { console.warn('[CAID-R] manage_todo 桥接失败:', e && e.message || e); }
+        if (resp && resp.ok) {
+          if (action === 'add' && resp.todo) {
+            return '✅ 已添加待办：「' + resp.todo.text + '」（优先级：' + resp.todo.priority + '，id=' + resp.todo.id + '）。当前共 ' + resp.total + ' 条，' + resp.done + ' 条已完成。打开新标签页即可在待办区看到。';
+          }
+          if (action === 'list') {
+            if (!resp.todos || !resp.todos.length) return '📋 当前待办列表为空。';
+            var lines = resp.todos.map(function (t) {
+              return '[' + (t.done ? 'x' : ' ') + '] ' + t.text + ' (优先级:' + t.priority + ', id=' + t.id + ')';
+            });
+            return '📋 待办列表（共 ' + resp.total + ' 条，' + resp.done + ' 条已完成）：\n' + lines.join('\n');
+          }
+          if (action === 'complete') return '✅ 已切换待办完成状态（id=' + input.id + '，当前 done=' + (resp.todo && resp.todo.done) + '）。';
+          if (action === 'delete') return '✅ 已删除待办（id=' + input.id + '）。当前剩 ' + resp.total + ' 条。';
+          if (action === 'clear_done') return '✅ 已清理已完成待办。当前剩 ' + resp.total + ' 条。';
+          return '✅ 待办操作完成。';
+        }
+        if (action === 'add') {
+          return '⚠️ 扩展桥接不可用，待办未能写入工作台。请稍后重试，或手动在新标签页待办区添加：' + (input && input.text);
+        }
+        return '⚠️ 扩展桥接不可用，待办操作失败。请确认 CAID 扩展已安装并启用。';
+      }
     }
   };
   for (const k in tools) tools[k].__cpRender = cpRender;

@@ -311,6 +311,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // ---------- 副驾待办管理：与 newtab UI 同源（chrome.storage.local.todos）----------
+  // 副驾在任意页面经此 handler 读写 todos；newtab 侧 storage.onChanged 监听实时同步到 UI。
+  // 数据结构与 UI 完全一致：{ id, text, done, priority, createdAt }，priority ∈ high/mid/low。
+  if (msg && msg.type === 'CAID_TODO_OP') {
+    var tAction = String(msg.action || '').trim();
+    chrome.storage.local.get(['todos'], function (got) {
+      var list = Array.isArray(got && got.todos) ? got.todos : [];
+      var result = { ok: true, action: tAction };
+      try {
+        if (tAction === 'add') {
+          var tText = String(msg.text || '').trim().slice(0, 200);
+          if (!tText) { sendResponse({ ok: false, error: 'text required for add' }); return; }
+          var tPri = String(msg.priority || 'mid');
+          if (tPri !== 'high' && tPri !== 'mid' && tPri !== 'low') tPri = 'mid';
+          var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: tPri, createdAt: Date.now() };
+          list.unshift(item);
+          result.todo = item;
+        } else if (tAction === 'complete') {
+          var cId = String(msg.id || '');
+          var hit = null;
+          for (var i = 0; i < list.length; i++) { if (String(list[i].id) === cId) { list[i].done = !list[i].done; hit = list[i]; break; } }
+          if (!hit) { sendResponse({ ok: false, error: 'todo not found: ' + cId }); return; }
+          result.todo = hit;
+        } else if (tAction === 'delete') {
+          var dId = String(msg.id || '');
+          var before = list.length;
+          list = list.filter(function (t) { return String(t.id) !== dId; });
+          if (list.length === before) { sendResponse({ ok: false, error: 'todo not found: ' + dId }); return; }
+        } else if (tAction === 'clear_done') {
+          list = list.filter(function (t) { return !t.done; });
+        } else if (tAction === 'list') {
+          // 只读
+        } else {
+          sendResponse({ ok: false, error: 'unknown action: ' + tAction }); return;
+        }
+      } catch (e) { sendResponse({ ok: false, error: String(e && e.message || e) }); return; }
+      chrome.storage.local.set({ todos: list }, function () {
+        result.todos = list;
+        result.total = list.length;
+        result.done = list.filter(function (t) { return t.done; }).length;
+        sendResponse(result);
+      });
+    });
+    return true;
+  }
+
   // MAIN world 的副驾（无 chrome.*）经 content.js 把 LLM 请求转交到这里，
   // 由 service worker 用扩展网络栈发起——不受宿主页（如 github.com）的 CSP 限制。
   if (msg && msg.type === 'CAID_LLM_FETCH') {

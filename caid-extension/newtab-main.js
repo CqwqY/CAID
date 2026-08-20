@@ -1246,7 +1246,7 @@ caidQs('#saveSnippetBtn').addEventListener('click', async () => {
 function addTodoItem(text, priority = 'mid') {
   if (!text) return;
   state.todos.unshift({ id: uid(), text, done: false, priority, createdAt: Date.now() });
-  LS.set('todos', state.todos);
+  persistTodos();
   renderTodos();
   updateCounts();
 }
@@ -1283,13 +1283,13 @@ function renderTodos(filter = '') {
     el.querySelector('.todo-check').addEventListener('click', (e) => {
       e.stopPropagation();
       t.done = !t.done;
-      LS.set('todos', state.todos);
+      persistTodos();
       renderTodos(filter);
     });
     el.querySelector('.todo-del').addEventListener('click', (e) => {
       e.stopPropagation();
       state.todos = state.todos.filter(x => x.id !== id);
-      LS.set('todos', state.todos);
+      persistTodos();
       renderTodos(filter);
       updateCounts();
     });
@@ -1305,6 +1305,42 @@ caidQs('#addTodoBtn').addEventListener('click', () => {
 caidQs('#todoInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { caidQs('#addTodoBtn').click(); e.preventDefault(); }
 });
+
+// 持久化 todos：双写 localStorage（同步快照）+ chrome.storage.local（副驾通道 / 权威源）。
+// 副驾在任意页面经 background 写 chrome.storage.local.todos，下方 onChanged 监听单向同步回 UI。
+function persistTodos() {
+  LS.set('todos', state.todos);
+  try { if (chrome.storage && chrome.storage.local) chrome.storage.local.set({ todos: state.todos }); } catch (e) {}
+}
+// 副驾写入 chrome.storage.local.todos 时实时同步到本页 UI（含跨标签页：A 页副驾加待办，B 页工作台即时刷新）
+try {
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes.todos) return;
+      const nv = changes.todos.newValue;
+      if (!Array.isArray(nv)) return;
+      state.todos = nv;
+      LS.set('todos', nv);
+      try { renderTodos(); updateCounts(); } catch (e) {}
+    });
+  }
+} catch (e) {}
+// 启动校正：从 chrome.storage 校正一次（跨设备恢复 + 副驾在 newtab 未开时离线写入的回填）；
+// 若 chrome.storage 无记录，把 localStorage 现有 todos 上传建立权威源。
+try {
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get('todos', (got) => {
+      const st = got && Array.isArray(got.todos) ? got.todos : null;
+      if (st) {
+        state.todos = st;
+        LS.set('todos', st);
+        try { renderTodos(); updateCounts(); } catch (e) {}
+      } else {
+        chrome.storage.local.set({ todos: state.todos });
+      }
+    });
+  }
+} catch (e) {}
 
 // ============ Component Collapse ============
 caidQsa('.sidebar-section').forEach(sec => {
@@ -1697,6 +1733,7 @@ caidQs('#importFile').addEventListener('change', async (e) => {
       state.shortcuts = LS.get('shortcuts', DEFAULT_SHORTCUTS);
       state.searchHistory = LS.get('searchHistory', []);
       state.todos = LS.get('todos', []);
+      persistTodos();  // 导入的待办同步到 chrome.storage（副驾通道）
       state.uiPrefs = LS.get('uiPrefs', { collapsed: {} });
       state.llmCfg = LS.get('llmCfg', DEFAULT_LLM_CFG);
       // Apply collapse state
@@ -1727,7 +1764,7 @@ caidQs('#resetBtn').addEventListener('click', async () => {
     await db.history.clear();
   } catch(e){}
   try {
-    if (storageAvailable()) await chrome.storage.local.remove(['caidMemory', 'caidServers', 'caidServerStats']);  // 同步清空副驾任务/长期记忆/服务器监控
+    if (storageAvailable()) await chrome.storage.local.remove(['caidMemory', 'caidServers', 'caidServerStats', 'todos']);  // 同步清空副驾任务/长期记忆/服务器监控/待办
   } catch(e){}
   setTimeout(() => location.reload(), 400);
   toast('正在重置…');

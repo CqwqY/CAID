@@ -3,6 +3,14 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.3.2] - 2026-08-20
+
+### 新增
+- **副驾待办管理工具 `manage_todo`**（12 → 13 个 customTools）：AI 副驾可直接读写工作台待办列表，自然语言即可管理待办——"帮我记一下明天开会" → 副驾调用 `manage_todo add`，待办立即出现在新标签页待办区并持久化。
+  - 动作：`add`（text 必填，priority 可选 high/mid/low 默认 mid，文本截断 200 字）/ `list` / `complete`（按 id 切换完成态）/ `delete` / `clear_done`；inputSchema 使用真 Zod v4 `z.object`（可选字段 `.optional()`）
+  - 链路：副驾 → `caidRequestBg`（`CAID_TODO_OP`）→ background 读写 `chrome.storage.local.todos`；newtab 侧 `storage.onChanged` 监听实时同步 UI（跨标签页即时生效），UI 增删改走 `persistTodos()` 双写 localStorage + chrome.storage 保持同源
+  - 边界：导入备份 / 重置全部数据时同步 chrome.storage 的 todos，防止数据残留或丢失；reset 清理列表同步加入 `todos` key
+
 ## [v0.3.1] - 2026-08-19
 
 ### 变更
