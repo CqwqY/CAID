@@ -1,5 +1,5 @@
 // CAID 副驾注入脚本（MAIN world，由 background 通过 chrome.scripting 注入到目标页）
-// 站外页面没有主站那套 UI，所以本脚本自带面板 + 真实 Zod v4 构建的 9 个 customTools。
+// 站外页面没有工作台 UI，所以本脚本自带面板 + 真实 Zod v4 构建的 customTools。
 // 关键：zod-v4 / page-agent 已由前序注入文件就位，这里直接用真实 Zod v4，无需 duck fallback。
 (function () {
   if (window.__CAID_BOOTED) {
@@ -134,7 +134,7 @@
     });
   }
 
-  const MAIN_URL = 'https://graduate.dpdns.org/';
+  const MAIN_URL = (window.__CAID_OPTIONS_URL || '').replace(/#settings$/, '');
   const z = window.ZodV4 && window.ZodV4.z;
   if (!z) { console.error('[CAID] window.ZodV4.z 未加载，副驾无法初始化'); return; }
   if (!window.PageAgent) { console.error('[CAID] window.PageAgent 未加载，副驾无法初始化'); return; }
@@ -261,7 +261,7 @@
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"']+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
 
-  // 内联设置面板：直接在主站 DOM 的副驾面板里展开，彻底绕开被拦截器拦的 chrome-extension://newtab.html 导航
+  // 内联设置面板：在副驾面板里展开，避免导航到 chrome-extension://newtab.html
   function toggleSettings() {
     var panel = document.getElementById('cpSettingsPanel');
     if (!panel) return;
@@ -389,7 +389,7 @@
         '<input type="password" id="cpApiKey" placeholder="留空则用免费代理" />' +
         '<button class="cp-save" id="cpSave">保存</button>' +
         '<div class="cp-saved" id="cpSaved"></div>' +
-        '<div class="cp-hint">默认走免费代理；填自己的 OpenAI / 兼容端点后自动切换。设置保存在本机扩展存储，并会同步回主站。</div>' +
+        '<div class="cp-hint">默认走免费代理；填自己的 OpenAI / 兼容端点后自动切换。设置保存在本机扩展存储。</div>' +
       '</div>' +
       '<div class="cp-activity" id="cpActivity"></div>' +
       '<div class="cp-log" id="cpLog"></div>' +
@@ -457,7 +457,7 @@
     }
   };
 
-  // ---------- 12 个 customTools（9 个移植自主站 + remember_fact / forget_fact 长期记忆 + create_plugin 自制插件）----------
+  // ---------- 13 个 customTools ----------
   const tools = {
     execute_javascript: {
       description:
@@ -548,13 +548,14 @@
       }
     },
 
-    navigate_to_main_site: {
-      description: 'Immediately navigate back to the CAID main workbench (home / main site). Takes NO parameters.',
+    go_to_workbench: {
+      description: 'Navigate back to the CAID workbench (the extension new tab page). Use when user says: 回工作台 / 回首页 / go home / back to main. Takes NO parameters.',
       inputSchema: mkObj({}),
       execute: async function () {
+        if (!MAIN_URL) return '⚠️ 工作台地址不可用';
         try { (window.top || window).location.href = MAIN_URL; }
         catch (e) { window.location.href = MAIN_URL; }
-        return `✅ Navigating back to CAID main workbench: ${MAIN_URL}`;
+        return '✅ 正在返回 CAID 工作台';
       }
     },
 
@@ -889,10 +890,28 @@
           if (action === 'clear_done') return '✅ 已清理已完成待办。当前剩 ' + resp.total + ' 条。';
           return '✅ 待办操作完成。';
         }
+        // 桥接不可用：localStorage 兜底（newtab 的 persistTodos 会读取相同 key 同步）
+        var LS_KEY = 'todos';
+        var localList = [];
+        try { var raw = localStorage.getItem(LS_KEY); if (raw) localList = JSON.parse(raw) || []; } catch (e2) {}
         if (action === 'add') {
-          return '⚠️ 扩展桥接不可用，待办未能写入工作台。请稍后重试，或手动在新标签页待办区添加：' + (input && input.text);
+          var tText = String(input && input.text || '').trim().slice(0, 200);
+          if (!tText) throw new Error('manage_todo: text required for add');
+          var tPri = String(input && input.priority || 'mid');
+          if (tPri !== 'high' && tPri !== 'mid' && tPri !== 'low') tPri = 'mid';
+          var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: tPri, createdAt: Date.now() };
+          localList.unshift(item);
+          try { localStorage.setItem(LS_KEY, JSON.stringify(localList)); } catch (e3) {}
+          return '✅ 已添加待办：「' + tText + '」（优先级：' + tPri + '）。⚠️ 扩展桥接暂不可用，已写入本地存储，打开新标签页即可在待办区看到。';
         }
-        return '⚠️ 扩展桥接不可用，待办操作失败。请确认 CAID 扩展已安装并启用。';
+        if (action === 'list') {
+          if (!localList.length) return '📋 当前待办列表为空。';
+          var lines2 = localList.map(function (t) {
+            return '[' + (t.done ? 'x' : ' ') + '] ' + t.text + ' (优先级:' + t.priority + ', id=' + t.id + ')';
+          });
+          return '📋 待办列表（共 ' + localList.length + ' 条，' + localList.filter(function (t) { return t.done; }).length + ' 条已完成）：\n' + lines2.join('\n');
+        }
+        return '⚠️ 扩展桥接不可用，待办操作未能同步。请确认 CAID 扩展已安装并启用。';
       }
     }
   };
@@ -1058,9 +1077,9 @@
       window.addEventListener('__caid_bg_response', onResp);
       timer = setTimeout(function () {
         window.removeEventListener('__caid_bg_response', onResp);
-        console.warn('[CAID-R] caidRequestBg 超时（3s 无响应）:', msg && msg.type);
+        console.warn('[CAID-R] caidRequestBg 超时（8s 无响应）:', msg && msg.type);
         resolve(null);
-      }, 3000);
+      }, 8000);
       try {
         window.dispatchEvent(new CustomEvent('__caid_bg_request', { detail: { reqId: reqId, msg: msg } }));
       } catch (e) {
@@ -1133,7 +1152,7 @@
   const FREE_PROXY = 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
   const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
-    'auto_fill_form 填表、extract_page_data 提取数据、navigate_to_main_site 回到工作台、' +
+    'auto_fill_form 填表、extract_page_data 提取数据、go_to_workbench 回到工作台、' +
     'remember_fact / forget_fact 管理长期记忆。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
     '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +

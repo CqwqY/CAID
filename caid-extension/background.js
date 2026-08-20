@@ -566,13 +566,9 @@ async function bootCopilot(tabId, tabUrl, handoff) {
       world: 'MAIN'
     });
 
-    const stored = await chrome.storage.local.get(['caidLlm', 'caidLlmMain']);
-    // 合并优先级：扩展自身设置（caidLlm，用户在 options 页显式配置）优先；
-    // 若扩展未配置，则回退主站（graduate.dpdns.org）已保存的 LLM 配置（caidLlmMain，由 caid-bridge.js 同步）。
-    const extLlm = stored.caidLlm || {};
-    const mainLlm = stored.caidLlmMain || {};
-    const extHasKey = extLlm.apiKey && extLlm.model;
-    const llm = extHasKey ? extLlm : (mainLlm.apiKey ? mainLlm : extLlm);
+    const stored = await chrome.storage.local.get(['caidLlm']);
+    // 扩展自身设置（caidLlm，用户在 options 页 / 副驾内联设置显式配置）
+    const llm = stored.caidLlm || {};
 
     // 1) 注入真实 Zod v4 + 魔改 Page-Agent（顺序很重要，必须先于 caid-copilot）
     await chrome.scripting.executeScript({

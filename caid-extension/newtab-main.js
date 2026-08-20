@@ -21,7 +21,7 @@
 })();
 
 // ============ Utilities ============
-// 注意：不要用全局名 `$`，因为主网站（graduate.dpdns.org）可能已经声明过 const/let $，
+// 注意：不要用全局名 `$`，因为宿主页面可能已经声明过 const/let $，
 // 跨 <script> 在同一全局词法作用域会报 "Identifier '$' has already been declared"。
 const caidQs = (sel, el = document) => el.querySelector(sel);
 const caidQsa = (sel, el = document) => Array.from(el.querySelectorAll(sel));
@@ -83,15 +83,8 @@ function caidConfirm(opts) {
   });
 }
 
-// ============ 主网站信息（给 Page-Agent 读）============
-const MAIN_SITE_URL = 'https://graduate.dpdns.org/';
+// ============ 工作台信息 ============
 const MAIN_SITE_NAME = '程序员工作台 · CAID';
-function navigateToMainSite() {
-  try { (window.top || window).location.href = MAIN_SITE_URL; }
-  catch(e) { window.location.href = MAIN_SITE_URL; }
-}
-window.navigateToMainSite = navigateToMainSite;
-window.__MAIN_SITE_URL__ = MAIN_SITE_URL;
 window.__MAIN_SITE_NAME__ = MAIN_SITE_NAME;
 
 // ============ Local Storage Wrapper ============
@@ -427,19 +420,13 @@ document.addEventListener('keydown', (e) => {
 function openHomepageModal() {
   var urlEl = document.getElementById('homeUrl');
   if (urlEl) {
-    var inExt = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
-    urlEl.textContent = inExt ? '（CAID 扩展已接管新标签页，开新标签即为本工作台）' : 'https://graduate.dpdns.org/';
+    urlEl.textContent = '（CAID 扩展已接管新标签页，开新标签即为本工作台）';
   }
   var copyBtn = document.getElementById('copyHomeUrl');
   if (copyBtn && !copyBtn.dataset.bound) {
     copyBtn.dataset.bound = '1';
     copyBtn.addEventListener('click', function () {
-      var url = (document.getElementById('homeUrl') || {}).textContent || 'https://graduate.dpdns.org/';
-      var text = url.indexOf('http') === 0 ? url : 'https://graduate.dpdns.org/';
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function () { toast('已复制主页地址', 'success'); })
-          .catch(function () { toast('复制失败', 'error'); });
-      } else { toast('复制失败：浏览器不支持', 'error'); }
+      toast('扩展已接管新标签页，无需手动设置主页', 'success');
     });
   }
   // 按浏览器显示正确的设置入口（Edge 与 Chrome 的 settings URL 不同）

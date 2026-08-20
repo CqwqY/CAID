@@ -3,6 +3,21 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.3.3] - 2026-08-20
+
+### 修复
+- **副驾桥接超时**：`caidRequestBg` 超时从 3s 提升到 8s，给 MV3 Service Worker 冷启动足够唤醒时间。
+- **`manage_todo` 本地兜底**：桥接不可用时不再直接报错，改为写入 `localStorage.todos`（newtab 的 `persistTodos` 读取相同 key 会自动同步），确保"帮我记一下"即使在桥接异常时也不丢失。
+
+### 变更
+- **副驾脱离主站**：主站（graduate.dpdns.org）已停维，副驾不再引用主站地址。
+  - `navigate_to_main_site` 工具改名为 `go_to_workbench`，跳转目标改为扩展自己的 newtab 页面（`chrome-extension://[id]/newtab.html`）。
+  - 移除 `MAIN_URL` 硬编码主站地址，改读 `window.__CAID_OPTIONS_URL`。
+  - systemPrompt 中 `navigate_to_main_site` 引用同步更新为 `go_to_workbench`。
+  - 设置面板文案移除"同步回主站"提示。
+- **移除 `caid-bridge.js`**：主站已停维，不再需要主站→扩展的单向配置同步脚本。manifest 中对应的 content_scripts 条目已删除，background.js 中 `caidLlmMain` 回退逻辑也已移除。
+- **newtab 页面清理**：移除 `site-main-url` meta 标签和 `agent-instructions` meta（原指示副驾跳转主站）；移除 `MAIN_SITE_URL` 常量和 `navigateToMainSite` 函数；设为首页弹窗不再显示主站 URL。
+
 ## [v0.3.2] - 2026-08-20
 
 ### 新增

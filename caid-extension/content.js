@@ -153,8 +153,7 @@
   });
 
   // MAIN world 的副驾内联设置表单通过此事件把配置写入扩展存储
-  // （MAIN world 无 chrome.*，由 ISOLATED world 用 chrome.storage.local 写入；
-  //  caid-bridge.js 监听 storage.onChanged 会把扩展配置同步回主站，实现双向同步）
+  // （MAIN world 无 chrome.*，由 ISOLATED world 用 chrome.storage.local 写入）
   window.addEventListener('__caid_save_settings', function (e) {
     var cfg = e && e.detail;
     if (!cfg) return;
