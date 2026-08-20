@@ -316,13 +316,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 数据结构与 UI 完全一致：{ id, text, done, priority, createdAt }，priority ∈ high/mid/low。
   if (msg && msg.type === 'CAID_TODO_OP') {
     var tAction = String(msg.action || '').trim();
+    console.log('[CAID-bg] CAID_TODO_OP received, action=', tAction);
+    var _todoResponded = false;
+    var _todoTimer = setTimeout(function () {
+      if (!_todoResponded) {
+        _todoResponded = true;
+        console.error('[CAID-bg] CAID_TODO_OP safety timeout (5s), storage callback did not fire');
+        try { sendResponse({ ok: false, error: 'storage timeout' }); } catch (e) {}
+      }
+    }, 5000);
     chrome.storage.local.get(['todos'], function (got) {
+      if (_todoResponded) return;
       var list = Array.isArray(got && got.todos) ? got.todos : [];
       var result = { ok: true, action: tAction };
       try {
         if (tAction === 'add') {
           var tText = String(msg.text || '').trim().slice(0, 200);
-          if (!tText) { sendResponse({ ok: false, error: 'text required for add' }); return; }
+          if (!tText) { _todoResponded = true; clearTimeout(_todoTimer); sendResponse({ ok: false, error: 'text required for add' }); return; }
           var tPri = String(msg.priority || 'mid');
           if (tPri !== 'high' && tPri !== 'mid' && tPri !== 'low') tPri = 'mid';
           var item = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: tText, done: false, priority: tPri, createdAt: Date.now() };
@@ -332,25 +342,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           var cId = String(msg.id || '');
           var hit = null;
           for (var i = 0; i < list.length; i++) { if (String(list[i].id) === cId) { list[i].done = !list[i].done; hit = list[i]; break; } }
-          if (!hit) { sendResponse({ ok: false, error: 'todo not found: ' + cId }); return; }
+          if (!hit) { _todoResponded = true; clearTimeout(_todoTimer); sendResponse({ ok: false, error: 'todo not found: ' + cId }); return; }
           result.todo = hit;
         } else if (tAction === 'delete') {
           var dId = String(msg.id || '');
           var before = list.length;
           list = list.filter(function (t) { return String(t.id) !== dId; });
-          if (list.length === before) { sendResponse({ ok: false, error: 'todo not found: ' + dId }); return; }
+          if (list.length === before) { _todoResponded = true; clearTimeout(_todoTimer); sendResponse({ ok: false, error: 'todo not found: ' + dId }); return; }
         } else if (tAction === 'clear_done') {
           list = list.filter(function (t) { return !t.done; });
         } else if (tAction === 'list') {
           // 只读
         } else {
-          sendResponse({ ok: false, error: 'unknown action: ' + tAction }); return;
+          _todoResponded = true; clearTimeout(_todoTimer); sendResponse({ ok: false, error: 'unknown action: ' + tAction }); return;
         }
-      } catch (e) { sendResponse({ ok: false, error: String(e && e.message || e) }); return; }
+      } catch (e) { _todoResponded = true; clearTimeout(_todoTimer); sendResponse({ ok: false, error: String(e && e.message || e) }); return; }
+      console.log('[CAID-bg] CAID_TODO_OP: writing', list.length, 'todos');
       chrome.storage.local.set({ todos: list }, function () {
+        if (_todoResponded) return;
+        _todoResponded = true;
+        clearTimeout(_todoTimer);
         result.todos = list;
         result.total = list.length;
         result.done = list.filter(function (t) { return t.done; }).length;
+        console.log('[CAID-bg] CAID_TODO_OP: done, sending response');
         sendResponse(result);
       });
     });
