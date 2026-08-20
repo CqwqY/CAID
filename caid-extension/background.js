@@ -533,6 +533,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // 不存在才走全量 bootCopilot（避免重复注入 zod-v4 / page-agent 导致潜在错误）。
 async function ensureCopilotOpen(tabId) {
   try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.url && tab.url.startsWith('chrome-extension://')) {
+      console.log('[CAID-bg] 跳过扩展页（无法 scripting.executeScript）');
+      return;
+    }
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
@@ -553,6 +558,14 @@ async function ensureCopilotOpen(tabId) {
 }
 
 async function bootCopilot(tabId, tabUrl, handoff) {
+  // chrome.scripting.executeScript 无法注入扩展自己的 chrome-extension:// 页面
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.url && tab.url.startsWith('chrome-extension://')) {
+      console.log('[CAID-bg] bootCopilot: 跳过扩展页');
+      return;
+    }
+  } catch (e) {}
   try {
 
     // 0) 先在目标页 F12 控制台打印可见日志（background 的 console.log 只出现在 SW 控制台，用户看不到）
