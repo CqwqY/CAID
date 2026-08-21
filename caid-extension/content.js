@@ -678,4 +678,61 @@
       }
     }
   })();
+
+  // ============ 阅读记录采集（下沉到 content.js，普通页面不点副驾也记）============
+  // 原采集只在 caid-copilot.js 注入后（即用户点球启动副驾）才跑，导致没启动过副驾的页面
+  // 不会被“认真看过”，相关搜索提示/空闲推荐因此永远没数据。这里放 ISOLATED world：
+  // 每个页面加载即开始跟踪停留时长 + 最大滚动深度，离开时写回 caidReadLog。
+  (function trackReading() {
+    if (window.__caidTrackReadingInit) return;
+    window.__caidTrackReadingInit = true;
+    try {
+      var t0 = Date.now();
+      var depth = 0;
+      var pageTitle = document.title || '';
+      var url = location.href;
+      var host = location.hostname || '';
+      window.addEventListener('scroll', function () {
+        try {
+          var max = document.documentElement.scrollHeight - window.innerHeight;
+          if (max > 50) { var d = Math.round(((window.scrollY || document.documentElement.scrollTop || 0) / max) * 100); if (d > depth) depth = d; }
+        } catch (e) {}
+      }, { passive: true });
+
+      function extract() {
+        try {
+          var summary = '';
+          try { var m = document.querySelector('meta[property="og:description"]') || document.querySelector('meta[name="description"]'); if (m) summary = String(m.getAttribute('content') || '').trim(); } catch (e) {}
+          summary = summary.slice(0, 160);
+          var entities = [];
+          var chunks = [String(pageTitle || '')];
+          try { var h = document.querySelector('h1,h2'); if (h) chunks.push(h.textContent || ''); } catch (e2) {}
+          chunks.join(' ').split(/[\s|—_\-·,，。:：.()（）【】《》"'“”]+/).forEach(function (w) {
+            w = w.trim();
+            if (!w || entities.length >= 12) return;
+            if (/^[A-Za-z][\w.-]{2,}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
+            else if (/^[\u4e00-\u9fa5]{2,10}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
+          });
+          return { summary: summary, entities: entities };
+        } catch (e) { return { summary: '', entities: [] }; }
+      }
+
+      var committed = false;
+      function commit() {
+        try {
+          if (committed) return; committed = true;
+          var dwellSec = Math.round((Date.now() - t0) / 1000);
+          if (dwellSec < 3) return; // 停留不足不记
+          var info = extract();
+          chrome.runtime.sendMessage({ type: 'CAID_READLOG_SAVE', record: {
+            url: url, host: host, title: String(pageTitle || '').slice(0, 200),
+            summary: info.summary, entities: info.entities,
+            dwellSec: dwellSec, maxDepth: depth
+          } });
+        } catch (e) { /* 采集失败不影响页面 */ }
+      }
+      window.addEventListener('pagehide', commit);
+      window.addEventListener('beforeunload', commit);
+    } catch (e) { console.warn('[CAID-content] trackReading 初始化异常:', e); }
+  })();
 })();

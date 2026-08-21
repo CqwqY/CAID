@@ -403,6 +403,18 @@
 #caidToastWrap .caid-toast.t-success{--t:#ffd479;}
 #caidToastWrap .caid-toast.t-running{--t:#3dd68c;}
 #caidToastWrap .caid-toast .t-close{margin-left:auto;background:none;border:0;color:#64748b;cursor:pointer;font-size:14px;line-height:1;}
+/* ============ 任务完成·最终回复面板（右侧滑出）============ */
+#caidFinalReply{position:fixed;right:0;top:50%;z-index:2147483646;width:340px;max-width:82vw;max-height:70vh;display:flex;flex-direction:column;background:rgba(22,15,34,.93);backdrop-filter:blur(14px);border:1px solid #3a6b8a;border-right:0;border-radius:14px 0 0 14px;box-shadow:0 12px 40px rgba(0,0,0,.5);transform:translate(100%,-50%);transition:transform .38s cubic-bezier(.22,.61,.36,1);pointer-events:none;}
+#caidFinalReply.open{transform:translate(0,-50%);pointer-events:auto;}
+#caidFinalReply .cfr-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid #265040;color:#ffd479;font:600 12.5px/1.4 system-ui,sans-serif;}
+#caidFinalReply .cfr-close{background:none;border:0;color:#64748b;cursor:pointer;font-size:15px;line-height:1;}
+#caidFinalReply .cfr-close:hover{color:#e6f1fb;}
+#caidFinalReply .cfr-body{padding:11px 13px;color:#e6f1fb;font:13px/1.7 system-ui,sans-serif;overflow-y:auto;min-height:40px;max-height:calc(70vh - 42px);}
+#caidFinalReply .cfr-body.cp-markdown{word-break:break-word;}
+/* 超过 200 字不自动收回：给稍多内边距与更明确的常驻样式 */
+#caidFinalReply.long .cfr-body{max-height:calc(72vh - 42px);}
+#caidFinalReply .cfr-body::-webkit-scrollbar{width:8px;}
+#caidFinalReply .cfr-body::-webkit-scrollbar-thumb{background:#2f4a6b;border-radius:4px;}
 /* ============ 阅读推荐条（顶部中央，可关闭）============ */
 #caidRecoBar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483646;max-width:560px;width:calc(100vw - 40px);background:rgba(15,23,34,.94);backdrop-filter:blur(14px);border:1px solid #3a6b8a;border-radius:14px;padding:10px 14px;color:#e6f1fb;font:12.5px/1.5 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.5);display:flex;align-items:flex-start;gap:10px;}
 #caidRecoBar .reco-ic{flex:0 0 auto;font-size:16px;margin-top:2px;}
@@ -596,6 +608,42 @@
   }
   // 圆球状态呼吸灯 + 完成/出错弹窗
   var _completedBallTimer = null;
+  // 任务完成·最终回复面板：右侧滑出，≤200 字 10s 后收回，>200 字常驻
+  var _finalReplyTimer = null;
+  function showFinalReply() {
+    try {
+      var text = '';
+      // 取本任务最后一条 assistant 内容（跳过 step 等中间产物）
+      var _h = (agent && agent.history) ? agent.history : [];
+      for (var i = _h.length - 1; i >= 0; i--) {
+        var e = _h[i];
+        if (e && e.type === 'assistant' && e.content) { text = String(e.content).trim(); break; }
+      }
+      if (!text) return;
+      var long = text.length > 200;
+      var p = document.getElementById('caidFinalReply');
+      if (!p) {
+        p = document.createElement('div');
+        p.id = 'caidFinalReply';
+        p.innerHTML =
+          '<div class="cfr-head"><span>✅ 任务完成 · 最终回复</span>' +
+          '<button class="cfr-close" title="收起">×</button></div>' +
+          '<div class="cfr-body cp-markdown"></div>';
+        p.querySelector('.cfr-close').addEventListener('click', function () { p.classList.remove('open'); });
+        document.body.appendChild(p);
+      }
+      p.className = long ? 'long' : '';
+      p.querySelector('.cfr-body').innerHTML = cpMd(text);
+      p.classList.add('open');
+      clearTimeout(_finalReplyTimer); _finalReplyTimer = null;
+      if (!long) {
+        // 短内容 10s 后收回；悬停暂缓收回
+        _finalReplyTimer = setTimeout(function () { if (p.closest && !p.matches(':hover')) p.classList.remove('open'); }, 10000);
+      }
+      // 长内容常驻（>200 字不收回，仅手动 × 关闭）；悬停也确保不误收
+      p.onmouseleave = null;
+    } catch (e) { console.warn('[CAID-R] showFinalReply 异常:', e); }
+  }
   function setBallStatus(st) {
     var b = ensureBall();
     b.classList.remove('state-running', 'state-error', 'state-completed');
@@ -605,6 +653,7 @@
     else if (st === 'completed') {
       b.classList.add('state-completed');
       toast('success', '任务完成', '副驾已处理好你的任务');
+      showFinalReply(); // 侧面滑出最终回复
       // 黄色呼吸 5 秒后回到空闲
       _completedBallTimer = setTimeout(function () { var bb = document.getElementById('caidLauncher'); if (bb) bb.classList.remove('state-completed'); }, 5000);
     }
@@ -835,6 +884,43 @@
         }
         console.log('[CAID-R] forget_fact:', kw, 'removed=', removed);
         return removed > 0 ? '✅ 已删除 ' + removed + ' 条包含「' + kw + '」的记忆' : '未找到包含「' + kw + '」的记忆';
+      }
+    },
+
+    get_memory: {
+      description:
+        '按需查询长期记忆（skill）。当回答可能依赖此前记住的事实、偏好、或过去完成过的任务时，' +
+        '先用本工具检索，而不是凭空猜测或重复全量读取。可传入关键词过滤（中文按包含匹配），' +
+        '返回匹配的事实与最近任务记录（都做了条数与长度裁剪，避免上下文过大）。空关键词返回最近摘要。',
+      inputSchema: mkObj({ query: 'string', limit: 'number' }),
+      execute: async function (input) {
+        var q = String(input && input.query || '').trim();
+        var ql = q.toLowerCase();
+        var lim = Math.max(1, Math.min(30, parseInt((input && input.limit) || 8, 10) || 8));
+        // 桥可用时实时拉取最新记忆，否则用本地缓存
+        var m = memoryCache;
+        try {
+          var resp = await caidRequestBg({ type: 'CAID_MEMORY_GET' });
+          if (resp && resp.ok && resp.memory) { m = resp.memory; memoryCache = m; }
+        } catch (e) {}
+        var facts = (m.facts || []).slice(-50);
+        var hist = (m.history || []).slice(-20);
+        var out = [];
+        var f = ql ? facts.filter(function (x) { return String(x.text || '').toLowerCase().indexOf(ql) !== -1; }) : facts.slice(-5);
+        if (f.length) {
+          out.push('◆ 已知事实：');
+          f.slice(-lim).forEach(function (x) { out.push('- ' + String(x.text || '').slice(0, 300)); });
+        }
+        var h = ql ? hist.filter(function (x) { return String(x.goal || '').toLowerCase().indexOf(ql) !== -1 || String(x.result || '').toLowerCase().indexOf(ql) !== -1; }) : hist.slice(-3);
+        if (h.length) {
+          out.push('◆ 相关任务记录：');
+          h.slice(-lim).forEach(function (x) {
+            out.push('- [' + _fmtMemTime(x.ts) + '] 「' + String(x.goal || '').slice(0, 120) + '」'
+              + (x.result ? ' → ' + String(x.result).slice(0, 150) : ''));
+          });
+        }
+        if (!out.length) return q ? '未找到与「' + q + '」相关的记忆。' : '目前暂无持久记忆。';
+        return out.join('\n');
       }
     },
 
@@ -1703,29 +1789,6 @@
       return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
     } catch (e) { return ''; }
   }
-  // 拼接注入到任务指令前的记忆上下文。无记忆时返回空串（不注入）。
-  // 长度控制：facts 最多 30 条 × 150 字，history 最多 10 条 ×（goal 80 + result 150），防 token 膨胀。
-  function buildMemoryContext(mem) {
-    if (!mem) return '';
-    var facts = (mem.facts || []).slice(-30);
-    var hist = (mem.history || []).slice(-10);
-    if (!facts.length && !hist.length) return '';
-    var lines = ['【长期记忆】（你跨任务持久记住的信息，可直接引用回答；用 remember_fact 记录新信息，forget_fact 删除过时信息）'];
-    if (facts.length) {
-      lines.push('◆ 已知事实：');
-      facts.forEach(function (f) {
-        lines.push('- ' + String(f.text || '').slice(0, 150) + '（' + _fmtMemTime(f.ts) + ' 记）');
-      });
-    }
-    if (hist.length) {
-      lines.push('◆ 最近完成的任务：');
-      hist.forEach(function (h) {
-        var r = String(h.result || '').slice(0, 150);
-        lines.push('- [' + _fmtMemTime(h.ts) + '] 「' + String(h.goal || '').slice(0, 80) + '」' + (r ? ' → ' + r : ''));
-      });
-    }
-    return lines.join('\n');
-  }
 
   // ---------- 创建 agent ----------
   const cfg = window.__CAID_LLM_CFG || {};
@@ -1796,8 +1859,8 @@
     'window.open、表单提交跳转——都属于跳转，先读出完整 URL，改用 navigate_to_url / open_url_in_new_tab 打开。' +
     'execute_javascript 脚本里禁止任何跳转语句；若脚本导致地址变化，工具会返回警告并要求改用导航工具。' +
     '\n\n' +
-    '【长期记忆】用户指令前可能附带【长期记忆】块（已知事实 + 最近完成的任务记录），' +
-    '可直接引用其中的信息回答，不要重复查询已有答案。' +
+    '【长期记忆】记忆不会自动附在指令里（避免请求过长）。你拥有跨页/跨任务持久记忆：' +
+    '当回答依赖此前记住的事实、用户偏好、或过去完成的任务结果时，先用 get_memory 工具按关键词检索，检索到后再引用其回答，不要无端猜测。' +
     '当以下情况出现时，用 remember_fact 记录（简洁一句话）：任务结果包含值得长期记住的数据（如查询到的数字、状态、结论）、' +
     '用户明确说"记住/记一下"的内容、用户的偏好或身份信息。' +
     '信息已过期、被更新（重新记住新值后删旧值）或用户要求遗忘时，用 forget_fact 按关键词删除。';
@@ -1805,7 +1868,24 @@
   // includeAttributes: ['href'] —— 让简化 HTML 里的链接带上 URL（默认白名单没有 href，
   // 模型看不到链接地址，才会"点了跳转链接但不知道去哪"。加上后模型能直接看到
   // [12]<a href=https://...>视频标题</a>，从而用 navigate 工具接管跳转）。
-  const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools, includeAttributes: ['href'] };
+  // 【页面上下文裁剪】Page-Agent 每次会把整页 DOM 树序列化塞进 <browser_state>，
+  // 复杂页（如 B 站视频页评论流）能到几百 KB，直接压爆 LLM body 触发 HTTP 413。
+  // 借框架原生 transformPageContent 钩子，把单次页面快照裁剪到预算内：
+  // 保留开头（交互元素多在页面顶部、DFS 序靠前），超长则以行边界截断并加提示，
+  // 模型需要深处元素时自然会先滚动/缩小范围再观察。
+  var MAX_PAGE_CHARS = 30000;
+  function _capPageContent(content) {
+    try {
+      var s = String(content || '');
+      if (s.length <= MAX_PAGE_CHARS) return s;
+      var cut = s.lastIndexOf('\n', MAX_PAGE_CHARS);
+      if (cut < MAX_PAGE_CHARS * 0.6) cut = MAX_PAGE_CHARS; // 找不到合适的行边界就用纯字符截断
+      return s.slice(0, cut) +
+        '\n\n<notice>⚠️ 页面内容过长，为控制请求体积已截断到 ' + cut + ' 字符（原文 ' + s.length + '）。' +
+        '如需操作页面深处/未展示的元素，请先用 scroll 工具滚动或缩小范围，再重新观察页面。</notice>';
+    } catch (e) { return content; }
+  }
+  const baseCfg = { language: 'zh-CN', instructions: { system: sysPrompt }, experimentalScriptExecutionTool: true, enableMask: true, customTools, includeAttributes: ['href'], transformPageContent: _capPageContent };
   const config = isCustom
     ? Object.assign({}, baseCfg, { model: cfg.model, baseURL: cfg.baseURL, apiKey: cfg.apiKey })
     : Object.assign({}, baseCfg, { model: 'qwen3.5-plus', baseURL: FREE_PROXY, apiKey: 'NA' });
@@ -1965,14 +2045,10 @@
     agent.history = agent.history || [];
     agent.history.push({ type: 'user', content: t });
     agent.dispatchEvent(new Event('historychange'));
-    // 【长期记忆】实时拉取最新记忆（跨页写入也能及时可见），拼成上下文前缀注入指令。
-    // 拉取失败/超时用 memoryCache 兜底；面板显示与 handoff goal 均保持用户原文 t（不带前缀）。
-    var memCtx = '';
-    try {
-      var mem = await memoryFetch();
-      memCtx = buildMemoryContext(mem);
-    } catch (e) { memCtx = buildMemoryContext(memoryCache); }
-    var fullInstruction = memCtx ? (memCtx + '\n\n【本次任务】\n' + t) : t;
+    // 【长期记忆】不再把全部记忆全量拼进指令（避免 LLM 请求体过大触发 HTTP 413）。
+    // 改为：注入一条轻量提示，让 LLM 在需要时按需调用 get_memory 工具检索；并预热缓存。
+    var memCtx = '【记忆】本副驾具备跨页/跨任务的长期记忆。若本任务依赖此前记住的事实、偏好或过去完成的结果，请先用 get_memory 工具按需检索（传入关键词），检索到后再用其回答；若无需既往记忆，可忽略本条提示。';
+    var fullInstruction = memCtx + '\n\n【本次任务】\n' + t;
     // 【多步规划强制提示】当用户消息看起来像多步任务时，追加 plan 工具使用提示。
     // 只在非续传任务上追加（续传任务已有上下文，不需要）。
     if (t.indexOf('【任务续传】') !== 0) {
@@ -2203,37 +2279,9 @@
       if (max > 50) { var d = Math.round((window.scrollY || document.documentElement.scrollTop || 0) / max * 100); if (d > depth) depth = d; }
     }, { passive: true });
 
-    // 轻量提取摘要 + 实体
-    function extractPageInfo() {
-      var summary = '';
-      try { var m1 = document.querySelector('meta[property="og:description"]') || document.querySelector('meta[name="description"]'); if (m1) summary = String(m1.getAttribute('content') || '').trim(); } catch (e) {}
-      summary = summary.slice(0, 160);
-      var entities = [];
-      var chunks = [String(pageTitle || '')];
-      try { var h = document.querySelector('h1,h2'); if (h) chunks.push(h.textContent || ''); } catch (e2) {}
-      chunks.join(' ').split(/[\s|—_\-·,，。:：.()（）【】《》"'“”]+/).forEach(function (w) {
-        w = w.trim();
-        if (!w || entities.length >= 12) return;
-        if (/^[A-Za-z][\w.-]{2,}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
-        else if (/^[\u4e00-\u9fa5]{2,10}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
-      });
-      return { summary: summary, entities: entities };
-    }
-
-    var committed = false;
-    function commit() {
-      if (committed) return; committed = true;
-      var dwellSec = Math.round((Date.now() - t0) / 1000);
-      if (dwellSec < 3) return; // 停留不足不记
-      var info = extractPageInfo();
-      caidSendToBg({ type: 'CAID_READLOG_SAVE', record: {
-        url: url, host: host, title: String(pageTitle || '').slice(0, 200),
-        summary: info.summary, entities: info.entities,
-        dwellSec: dwellSec, maxDepth: depth
-      } });
-    }
-    window.addEventListener('pagehide', commit);
-    window.addEventListener('beforeunload', commit);
+    // 阅读记录采集已下沉到 content.js（ISOLATED world，每个页面不点副驾也记）。
+    // 这里仅保留 depth 滚动深度供 maybeReco() 的“认真看过”判定用，不再重复写库，
+    // 避免同一页面被 MAIN world 与 content.js 各存一次导致 visits 虚高。
 
     // ---------- 场景识别：购物 / 视频 ----------
     var vidHost = ['youtube.com', 'bilibili.com', 'douyin.com', 'v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'tv.sohu.com', 'kuaishou.com'];

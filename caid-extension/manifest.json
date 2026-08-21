@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CAID 程序员工作台",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "继承魔改版 Page-Agent 的程序员工作台：动态接管新标签页，并在任意网页提供跨页智能体副驾与轻量插件系统。",
   "permissions": ["storage", "scripting", "tabs", "activeTab", "contextMenus", "notifications", "topSites"],
   "host_permissions": ["<all_urls>"],
