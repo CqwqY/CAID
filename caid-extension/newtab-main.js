@@ -3072,6 +3072,7 @@ try {
 const SMART_ZONE = {
   lastPeriodKey: '',   // 避免同时段内重复刷新
   dismissedAiKey: null, // 用户本次会话关闭过的 AI 建议缓存键
+  outputPeriodKey: '',  // 已输出过建议的时段，同时段不重复输出
 };
 
 function getPeriodKey() {
@@ -3204,6 +3205,9 @@ async function renderSmartSites() {
 async function renderSmartAiSuggestion() {
   const body = caidQs('#smartZoneBody');
   if (!body) return;
+  // 同一时段已输出过建议则不再输出（手动刷新会清除此标记）
+  const p = getPeriodKey();
+  if (SMART_ZONE.outputPeriodKey === p.key) return;
   const cfg = state.llmCfg;
   // 无 API Key：显示 fallback 卡片引导用户配置
   if (!cfg || !cfg.apiKey) {
@@ -3224,12 +3228,12 @@ async function renderSmartAiSuggestion() {
       });
     });
     body.insertBefore(fallback, body.firstChild);
+    SMART_ZONE.outputPeriodKey = p.key;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
   // 准备上下文：时段 + 待办 + 最近任务 + 最近记忆事实
-  const p = getPeriodKey();
   const todos = (state.todos || []).filter(t => !t.done).slice(0, 5).map(t => t.text);
   let memoryFacts = [], recentTasks = [];
   try {
@@ -3336,6 +3340,7 @@ async function renderSmartAiSuggestion() {
       });
     });
     body.insertBefore(card, body.firstChild);
+    SMART_ZONE.outputPeriodKey = p.key;
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.warn('[CAID] smart AI suggestion failed:', e);
@@ -3353,6 +3358,7 @@ async function renderSmartAiSuggestion() {
       <div class="smart-ai-actions"><button class="smart-ai-btn" data-act="dismiss">知道了</button></div>`;
     fb.querySelector('.smart-ai-btn').addEventListener('click', () => fb.classList.add('dismissed'));
     body.insertBefore(fb, body.firstChild);
+    SMART_ZONE.outputPeriodKey = p.key;
     if (window.lucide) lucide.createIcons();
   }
 }
@@ -3376,6 +3382,7 @@ function bindSmartZoneEvents() {
     refresh.addEventListener('click', async () => {
       refresh.classList.add('spinning');
       SMART_ZONE.dismissedAiKey = null; // 手动刷新时重置关闭状态
+      SMART_ZONE.outputPeriodKey = ''; // 手动刷新时重置已输出标记，允许重新输出
       await renderSmartZone();
       setTimeout(() => refresh.classList.remove('spinning'), 600);
     });
