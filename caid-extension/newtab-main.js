@@ -3246,14 +3246,20 @@ async function renderSmartAiSuggestion() {
   const aiKey = p.key + '|' + (todos.join(',') || 'none') + '|' + (recentTasks[0]?.goal || '');
   if (SMART_ZONE.dismissedAiKey === aiKey) return;
 
-  const sysPrompt = `你是一个简洁的智能助手，给用户一句主动建议（不超过 60 字）。基于时段、待办和最近任务，给出一个具体的、可执行的下一步动作建议。
-格式：纯文本一句话，不要解释、不要 markdown。示例：
-- "你昨天让查的 PR 已完成 review，今天继续处理 issue #123 吗？"
-- "上午适合专注编码，要不要打开 GitHub 看看你的仓库？"
-- "晚上有 3 件待办未完成，要不要留到明天处理？"
-- "夜深了，建议先休息，明天再处理待办。"`;
+  const sysPrompt = `你是一个简洁的智能助手。基于时段、待办和最近任务，给出一条主动建议。
+格式：建议文本|处理URL
+- 建议文本：不超过 50 字，一句话，不要 markdown
+- |：竖线分隔符
+- 处理URL：用户点击"让 AI 处理"后跳转的具体网址，必须是完整 http(s):// URL
 
-  const userPrompt = `当前时段：${p.label}\n未完成待办：${todos.length ? todos.join(' / ') : '无'}\n最近任务：${recentTasks.length ? recentTasks.map(t => t.goal).join(' / ') : '无'}\n已知事实：${memoryFacts.length ? memoryFacts.join(' / ') : '无'}\n请给一条主动建议。`;
+必须提供处理URL，不能省略。示例：
+- 你昨天让查的 PR 已完成 review，继续处理吗？|https://github.com/pulls
+- 上午适合专注编码，打开你的仓库？|https://github.com
+- 搜索一下今天的技术新闻？|https://www.bing.com/news
+- 整理一下未完成的待办？|https://www.bing.com/search?q=今日待办整理
+- 夜深了，看看放松视频？|https://www.bilibili.com`;
+
+  const userPrompt = `当前时段：${p.label}\n未完成待办：${todos.length ? todos.join(' / ') : '无'}\n最近任务：${recentTasks.length ? recentTasks.map(t => t.goal).join(' / ') : '无'}\n已知事实：${memoryFacts.length ? memoryFacts.join(' / ') : '无'}\n请给一条主动建议，必须包含处理URL。`;
 
   try {
     const url = cfg.baseUrl + '/chat/completions';
@@ -3268,16 +3274,34 @@ async function renderSmartAiSuggestion() {
         ],
         temperature: 0.7,
         stream: false,
-        max_tokens: 120,
+        max_tokens: 150,
       })
     });
     if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
     const j = await resp.json();
-    const suggestion = (j?.choices?.[0]?.message?.content || '').trim().split('\n')[0].slice(0, 100);
-    if (!suggestion) throw new Error('LLM 返回为空');
+    const raw = (j?.choices?.[0]?.message?.content || '').trim().split('\n')[0];
+    if (!raw) throw new Error('LLM 返回为空');
 
-    // 解析出一个可执行动作：若建议里提到 URL，第一个按钮打开；否则按钮触发搜索框预填
-    const urlMatch = suggestion.match(/https?:\/\/[^\s，。]+/);
+    // 解析：建议文本 | 处理URL
+    const pipeIdx = raw.lastIndexOf('|');
+    let suggestion = raw, actionUrl = '';
+    if (pipeIdx > 0) {
+      suggestion = raw.slice(0, pipeIdx).trim().slice(0, 100);
+      actionUrl = raw.slice(pipeIdx + 1).trim();
+      // 校验 URL 格式
+      if (!/^https?:\/\/\S+$/i.test(actionUrl)) actionUrl = '';
+    }
+    // 兜底：从建议文本中提取 URL
+    if (!actionUrl) {
+      const m = suggestion.match(/https?:\/\/[^\s，。）]+/);
+      if (m) actionUrl = m[0];
+    }
+    // 最终兜底：Bing 搜索建议文本
+    if (!actionUrl) {
+      actionUrl = 'https://www.bing.com/search?q=' + encodeURIComponent(suggestion.slice(0, 60));
+    }
+    if (!suggestion) suggestion = raw.slice(0, 100);
+
     const card = document.createElement('div');
     card.className = 'smart-ai-card';
     card.dataset.aiKey = aiKey;
@@ -3286,8 +3310,7 @@ async function renderSmartAiSuggestion() {
       <div class="smart-ai-head"><i data-lucide="sparkles"></i>AI 主动建议</div>
       <div class="smart-ai-body">${escapeHtml(suggestion)}</div>
       <div class="smart-ai-actions">
-        ${urlMatch ? `<button class="smart-ai-btn primary" data-act="open" data-url="${escapeHtml(urlMatch[0])}">打开链接</button>` : ''}
-        <button class="smart-ai-btn" data-act="ask" data-q="${escapeHtml(suggestion.slice(0, 60))}" data-url="${urlMatch ? escapeHtml(urlMatch[0]) : ''}">让 AI 处理</button>
+        <button class="smart-ai-btn primary" data-act="ask" data-url="${escapeHtml(actionUrl)}">让 AI 处理</button>
         <button class="smart-ai-btn" data-act="dismiss">稍后</button>
       </div>
     `;
@@ -3298,18 +3321,14 @@ async function renderSmartAiSuggestion() {
     card.querySelectorAll('.smart-ai-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const act = btn.dataset.act;
-        if (act === 'open' && btn.dataset.url) {
-          window.open(btn.dataset.url, '_blank');
-          addHistory('AI 建议打开', 'nav', btn.dataset.url);
-        } else if (act === 'ask') {
-          // 跳转到建议网站 + 唤起副驾（background 在 tab 加载完成时自动注入）
-          const url = btn.dataset.url || ('https://www.bing.com/search?q=' + encodeURIComponent(btn.dataset.q || ''));
+        if (act === 'ask' && btn.dataset.url) {
+          // 跳转到 AI 提供的处理 URL + 唤起副驾（background 在 tab 加载完成时自动注入）
           if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
-            chrome.tabs.create({ url: url, active: true });
+            chrome.tabs.create({ url: btn.dataset.url, active: true });
           } else {
-            window.open(url, '_blank');
+            window.open(btn.dataset.url, '_blank');
           }
-          addHistory('AI 建议跳转', 'nav', url);
+          addHistory('AI 建议跳转', 'nav', btn.dataset.url);
         } else if (act === 'dismiss') {
           card.classList.add('dismissed');
           SMART_ZONE.dismissedAiKey = aiKey;
