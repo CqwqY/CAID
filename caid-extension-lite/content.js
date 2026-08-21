@@ -15,9 +15,10 @@
     '</svg>';
   }
 
-  // 【纯净版】不依赖 newtab 工作台：副驾 LLM 配置走面板内置设置（cpSettingsPanel），
-  // 不再向共享 window 写 __CAID_OPTIONS_URL，MAIN_URL 为空 → go_to_workbench 返回「地址不可用」。
-  // 避免 MAIN world 的 caid-copilot.js 尝试跳转到不存在的 newtab.html。
+  // 把扩展内部 URL 写到共享 window 上，供 MAIN world 的 caid-copilot.js 读取
+  // （MAIN world 无 chrome.runtime，无法自己 getURL；ISOLATED world 设的属性 MAIN world 可读）
+  // 设置入口已并入 newtab 工作台（#settings 锚点自动弹出设置 Modal）
+  try { window.__CAID_OPTIONS_URL = chrome.runtime.getURL('newtab.html#settings'); } catch (e) {}
 
   // ---------- storage 双路径：直接访问优先，失败时经 background 代理 ----------
   // chrome.storage.session 在某些页面上下文会报 "Access to storage is not allowed from this context"，

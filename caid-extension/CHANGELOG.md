@@ -19,8 +19,9 @@
 
 ### 新增
 - **不捆绑新标签页的纯净版**：新增独立目录 `caid-extension-lite/`，保留浏览器原生新标签页，只在任意网页提供跨页智能体副驾。
-- **保留**：content.js（任意页面圆球 + 阅读采集）、background.js（注入副驾/断点续传/待办与记忆后台）、caid-copilot.js（副驾本体，含内联 LLM 设置面板）、lib/、icons/。
-- **改为独立精简设置页**：`options_ui` 指向新页 `options.html`（非 newtab 工作台），右键图标→选项即可配置 LLM；另可用副驾面板内联设置。移除 `sandbox` 与 `topSites` 权限。
+- **保留原版全部功能**：content.js（任意页面圆球 + 阅读采集）、background.js（注入副驾/断点续传/待办与记忆后台）、caid-copilot.js（副驾本体，含内联 LLM 设置）、lib/、icons/、sandbox/（插件沙箱）、vendor/、newtab.html + newtab-main.js（原版工作台）。
+- **设置页 = 原版工作台**：`options_ui` 仍指向 `newtab.html#settings`（相同于全量版），右键图标→选项即打开原版工作台的设置弹窗；同样保留 `topSites`、`sandbox` 权限，插件系统完整可用。
+- **唯一差异**：不注册 `tabs.onCreated → maybeTakeoverNewTab`，也不声明 `chrome_url_overrides.newtab`，因此 `chrome://newtab` 保持原生、不被接管；需访问工作台时可右键图标→选项，或点圆球面板里的「前往工作台」。
 
 ## [v0.3.9] - 2026-08-21
 

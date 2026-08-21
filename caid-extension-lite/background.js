@@ -154,8 +154,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.runtime.openOptionsPage();
       console.log('[CAID-bg] openOptionsPage() 已调用');
     } catch (e) {
-      // 纯净版无独立选项页：副驾 LLM 配置走面板内置设置（cpSettingsPanel），此处无需跳转
-      console.warn('[CAID-bg] openOptionsPage() 失败（纯净版无选项页）:', e);
+      // 兜底：部分环境下 openOptionsPage 受限，改用 tabs.create 直接开扩展选项页
+      console.warn('[CAID-bg] openOptionsPage() 失败，兜底 tabs.create:', e);
+      try {
+        chrome.tabs.create({ url: chrome.runtime.getURL('newtab.html#settings') });
+      } catch (e2) {
+        console.error('[CAID-bg] 兜底 tabs.create 也失败:', e2);
+      }
     }
     return false;
   }
@@ -457,7 +462,9 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab && tab.id) ensureCopilotOpen(tab.id);
 });
 
-// 【纯净版】不接管新标签页：保留浏览器原生新标签页，本扩展只在普通网页提供副驾。
+// ---------- 纯净版：不接管新标签页 ----------
+// （已移除 chrome://newtab / edge://newtab 的动态接管：不声明 chrome_url_overrides.newtab，
+//  也不注册 tabs.onCreated→maybeTakeoverNewTab。浏览器原生新标签页不受影响。）
 
 // 关键改进：在任意标签页加载完成时检查是否有待续传上下文（caidHandoff）。
 // background service worker 永远有完整 chrome.storage.session 权限，
@@ -469,6 +476,8 @@ chrome.action.onClicked.addListener((tab) => {
 //   C) 无 handoff 的普通页 → 不注入（零干扰），用户可点 🤖 按钮手动启动
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status !== 'complete' || !tab || !tab.url) return;
+  const nt = chrome.runtime.getURL('newtab.html');
+  const isNewTab = tab.url.indexOf(nt) === 0;
 
   // 同时读 handoff + 持久化的 agent 活跃表（caidAgentTabs 跨 SW 重启存活，内存 Map 只是加速缓存）
   chrome.storage.session.get(['caidHandoff', 'caidAgentTabs'], function (got) {
@@ -488,7 +497,13 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     }
     var linked = !!(st && now - st.ts < 300000);
 
-    if (fresh && (h.toUrl || linked) && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
+    if (isNewTab) {
+      // A) newtab（chrome-extension:// 页面）：chrome.scripting.executeScript 无法注入扩展自身页面，
+      //    故 newtab.html 内嵌 bootstrap 脚本自行加载副驾（page-agent + caid-copilot）+ 消费 handoff。
+      //    background 此处仅记录日志，不调 bootCopilot、不消费 handoff（让页面 bootstrap 读取）。
+      var hasExplicitHandoff = fresh && h.toUrl;
+      console.log('[CAID-R] tabs.onUpdated: newtab 加载完成, 副驾由页面 bootstrap 自行加载, handoff=', !!hasExplicitHandoff);
+    } else if (fresh && (h.toUrl || linked) && tab.url !== (h.fromUrl || '') && /^https?:\/\//i.test(tab.url)) {
       // B) 普通页面 + 有效 handoff + (显式导航意图 或 本 tab/opener 有活跃 agent) + 非来源页 → 续跑
       chrome.storage.session.remove(['caidHandoff']);
       console.log('[CAID-R] tabs.onUpdated: 普通页面检测到续传, goal=', h.goal, ' url=', tab.url, ' linked=', linked, ' viaOpener=', viaOpener);
@@ -630,7 +645,7 @@ async function bootCopilot(tabId, tabUrl, handoff) {
     await chrome.scripting.executeScript({
       target: { tabId },
       func: (cfg, optsUrl) => { window.__CAID_LLM_CFG = cfg; window.__CAID_OPTIONS_URL = optsUrl; },
-      args: [llm, ''],
+      args: [llm, chrome.runtime.getURL('newtab.html#settings')],
       world: 'MAIN'
     });
 
