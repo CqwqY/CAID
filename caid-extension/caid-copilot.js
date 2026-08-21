@@ -329,6 +329,37 @@
 #caidExtCopilot .cp-input-row{padding:10px 12px;border-top:1px solid #1f3650;display:flex;gap:8px;}
 #caidExtCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
 #caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}\n#caidExtCopilot .cp-settings{padding:10px 14px;background:#0b1a2a;border-bottom:1px solid #1f3650;display:none;}\n#caidExtCopilot .cp-settings.open{display:block;}\n#caidExtCopilot .cp-settings label{display:block;margin:8px 0 3px;font-size:12px;color:#9fb6cf;}\n#caidExtCopilot .cp-settings input[type=text],#caidExtCopilot .cp-settings input[type=password]{width:100%;padding:6px 8px;border-radius:6px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;box-sizing:border-box;font-size:12px;}\n#caidExtCopilot .cp-settings .cp-row{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}\n#caidExtCopilot .cp-settings .cp-save{background:#185FA5;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px;}\n#caidExtCopilot .cp-settings .cp-hint{color:#7a8ba0;font-size:11px;margin-top:6px;line-height:1.5;}\n#caidExtCopilot .cp-settings .cp-saved{color:#2a9d5c;font-size:12px;margin-top:6px;min-height:14px;}
+#caidExtCopilot .cp-plan{margin:6px 14px 10px;padding:10px 12px;background:#0b1a2a;border:1px solid #1f3650;border-radius:10px;font-size:12px;}
+#caidExtCopilot .cp-plan-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+#caidExtCopilot .cp-plan-title{flex:1;font-weight:600;color:#d6e8ff;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#caidExtCopilot .cp-plan-prog{flex:0 0 auto;font-size:11px;color:#9fb6cf;background:#1f3650;padding:2px 8px;border-radius:10px;}
+#caidExtCopilot .cp-plan-bar{height:4px;background:#1f3650;border-radius:2px;overflow:hidden;margin-bottom:8px;}
+#caidExtCopilot .cp-plan-bar-fill{height:100%;background:linear-gradient(90deg,#2a6bb8,#3dd68c);transition:width .3s ease;width:0;}
+#caidExtCopilot .cp-plan-steps{display:flex;flex-direction:column;gap:5px;}
+#caidExtCopilot .cp-plan-step{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:6px;line-height:1.4;}
+#caidExtCopilot .cp-plan-step.active{background:#1f3650;}
+#caidExtCopilot .cp-plan-step.done{opacity:.6;}
+#caidExtCopilot .cp-plan-step.failed{background:#2a1414;}
+#caidExtCopilot .cp-plan-step.skipped{opacity:.4;}
+#caidExtCopilot .cp-plan-step-icon{flex:0 0 16px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;}
+#caidExtCopilot .cp-plan-step-icon.pending{color:#5b7187;}
+#caidExtCopilot .cp-plan-step-icon.active{color:#ffd479;}
+#caidExtCopilot .cp-plan-step-icon.done{color:#3dd68c;}
+#caidExtCopilot .cp-plan-step-icon.failed{color:#ff6b6b;}
+#caidExtCopilot .cp-plan-step-icon.skipped{color:#5b7187;}
+#caidExtCopilot .cp-plan-step-desc{flex:1;min-width:0;color:#b9cfe8;font-size:11.5px;word-break:break-word;}
+#caidExtCopilot .cp-plan-step-tool{flex:0 0 auto;font-size:10px;color:#9fe1cb;background:#1f3650;padding:1px 5px;border-radius:3px;}
+#caidExtCopilot .cp-plan-confirm{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;}
+#caidExtCopilot .cp-plan-confirm.open{display:flex;}
+#caidExtCopilot .cp-plan-confirm-dlg{background:#0f1722;border:1px solid #1f3650;border-radius:14px;padding:18px 22px;max-width:340px;box-shadow:0 16px 50px rgba(0,0,0,.5);}
+#caidExtCopilot .cp-plan-confirm-title{font-weight:600;font-size:14px;color:#d6e8ff;margin-bottom:8px;}
+#caidExtCopilot .cp-plan-confirm-body{font-size:12.5px;color:#b9cfe8;line-height:1.6;margin-bottom:14px;white-space:pre-wrap;word-break:break-word;}
+#caidExtCopilot .cp-plan-confirm-actions{display:flex;gap:8px;justify-content:flex-end;}
+#caidExtCopilot .cp-plan-confirm-btn{padding:6px 16px;border-radius:8px;border:0;cursor:pointer;font-size:12.5px;}
+#caidExtCopilot .cp-plan-confirm-btn.primary{background:#2a6bb8;color:#fff;}
+#caidExtCopilot .cp-plan-confirm-btn.primary:hover{background:#3a7bc8;}
+#caidExtCopilot .cp-plan-confirm-btn.cancel{background:#1f3650;color:#9fb6cf;}
+#caidExtCopilot .cp-plan-confirm-btn.cancel:hover{background:#2a4460;}
 `;
   // 自建启动按钮：仅当 content.js（ISOLATED world）未创建 #caidLauncher 时调用。
   // 用于扩展页 / 自己接管的 newtab —— content script 不注入该环境，没有常驻启动按钮。
@@ -898,6 +929,196 @@
         }
         return '⚠️ 扩展桥接不可用，待办未能写入工作台。请确认 CAID 扩展已安装并启用，然后重试。';
       }
+    },
+
+    // ---------- 多步规划执行（plan 工具）----------
+    // LLM 一次性输出多步计划，执行器按序调用其他工具，失败/confirm 暂停，结果汇总返回。
+    // 大幅减少 LLM 调用次数：原来每步 1 次 LLM 调用，现在整个 plan 只 1 次（+失败时重规划）。
+    plan: {
+      description:
+        'Plan multiple tool calls in ONE shot and execute them sequentially without asking the LLM between steps. ' +
+        'Use this when the task involves 2+ sequential actions you can predict in advance (e.g., navigate → input text → click search → click first result). ' +
+        'Each step specifies a tool name and its arguments. Steps execute in order; results are collected and returned together. ' +
+        'SETUP: "steps" is an array. Each step = { tool, args, desc, confirm, on_fail }. ' +
+        '  - tool (required): name of another tool (execute_javascript, navigate_to_url, input_text, click_element_by_index, manage_todo, etc.). ' +
+        '    ⚠️ CANNOT call "plan" recursively. ' +
+        '  - args (object): arguments for that tool (e.g., {url:"https://..."} for navigate_to_url, {script:"..."} for execute_javascript). ' +
+        '  - desc (string, optional): human-readable description of what this step does. ' +
+        '  - confirm (boolean, optional, default false): if true, pause execution and ask user to confirm before running this step. Use for sensitive actions (deleting, submitting, navigating to payment pages). ' +
+        '  - on_fail (string, optional, default "stop"): "stop" (halt plan on failure), "continue" (ignore failure, proceed to next step), or "ask" (pause and ask user whether to continue). ' +
+        'EXECUTION: steps run sequentially. After ALL steps complete (or plan stops), a summary of each step result is returned. ' +
+        'If a step fails and on_fail="stop", remaining steps are marked "skipped". ' +
+        'Do NOT use plan for single-step tasks — just call the tool directly. ' +
+        'Do NOT include steps whose arguments depend on results you don\'t have yet (e.g., clicking a search result whose index you don\'t know). ' +
+        'For such dependent steps, plan the first part, see results, then plan the next part in a new call.',
+      inputSchema: z.object({
+        goal: z.string().describe('Short description of what this plan accomplishes (shown in UI)'),
+        steps: z.array(z.object({
+          tool: z.string().describe('tool name to execute (e.g., execute_javascript, navigate_to_url, manage_todo)'),
+          args: z.any().optional().describe('arguments object for the tool, e.g. {url:"https://..."} or {script:"..."}'),
+          desc: z.string().optional().describe('human-readable description of this step'),
+          confirm: z.boolean().optional().describe('if true, pause for user confirmation before this step'),
+          on_fail: z.string().optional().describe('stop | continue | ask (default stop)')
+        })).min(1).max(15).describe('ordered steps to execute')
+      }),
+      execute: async function (input, ctx) {
+        var planInput = input || {};
+        var steps = Array.isArray(planInput.steps) ? planInput.steps : [];
+        var goal = String(planInput.goal || '多步任务');
+        var signal = ctx && ctx.signal;
+        if (!steps.length) throw new Error('plan: steps array is empty');
+
+        // ---- 创建 plan 进度 UI ----
+        var planId = 'plan_' + Date.now().toString(36);
+        var planEl = document.createElement('div');
+        planEl.className = 'cp-plan';
+        planEl.id = planId;
+        var ICONS = { pending: '○', active: '▶', done: '✓', failed: '✗', skipped: '⊘' };
+        var stepStates = steps.map(function () { return 'pending'; });
+        var results = [];
+
+        function renderPlan() {
+          var done = 0, failed = 0;
+          stepStates.forEach(function (s) { if (s === 'done') done++; else if (s === 'failed') failed++; });
+          var pct = Math.round((done / steps.length) * 100);
+          var stepsHtml = steps.map(function (st, i) {
+            var state = stepStates[i];
+            var icon = ICONS[state] || ICONS.pending;
+            var toolName = cpEscapeHtml(String(st.tool || ''));
+            var descText = st.desc ? cpEscapeHtml(String(st.desc)) : toolName;
+            return '<div class="cp-plan-step ' + state + '">' +
+              '<span class="cp-plan-step-icon ' + state + '">' + icon + '</span>' +
+              '<span class="cp-plan-step-desc">' + descText + '</span>' +
+              '<span class="cp-plan-step-tool">' + toolName + '</span>' +
+              '</div>';
+          }).join('');
+          planEl.innerHTML =
+            '<div class="cp-plan-head">' +
+              '<span class="cp-plan-title" title="' + cpEscapeHtml(goal) + '">' + cpEscapeHtml(goal) + '</span>' +
+              '<span class="cp-plan-prog">' + done + '/' + steps.length + (failed ? ' (' + failed + '失败)' : '') + '</span>' +
+            '</div>' +
+            '<div class="cp-plan-bar"><div class="cp-plan-bar-fill" style="width:' + pct + '%"></div></div>' +
+            '<div class="cp-plan-steps">' + stepsHtml + '</div>';
+        }
+
+        renderPlan();
+        // 插入到日志区（logEl 在闭包中可见）
+        try {
+          var logArea = document.querySelector('#caidExtCopilot .cp-log');
+          if (logArea) { logArea.appendChild(planEl); logArea.scrollTop = logArea.scrollHeight; }
+        } catch (e) { console.warn('[CAID-R] plan UI 插入失败:', e); }
+
+        // ---- confirm 暂停对话框 ----
+        function confirmStep(step, index) {
+          return new Promise(function (resolve) {
+            var backdrop = document.createElement('div');
+            backdrop.className = 'cp-plan-confirm open';
+            backdrop.innerHTML =
+              '<div class="cp-plan-confirm-dlg">' +
+                '<div class="cp-plan-confirm-title">步骤 ' + (index + 1) + ' 需要确认</div>' +
+                '<div class="cp-plan-confirm-body">' +
+                  (step.desc ? '操作：' + cpEscapeHtml(step.desc) + '\n' : '') +
+                  '工具：' + cpEscapeHtml(String(step.tool || '')) + '\n' +
+                  '参数：' + cpEscapeHtml(JSON.stringify(step.args || {}).slice(0, 200)) +
+                '</div>' +
+                '<div class="cp-plan-confirm-actions">' +
+                  '<button class="cp-plan-confirm-btn cancel">取消</button>' +
+                  '<button class="cp-plan-confirm-btn primary">确认执行</button>' +
+                '</div>' +
+              '</div>';
+            // 放到副驾面板里（z-index 已是最高）
+            var cpRoot = document.getElementById('caidExtCopilot') || document.body;
+            cpRoot.appendChild(backdrop);
+            backdrop.querySelector('.cancel').onclick = function () { backdrop.remove(); resolve(false); };
+            backdrop.querySelector('.primary').onclick = function () { backdrop.remove(); resolve(true); };
+          });
+        }
+
+        // ---- ask 暂停（失败后询问是否继续）----
+        function askContinue(step, index, error) {
+          return new Promise(function (resolve) {
+            var backdrop = document.createElement('div');
+            backdrop.className = 'cp-plan-confirm open';
+            backdrop.innerHTML =
+              '<div class="cp-plan-confirm-dlg">' +
+                '<div class="cp-plan-confirm-title">步骤 ' + (index + 1) + ' 失败</div>' +
+                '<div class="cp-plan-confirm-body">' +
+                  (step.desc ? '操作：' + cpEscapeHtml(step.desc) + '\n' : '') +
+                  '工具：' + cpEscapeHtml(String(step.tool || '')) + '\n' +
+                  '错误：' + cpEscapeHtml(String(error || '未知错误')) +
+                '</div>' +
+                '<div class="cp-plan-confirm-actions">' +
+                  '<button class="cp-plan-confirm-btn cancel">停止</button>' +
+                  '<button class="cp-plan-confirm-btn primary">跳过并继续</button>' +
+                '</div>' +
+              '</div>';
+            var cpRoot = document.getElementById('caidExtCopilot') || document.body;
+            cpRoot.appendChild(backdrop);
+            backdrop.querySelector('.cancel').onclick = function () { backdrop.remove(); resolve(false); };
+            backdrop.querySelector('.primary').onclick = function () { backdrop.remove(); resolve(true); };
+          });
+        }
+
+        // ---- 按序执行每个 step ----
+        for (var i = 0; i < steps.length; i++) {
+          var step = steps[i] || {};
+          var toolName = String(step.tool || '');
+          var toolArgs = step.args || {};
+          var onFail = String(step.on_fail || 'stop');
+
+          // 检查 abort
+          if (signal && signal.aborted) { stepStates[i] = 'skipped'; renderPlan(); break; }
+
+          // confirm 暂停
+          if (step.confirm) {
+            var ok = await confirmStep(step, i);
+            if (!ok) { stepStates[i] = 'skipped'; renderPlan(); results.push({ step: i, tool: toolName, status: 'cancelled' }); break; }
+          }
+
+          // 查找工具
+          var tool = tools[toolName];
+          if (!tool || toolName === 'plan') {
+            stepStates[i] = 'failed'; renderPlan();
+            results.push({ step: i, tool: toolName, status: 'failed', error: toolName === 'plan' ? 'cannot call plan recursively' : 'unknown tool: ' + toolName });
+            if (onFail === 'continue') continue;
+            // 标记剩余为 skipped
+            for (var j = i + 1; j < steps.length; j++) { stepStates[j] = 'skipped'; }
+            renderPlan(); break;
+          }
+
+          // 执行
+          stepStates[i] = 'active'; renderPlan();
+          try {
+            var result = await tool.execute.call(this, toolArgs, ctx);
+            stepStates[i] = 'done'; renderPlan();
+            results.push({ step: i, tool: toolName, desc: step.desc || '', status: 'done', result: String(result || '').slice(0, 500) });
+          } catch (err) {
+            var errMsg = String(err && err.message ? err.message : err);
+            stepStates[i] = 'failed'; renderPlan();
+            results.push({ step: i, tool: toolName, desc: step.desc || '', status: 'failed', error: errMsg });
+            if (onFail === 'continue') continue;
+            if (onFail === 'ask') {
+              var cont = await askContinue(step, i, errMsg);
+              if (cont) continue;
+            }
+            // stop: 标记剩余为 skipped
+            for (var k = i + 1; k < steps.length; k++) { stepStates[k] = 'skipped'; }
+            renderPlan(); break;
+          }
+        }
+
+        // ---- 汇总结果 ----
+        var doneCount = results.filter(function (r) { return r.status === 'done'; }).length;
+        var failCount = results.filter(function (r) { return r.status === 'failed'; }).length;
+        var skipCount = steps.length - results.length;
+        var summary = '📋 计划「' + goal + '」执行完成：' + doneCount + ' 成功 / ' + failCount + ' 失败 / ' + skipCount + ' 跳过（共 ' + steps.length + ' 步）。\n';
+        results.forEach(function (r) {
+          var icon = r.status === 'done' ? '✓' : (r.status === 'failed' ? '✗' : '⊘');
+          summary += icon + ' [步骤' + (r.step + 1) + '] ' + (r.desc || r.tool) + '：' + (r.result || r.error || '') + '\n';
+        });
+        if (failCount > 0) summary += '\n有步骤失败，请根据结果决定是否重新规划剩余部分。';
+        return summary;
+      }
     }
   };
   for (const k in tools) tools[k].__cpRender = cpRender;
@@ -1267,10 +1488,18 @@
   const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
     'auto_fill_form 填表、extract_page_data 提取数据、go_to_workbench 回到工作台、' +
-    'remember_fact / forget_fact 管理长期记忆。' +
+    'remember_fact / forget_fact 管理长期记忆、manage_todo 管理待办。' +
     '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
     '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +
     '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。' +
+    '【多步规划 plan 工具】当任务包含 2+ 个可预先确定的连续步骤时，用 plan 工具一次性规划并自动执行，' +
+    '而不是每步单独调用工具——这样更快、更省 token、更不容易在中途跑偏。' +
+    '典型场景：导航到网站 → 在搜索框输入关键词 → 点击搜索按钮 → 点击第一个结果。' +
+    'plan 的 steps 中每个 step 指定 { tool, args, desc }，执行器按序调用，结果汇总返回。' +
+    '遇到敏感操作（删除、提交、支付）可在 step 中设 confirm: true 暂停等待用户确认。' +
+    '步骤失败时默认停止整个 plan；设 on_fail: "continue" 可跳过失败继续下一步。' +
+    '注意：不要在 plan 中包含参数依赖前一步结果的步骤（如点击搜索结果，index 未知）——' +
+    '此时先 plan 前半部分，看到结果后再 plan 后半部分。' +
     '【跳转链接规则】页面观察结果中的链接会带 href=URL：当你的目标是"进入某链接/打开某页面"时，' +
     '不要用 click 点击链接（点击后页面切换无法控制），而是直接从 href 读取完整 URL，' +
     '用 open_url_in_new_tab 或 navigate_to_url 打开它，任务会自动在新页面续跑。' +
