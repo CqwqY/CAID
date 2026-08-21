@@ -296,6 +296,8 @@
 #caidExtCopilot .cp-api-badge.free{background:#2a9d5c;color:#fff;}
 #caidExtCopilot .cp-api-badge.nokey{background:#7a3b3b;color:#fff;}
 #caidExtCopilot .cp-activity{padding:6px 14px;font-size:12px;color:#ffd479;min-height:18px;border-bottom:1px solid #16273c;}
+#caidExtCopilot .cp-plan-area{flex:0 0 auto;max-height:50%;overflow:auto;padding:0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #16273c;}
+#caidExtCopilot .cp-plan-area:empty{display:none;}
 #caidExtCopilot .cp-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
 #caidExtCopilot .cp-bubble{padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word;max-width:100%;}
 #caidExtCopilot .cp-bubble-user{background:#16324f;align-self:flex-end;}
@@ -434,6 +436,7 @@
         '<div class="cp-hint">默认走免费代理；填自己的 OpenAI / 兼容端点后自动切换。设置保存在本机扩展存储。</div>' +
       '</div>' +
       '<div class="cp-activity" id="cpActivity"></div>' +
+      '<div class="cp-plan-area" id="cpPlanArea"></div>' +
       '<div class="cp-log" id="cpLog"></div>' +
       '<div class="cp-search" id="cpSearch" style="display:none;"></div>' +
       '<div class="cp-code" id="cpCode" style="display:none;"></div>' +
@@ -1034,10 +1037,13 @@
         }
 
         renderPlan();
-        // 插入到日志区（logEl 在闭包中可见）
+        // 插入到独立的 plan 容器（#cpPlanArea）——不能放进 .cp-log，因为
+        // renderHistory() 每次 historychange 都会 logEl.innerHTML='' 清空，
+        // plan 内部子工具执行会触发 historychange，会把刚插入的 plan UI 清掉。
         try {
-          var logArea = document.querySelector('#caidExtCopilot .cp-log');
-          if (logArea) { logArea.appendChild(planEl); logArea.scrollTop = logArea.scrollHeight; }
+          var planArea = document.querySelector('#caidExtCopilot #cpPlanArea') || document.querySelector('#caidExtCopilot .cp-plan-area');
+          if (planArea) { planArea.appendChild(planEl); planArea.scrollTop = planArea.scrollHeight; }
+          else { console.warn('[CAID-R] plan UI: #cpPlanArea 未找到，回退到 .cp-log'); var logArea = document.querySelector('#caidExtCopilot .cp-log'); if (logArea) { logArea.appendChild(planEl); } }
         } catch (e) { console.warn('[CAID-R] plan UI 插入失败:', e); }
 
         // ---- confirm 暂停对话框 ----
@@ -1525,6 +1531,13 @@
     '违反此规则属于严重错误——即使你认为逐步执行更可靠，也应优先尝试 plan。' +
     '只有以下情况允许直接调用单步工具：①任务只有 1 个步骤；②下一步的参数依赖前一步的执行结果（如点击第 N 个搜索结果，但 N 未知）。' +
     '\n\n' +
+    '【何时必须 plan——判断准则】' +
+    '• 出现"然后/之后/再/并且/同时/接着/最后"等连接词 → 必须 plan。' +
+    '• 出现多个动作动词（去 + 搜 + 打开 / 记 + 查 / 跳转 + 点击） → 必须 plan。' +
+    '• 即使没有连接词，只要你能预先列出 2 步以上操作 → 必须 plan。' +
+    '• 仅有 1 个明确动作（如"帮我记一下明天开会"）→ 可直接调单步工具。' +
+    '• 不确定时优先 plan：plan 失败可重规划，但跳过 plan 直接单步执行被视为违规。' +
+    '\n\n' +
     '【plan 工具用法】' +
     '输入：{ goal: "简短描述", steps: [{ tool, args, desc, confirm, on_fail }, ...] }。' +
     'tool 是另一个工具的名字（如 execute_javascript / navigate_to_url / manage_todo）；' +
@@ -1765,6 +1778,8 @@
     // execute 会清空 agent.history：先把已产生的条目同步进显示层，再重置同步指针，
     // 让新任务条目从 0 开始追加，面板对话跨任务连续。
     syncDisplay(); syncedLen = 0; renderHistory();
+    // 清空旧 plan UI（上一个任务的 plan 进度不再相关）
+    try { var _pa = document.querySelector('#caidExtCopilot #cpPlanArea'); if (_pa) _pa.innerHTML = ''; } catch (e) {}
     try { await agent.execute(fullInstruction); }
     catch (e) { if (!isHandingOff) { agent.history.push({ type: 'error', message: String(e && e.message ? e.message : e) }); agent.dispatchEvent(new Event('historychange')); } }
   }
