@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAID 副驾（纯净版）设置</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.6 system-ui,sans-serif; background:#0b1420; color:#e6f1fb; min-height:100vh; }
+.wrap { max-width:560px; margin:0 auto; padding:32px 20px 60px; }
+h1 { font-size:18px; margin:0 0 4px; color:#fff; }
+.sub { color:#7fb0e0; font-size:12px; margin:0 0 24px; }
+.card { background:#0f1722; border:1px solid #1f3650; border-radius:12px; padding:20px; }
+.field { margin-bottom:16px; }
+.field label { display:block; margin-bottom:6px; font-weight:600; color:#cfe4f7; font-size:13px; }
+.field .hint { color:#7f92a8; font-size:12px; margin-top:4px; }
+.field input[type="text"], .field input[type="password"] { width:100%; padding:9px 11px; border-radius:8px; border:1px solid #233a57; background:#0a1522; color:#e6f1fb; font-size:13px; }
+.field input:focus { outline:none; border-color:#3aa2ff; }
+.check { display:flex; align-items:center; gap:9px; }
+.check input { width:16px; height:16px; accent-color:#3aa2ff; }
+.check span { font-weight:600; }
+.actions { display:flex; align-items:center; gap:14px; margin-top:22px; }
+button { padding:9px 22px; border:0; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+.btn-save { background:#1f6feb; color:#fff; }
+.btn-save:hover { background:#2b7bf0; }
+#status { font-size:12px; }
+.ok { color:#55d08c; } .err { color:#ff6b6b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CAID 副驾（纯净版）设置</h1>
+  <p class="sub">仅配置副驾智能体的 LLM，不占用浏览器新标签页。</p>
+  <div class="card">
+    <div class="check" style="margin-bottom:8px;">
+      <input type="checkbox" id="useFree">
+      <span>使用内置免费代理</span>
+    </div>
+    <div class="hint" style="color:#7f92a8;font-size:12px;margin-bottom:16px;">勾选后直接调免费代理（qwen3.5-plus），无需 Key；取消勾选则用下方自定义模型。</div>
+    <div class="field">
+      <label for="baseURL">Base URL</label>
+      <input type="text" id="baseURL" placeholder="https://api.openai.com/v1">
+      <div class="hint">OpenAI 兼容接口地址。</div>
+    </div>
+    <div class="field">
+      <label for="model">Model</label>
+      <input type="text" id="model" placeholder="qwen3.5-plus">
+    </div>
+    <div class="field">
+      <label for="apiKey">API Key</label>
+      <input type="password" id="apiKey" autocomplete="off" placeholder="sk-...">
+    </div>
+    <div class="actions">
+      <button class="btn-save" id="save">保存</button>
+      <span id="status"></span>
+    </div>
+  </div>
+</div>
+<script src="options.js"></script>
+</body>
+</html>

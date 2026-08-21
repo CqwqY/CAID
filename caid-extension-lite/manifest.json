@@ -36,5 +36,9 @@
       "resources": ["lib/zod-v4.umd.js", "lib/page-agent.headless.js", "caid-copilot.js"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
 }
