@@ -283,6 +283,66 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // ---------- 阅读记录（chrome.storage.local.caidReadLog，按 url 合并）----------
+  // 结构：{ version, list: [{ url, host, title, summary, entities[], dwellSec, maxDepth, firstTs, lastTs, visits }], capped }
+  // 用于：空闲推荐、相关搜索提示、"继续读这篇"新标签记忆。按 url 唯一合并，最近优先。
+  function _readReadLog(cb) {
+    chrome.storage.local.get(['caidReadLog'], function (got) {
+      var r = (got && got.caidReadLog) || {};
+      if (!Array.isArray(r.list)) r.list = [];
+      r.version = r.version || 1;
+      cb(r);
+    });
+  }
+  if (msg && msg.type === 'CAID_READLOG_SAVE') {
+    var rec = msg.record || null;
+    _readReadLog(function (r) {
+      var existing = false;
+      for (var i = 0; i < r.list.length; i++) { if (r.list[i].url === rec.url) { existing = i; break; } }
+      var merged;
+      if (existing !== false) {
+        merged = r.list[existing];
+        r.list.splice(existing, 1);
+        merged.visits += 1;
+        merged.lastTs = Date.now();
+        if (rec.dwellSec > (merged.dwellSec || 0)) merged.dwellSec = rec.dwellSec;
+        merged.maxDepth = Math.max(merged.maxDepth || 0, rec.maxDepth || 0);
+        if (rec.entities && rec.entities.length) { var seen = merged.entities || []; rec.entities.forEach(function (e) { if (seen.indexOf(e) === -1) seen.push(e); }); merged.entities = seen; }
+        if (rec.summary) merged.summary = rec.summary;
+        merged.title = rec.title || merged.title;
+      } else {
+        merged = { url: rec.url, host: rec.host, title: rec.title, summary: rec.summary || '', entities: rec.entities || [], dwellSec: rec.dwellSec || 0, maxDepth: rec.maxDepth || 0, firstTs: Date.now(), lastTs: Date.now(), visits: 1 };
+      }
+      r.list.unshift(merged);
+      while (r.list.length > 200) r.list.pop();
+      chrome.storage.local.set({ caidReadLog: r }, function () { sendResponse({ ok: true }); });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_READLOG_GET') {
+    _readReadLog(function (r) { sendResponse({ ok: true, log: r }); });
+    return true;
+  }
+  // 阅读推荐偏好：开关 + 站点黑名单
+  // 结构：chrome.storage.local.caidReadPrefs = { enabled: bool, blacklist: ['example.com'], recKey: '' }
+  if (msg && msg.type === 'CAID_READPREFS_GET') {
+    chrome.storage.local.get(['caidReadPrefs'], function (got) {
+      var p = (got && got.caidReadPrefs) || {};
+      sendResponse({ ok: true, prefs: { enabled: p.enabled !== false, blacklist: Array.isArray(p.blacklist) ? p.blacklist : [], recKey: p.recKey || '' } });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_READPREFS_SET') {
+    chrome.storage.local.get(['caidReadPrefs'], function (got) {
+      var p = (got && got.caidReadPrefs) || {};
+      if (typeof msg.enabled === 'boolean') p.enabled = msg.enabled;
+      if (Array.isArray(msg.blacklist)) p.blacklist = msg.blacklist;
+      if (typeof msg.recKey === 'string') p.recKey = msg.recKey;
+      chrome.storage.local.set({ caidReadPrefs: p }, function () { sendResponse({ ok: true, prefs: p }); });
+    });
+    return true;
+  }
+
   // ---------- 副驾自制插件：把 create_plugin 工具生成的插件写入扩展插件系统 ----------
   // 插件列表存在 chrome.storage.local.caidPlugins（与 newtab 插件系统共用），
   // 按 id 去重（同 id 覆盖为更新，否则新增）。后台保存的 rec 缺 hasPanel/hasModal 元数据，

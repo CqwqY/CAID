@@ -700,11 +700,66 @@ function updateIntentHint() {
   }
   const map = { 'ai-ans':'AI 回答模式', 'bing':'Bing 搜索模式' };
   hint.innerHTML = `当前模式：<b>${map[state.searchMode]||''}</b> · 按 <kbd style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd> 切换`;
+  // 相关阅读提示：搜索词命中阅读记录时，主动提示"你上周看过一篇相关的"
+  _getReadLog().then(list => {
+    if (searchInput.value.trim() !== q) return; // 输入已改变则丢弃
+    const hit = matchReadLog(list, q);
+    if (!hit || !storageAvailable()) return;
+    const daysAgo = Math.max(1, Math.round((Date.now() - hit.lastTs) / 86400000));
+    hint.innerHTML = `当前模式：<b>${map[state.searchMode]||''}</b> · 按 <kbd style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:3px;">Tab</kbd>切换<br>` +
+      `📚 <span style="color:var(--accent2);">你${daysAgo===1?'昨天':daysAgo+'天前'}看过一篇相关的</span>：` +
+      `<a href="${escapeHtml(hit.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml((hit.title||'').slice(0,24))}</a>`;
+  });
+}
+
+// 阅读记录缓存（供相关搜索提示 / 继续读提示）
+let _readLogCache = [];
+let _readLogCacheTs = 0;
+async function _getReadLog() {
+  try {
+    if (storageAvailable() && (Date.now() - _readLogCacheTs > 60000 || !_readLogCache.length)) {
+      const { caidReadLog } = await chrome.storage.local.get('caidReadLog');
+      _readLogCache = (caidReadLog && caidReadLog.list) || [];
+      _readLogCacheTs = Date.now();
+    }
+  } catch (e) {}
+  return _readLogCache;
+}
+// 命中：查询词出现在标题或实体里
+function matchReadLog(list, q) {
+  const kw = String(q || '').toLowerCase();
+  if (!kw || !Array.isArray(list)) return null;
+  let best = null, bestScore = 0;
+  for (const x of list) {
+    if (!x || !x.title) continue;
+    const title = String(x.title).toLowerCase();
+    const ents = (x.entities || []).map(e => String(e).toLowerCase());
+    let score = 0;
+    if (title.indexOf(kw) !== -1) score += 3;
+    else { const words = kw.split(/\s+/).filter(Boolean); for (const w of words) { if (w.length >= 2 && title.indexOf(w) !== -1) score += 1; if (ents.some(e => e && e.indexOf(w) !== -1)) score += 1.5; } }
+    if (score > bestScore) { bestScore = score; best = x; }
+  }
+  return bestScore >= 1 ? best : null;
 }
 
 // ============ History ============
+// 重复判定 key：同一 query + mode + extra 视为重复（nav 模式按 URL 判定）
+function _historyDupKey(h) {
+  return (h.query || '') + '\u0001' + (h.mode || '') + '\u0001' + (h.extra || '');
+}
 function addHistory(query, mode, extra = '') {
-  state.searchHistory.unshift({ id: uid(), query, mode, extra, timestamp: Date.now() });
+  const target = _historyDupKey({ query, mode, extra });
+  const idx = state.searchHistory.findIndex(h => _historyDupKey(h) === target);
+  if (idx >= 0) {
+    // 重复：合并次数，更新时间戳并移到队首
+    const item = state.searchHistory[idx];
+    item.count = (item.count || 1) + 1;
+    item.timestamp = Date.now();
+    state.searchHistory.splice(idx, 1);
+    state.searchHistory.unshift(item);
+  } else {
+    state.searchHistory.unshift({ id: uid(), query, mode, extra, timestamp: Date.now(), count: 1 });
+  }
   state.searchHistory = state.searchHistory.slice(0, 200);
   LS.set('searchHistory', state.searchHistory);
   try { db.history.add({ query, mode, extra, timestamp: Date.now() }).catch(()=>{}); } catch(e){}
@@ -726,14 +781,18 @@ function renderHistory(filter = '') {
     refreshIcons();
     return;
   }
-  list.innerHTML = items.slice(0, 100).map(h => `
+  list.innerHTML = items.slice(0, 100).map(h => {
+    const cnt = h.count || 1;
+    // 重复条目合并，仅在原 query 后追加【次数】（如「天气【3】」），不替换文本
+    const dispQuery = `${escapeHtml(h.query)}${cnt > 1 ? `【${cnt}】` : ''}`;
+    return `
     <div class="history-item" data-id="${h.id}">
       <span class="history-time">${fmtHistoryTime(h.timestamp)}</span>
-      <span class="history-query" title="${escapeHtml(h.query)}">${escapeHtml(h.query)}</span>
+      <span class="history-query" title="${escapeHtml(h.query)}${cnt > 1 ? ` (共 ${cnt} 次)` : ''}">${dispQuery}</span>
       <span class="history-mode ${h.mode}">${historyModeLabel(h.mode)}</span>
       <button class="history-del" title="删除"><i data-lucide="x"></i></button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   list.querySelectorAll('.history-item').forEach(el => {
     const id = el.dataset.id;
     const h = state.searchHistory.find(x => x.id === id);
@@ -1673,6 +1732,30 @@ caidQs('#saveCopilotBtn').addEventListener('click', async () => {
   catch (e) { return toast('保存失败：' + String(e), 'error', 4000); }
   toast('副驾配置已保存（已打开的页面下次注入生效）','success');
 });
+// ============ 阅读记录 & 推荐设置（chrome.storage.local.caidReadPrefs）============
+async function fillReadPrefs() {
+  try {
+    const { caidReadPrefs } = await chrome.storage.local.get('caidReadPrefs');
+    const p = caidReadPrefs || {};
+    const en = caidQs('#readRecEnabled'); if (en) en.checked = p.enabled !== false;
+    const bl = caidQs('#readRecBlacklist'); if (bl) bl.value = (Array.isArray(p.blacklist) ? p.blacklist : []).join(', ');
+  } catch (e) {}
+}
+caidQs('#saveReadPrefsBtn').addEventListener('click', async () => {
+  const en = caidQs('#readRecEnabled').checked;
+  const raw = (caidQs('#readRecBlacklist').value || '').trim();
+  const blacklist = raw.split(/[,\s]+/).map(s => s.trim()).filter(s => s && s.indexOf('.') !== -1);
+  try {
+    await chrome.storage.local.set({ caidReadPrefs: { enabled: en, blacklist } });
+    toast('阅读设置已保存','success');
+  } catch (e) { toast('保存失败：' + String(e), 'error', 4000); }
+});
+caidQs('#clearReadLogBtn').addEventListener('click', async () => {
+  try {
+    await chrome.storage.local.set({ caidReadLog: { version: 1, list: [] } });
+    toast('阅读记录已清空','success');
+  } catch (e) { toast('清空失败：' + String(e), 'error', 4000); }
+});
 caidQs('#cpTestBtn').addEventListener('click', async () => {
   const isFree = caidQs('#cpProvider').value === 'free';
   const key = caidQs('#cpApiKey').value.trim();
@@ -1979,7 +2062,7 @@ function switchSettingsTab(name) {
   refreshIcons();
 }
 function openServerSettings() {
-  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); switchSettingsTab('servers'); });
+  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); fillReadPrefs(); switchSettingsTab('servers'); });
 }
 
 const addServerBtn = caidQs('#addServerBtn');
@@ -3033,7 +3116,7 @@ async function init() {
 
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -3050,7 +3133,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); }), 150);
   }
 }
 
@@ -3201,12 +3284,80 @@ async function renderSmartSites() {
   });
 }
 
+// 缓存 AI 建议卡片到 storage（同一时段只调一次 LLM，但卡片持续显示）
+function cacheAiCardData(periodKey, data) {
+  try {
+    if (storageAvailable()) {
+      chrome.storage.local.set({
+        smartAiCache: { ...data, periodKey, timestamp: Date.now() },
+        smartAiPeriod: periodKey // 同时记录已输出时段，兼容旧逻辑
+      });
+    }
+  } catch (e) { console.warn('[CAID] 缓存 AI 建议失败:', e); }
+}
+
+// 从缓存恢复 AI 建议卡片显示（innerHTML 会丢失事件，需重新绑定）
+function renderCachedAiCard(body, data) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = data.html;
+  const card = tmp.firstElementChild;
+  if (!card) return;
+  if (data.type === 'llm') {
+    card.querySelector('.smart-ai-close')?.addEventListener('click', () => {
+      card.classList.add('dismissed');
+      SMART_ZONE.dismissedAiKey = data.aiKey;
+    });
+    card.querySelectorAll('.smart-ai-btn')?.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.act;
+        if (act === 'ask' && data.actionUrl) {
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+            chrome.tabs.create({ url: data.actionUrl, active: true });
+          } else { window.open(data.actionUrl, '_blank'); }
+          // AI 建议跳转不写入历史记录
+        } else if (act === 'dismiss') {
+          card.classList.add('dismissed');
+          SMART_ZONE.dismissedAiKey = data.aiKey;
+        }
+      });
+    });
+  } else if (data.type === 'no_api') {
+    card.querySelectorAll('.smart-ai-btn')?.forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.act === 'settings') {
+          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); });
+        } else { card.classList.add('dismissed'); }
+      });
+    });
+  } else if (data.type === 'fallback') {
+    card.querySelector('.smart-ai-btn')?.addEventListener('click', () => {
+      card.classList.add('dismissed');
+    });
+  }
+  body.insertBefore(card, body.firstChild);
+  if (window.lucide) lucide.createIcons();
+}
+
 // AI 主动建议：根据 caidMemory + agentTasks + 待办生成上下文，调 LLM 一次（非流式），输出 1 条主动建议
 async function renderSmartAiSuggestion() {
   const body = caidQs('#smartZoneBody');
   if (!body) return;
-  // 同一时段已输出过建议则不再输出（持久化到 storage，关闭重开也不重复）
+  // 同一时段已输出过：不重新调 LLM 输出，但从缓存恢复显示卡片
   const p = getPeriodKey();
+  let savedData = null;
+  try {
+    if (storageAvailable()) {
+      const { smartAiCache } = await chrome.storage.local.get('smartAiCache');
+      savedData = smartAiCache || null;
+    }
+  } catch (e) {}
+  // 缓存存在且时段匹配：直接渲染缓存卡片，不再调 LLM
+  if (savedData && savedData.periodKey === p.key) {
+    renderCachedAiCard(body, savedData);
+    SMART_ZONE.outputPeriodKey = p.key;
+    return;
+  }
+  // 本会话已输出过但缓存丢失：也跳过本次输出（避免重新调 LLM）
   let savedPeriod = '';
   try {
     if (storageAvailable()) {
@@ -3230,13 +3381,13 @@ async function renderSmartAiSuggestion() {
     fallback.querySelectorAll('.smart-ai-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.act === 'settings') {
-          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); });
+          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); });
         } else { fallback.classList.add('dismissed'); }
       });
     });
     body.insertBefore(fallback, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
-    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
+    cacheAiCardData(p.key, { type: 'no_api', html: fallback.outerHTML });
     if (window.lucide) lucide.createIcons();
     return;
   }
@@ -3340,7 +3491,7 @@ async function renderSmartAiSuggestion() {
           } else {
             window.open(btn.dataset.url, '_blank');
           }
-          addHistory('AI 建议跳转', 'nav', btn.dataset.url);
+          // AI 建议跳转不写入历史记录
         } else if (act === 'dismiss') {
           card.classList.add('dismissed');
           SMART_ZONE.dismissedAiKey = aiKey;
@@ -3349,7 +3500,7 @@ async function renderSmartAiSuggestion() {
     });
     body.insertBefore(card, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
-    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
+    cacheAiCardData(p.key, { type: 'llm', html: card.outerHTML, aiKey, suggestion, actionUrl });
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.warn('[CAID] smart AI suggestion failed:', e);
@@ -3368,7 +3519,7 @@ async function renderSmartAiSuggestion() {
     fb.querySelector('.smart-ai-btn').addEventListener('click', () => fb.classList.add('dismissed'));
     body.insertBefore(fb, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
-    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
+    cacheAiCardData(p.key, { type: 'fallback', html: fb.outerHTML });
     if (window.lucide) lucide.createIcons();
   }
 }
@@ -3381,9 +3532,57 @@ async function renderSmartZone() {
   const p = getPeriodKey();
   SMART_ZONE.lastPeriodKey = p.key;
   if (label) label.textContent = `${p.label} · 主动建议`;
+  // "继续读这篇？"：基于阅读记录的跨天续读提示
+  renderContinueReading(body);
   // 只渲染 AI 主动建议（时段卡片和常用站点已移除）
   renderSmartAiSuggestion();
   if (window.lucide) lucide.createIcons();
+}
+
+// 打开新标签时提示"继续读这篇？"（基于时间 + 主题，读过了/被黑名单过滤则跳过）
+async function renderContinueReading(body) {
+  if (!body) return;
+  let prefs = { enabled: true, blacklist: [] };
+  try {
+    if (storageAvailable()) {
+      const { caidReadPrefs } = await chrome.storage.local.get('caidReadPrefs');
+      if (caidReadPrefs) prefs = { enabled: caidReadPrefs.enabled !== false, blacklist: caidReadPrefs.blacklist || [] };
+    }
+  } catch (e) {}
+  if (!prefs.enabled) return;
+  const list = await _getReadLog();
+  if (!list.length) return;
+  const now = Date.now();
+  let pick = null;
+  for (const x of list) {
+    if (!x || !x.title) continue;
+    if (/(^|\/)+(chrome-extension|chrome|edge|about|extensions?)\b/.test(x.url)) continue;
+    if ((prefs.blacklist || []).includes(x.host)) continue;
+    const h = (now - (x.lastTs || x.firstTs || now)) / 3600000;
+    if (h < 8 || h > 24 * 7) continue;        // 8h 内不算"继续"，超 7 天不再提醒
+    if ((x.dwellSec || 0) < 20) continue;       // 认真看过（停留≥20s）才算
+    pick = x; break;
+  }
+  if (!pick) return;
+  const key = 'caidContinueRead_' + pick.url;
+  try {
+    const last = localStorage.getItem(key);
+    if (last && now - Number(last) < 3600000) return; // 同小时只提示一次
+    localStorage.setItem(key, String(now));
+  } catch (e) {}
+  const hostLabel = String(pick.host || '').replace(/^www\./, '');
+  const card = document.createElement('div');
+  card.style.cssText = 'display:flex;align-items:center;gap:8px;background:rgba(255,212,121,.08);border:1px solid rgba(255,212,121,.28);border-radius:12px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#f5d79a;';
+  card.innerHTML =
+    '<span style="flex:0 0 auto;">📚 继续读这篇？</span>' +
+    '<b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6f1fb;">' + escapeHtml((pick.title || '未命名').slice(0, 40)) + '</b>' +
+    '<span style="flex:0 0 auto;color:#7fb0e0;font-size:11px;">' + escapeHtml(hostLabel) + '</span>';
+  const a = document.createElement('a');
+  a.href = pick.url; a.target = '_blank'; a.rel = 'noopener';
+  a.style.cssText = 'flex:0 0 auto;padding:3px 12px;border-radius:8px;background:#2a6bb8;color:#fff;cursor:pointer;text-decoration:none;font-size:12px;';
+  a.textContent = '打开';
+  card.appendChild(a);
+  body.insertBefore(card, body.firstChild);
 }
 
 function bindSmartZoneEvents() {
@@ -3393,7 +3592,8 @@ function bindSmartZoneEvents() {
       refresh.classList.add('spinning');
       SMART_ZONE.dismissedAiKey = null; // 手动刷新时重置关闭状态
       SMART_ZONE.outputPeriodKey = ''; // 手动刷新时重置已输出标记，允许重新输出
-      try { if (storageAvailable()) await chrome.storage.local.set({ smartAiPeriod: '' }); } catch (e) {}
+      // 手动刷新时清除缓存，强制重新调 LLM 生成新建议
+      try { if (storageAvailable()) await chrome.storage.local.remove(['smartAiCache', 'smartAiPeriod']); } catch (e) {}
       await renderSmartZone();
       setTimeout(() => refresh.classList.remove('spinning'), 600);
     });

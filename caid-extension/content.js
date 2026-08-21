@@ -110,29 +110,84 @@
 
     var btn = document.createElement('div');
     btn.id = 'caidLauncher';
-    btn.textContent = '';
-    btn.innerHTML = caidIcon(16) + ' <span style="vertical-align:middle">CAID 副驾</span>';
-    btn.title = '在当前页面启动 CAID 智能体副驾';
+    btn.setAttribute('role', 'button');
+    btn.title = 'CAID 副驾：点击输入任务，双击展开面板，按住圆球可拖动';
+    // 圆球样式：圆形、内嵌品牌图标、居中
+    btn.innerHTML = '<span class="caid-ball-ic">' + caidIcon(26) + '</span>';
     btn.style.cssText =
-      'position:fixed;right:16px;bottom:16px;z-index:2147483646;' +
-      'background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;' +
-      'font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);' +
-      'user-select:none;';
+      'position:fixed;right:24px;bottom:24px;z-index:2147483647;' +
+      'width:44px;height:44px;border-radius:50%;' +
+      'background:radial-gradient(circle at 30% 30%,#2f6fc0,#14355f);' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'box-shadow:0 5px 16px rgba(20,53,95,.55),inset 0 1px 0 rgba(255,255,255,.25);' +
+      'cursor:pointer;user-select:none;-webkit-user-select:none;' +
+      'transition:box-shadow .25s,transform .15s;' +
+      'color:#fff;';
+    btn.style.setProperty('pointer-events', 'auto', 'important');
+    var ic = btn.querySelector('.caid-ball-ic');
+    if (ic) ic.style.cssText = 'display:flex;align-items:center;justify-content:center;pointer-events:none;margin:0;line-height:0;width:100%;height:100%;';
+    var svgIc = ic ? ic.querySelector('svg') : null;
+    if (svgIc) { svgIc.style.margin = '0'; svgIc.style.display = 'block'; svgIc.style.verticalAlign = 'top'; }
 
+    // 是否已注入 MAIN world 副驾（DOM 标志，两 world 共享 DOM，可安全判定）
+    function isReady() {
+      var cp = document.getElementById('caidExtCopilot');
+      return !!(cp && cp.getAttribute('data-caid-ready') === '1');
+    }
+    // 单击/双击在"未注入"时的区分：双击会先触发两次 click，用 280ms 窗口正确分单/双击。
+    // 单击=横向输入条，双击=完整面板。这样首次单击也不会误开整块面板。
+    var bootTimer = null;
+    function realBoot(intent) {
+      try { chrome.runtime.sendMessage({ type: 'BOOT_COPILOT' }); } catch (e3) {}
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        if (isReady()) {
+          clearInterval(iv);
+          try { window.postMessage({ __caidBall: intent }, '*'); } catch (e4) {}
+        }
+        else if (tries > 40) clearInterval(iv);
+      }, 250);
+    }
     btn.addEventListener('click', function () {
-      // ⚠️ MV3 关键：ISOLATED world 和 MAIN world 的 window 属性是隔离的！
-      // caid-copilot.js（MAIN world）设置的 window.__CAID_BOOTED 在这里永远读不到。
-      // 改查 DOM（DOM 在两个 world 间共享）—— 面板已存在就直接打开，不再重复发 BOOT_COPILOT。
-      var p = document.getElementById('caidExtCopilot');
-      if (p) {
-        p.classList.add('open');
-        // 面板打开后隐藏 🤖 按钮（MAIN world 的保活 observer 通过 data-panel-open 识别这是有意隐藏，不会恢复）
-        btn.setAttribute('data-panel-open', '1');
-        btn.style.display = 'none';
-        return;
-      }
-      chrome.runtime.sendMessage({ type: 'BOOT_COPILOT' });
+      if (btn.__caidDragMoved) return; // 刚拖拽移动过圆球，不当作点击
+      if (isReady()) { try { window.postMessage({ __caidBall: 'toggle' }, '*'); } catch (e) {} return; }
+      clearTimeout(bootTimer); bootTimer = null;
+      bootTimer = setTimeout(function () { realBoot('toggle'); }, 280);
     });
+    btn.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      clearTimeout(bootTimer); bootTimer = null;
+      if (isReady()) { try { window.postMessage({ __caidBall: 'dbl' }, '*'); } catch (e2) {} return; }
+      realBoot('dbl');
+    });
+    // 圆球本身可拖动：按住拖动改变右下角停靠位置
+    (function makeBallDraggable(ball) {
+      var sx = 0, sy = 0, ox = 0, oy = 0, sway = false, wow = false;
+      ball.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        var r = ball.getBoundingClientRect();
+        sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+        ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
+        ball.style.right = 'auto'; ball.style.bottom = 'auto';
+        sway = true; wow = false;
+        function mm(e2) {
+          if (!sway) return;
+          var dx = e2.clientX - sx, dy = e2.clientY - sy;
+          if (!wow && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) wow = true;
+          ball.style.left = Math.max(0, Math.min(window.innerWidth - ball.offsetWidth, ox + dx)) + 'px';
+          ball.style.top = Math.max(0, Math.min(window.innerHeight - ball.offsetHeight, oy + dy)) + 'px';
+        }
+        function up() {
+          sway = false;
+          window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', up);
+          ball.__caidDragMoved = wow;
+          setTimeout(function () { ball.__caidDragMoved = false; }, 20);
+        }
+        window.addEventListener('mousemove', mm); window.addEventListener('mouseup', up);
+      });
+    })(btn);
 
     document.body.appendChild(btn);
   }
@@ -150,6 +205,8 @@
     function syncBtn() {
       var btn = document.getElementById('caidLauncher');
       if (!btn) return;
+      // 仅完整面板打开时隐藏圆球（避免被面板盖住）；
+      // 横向输入条打开时保留圆球，这样仍可"双击圆球"展开完整面板。
       if (p.classList.contains('open')) {
         btn.setAttribute('data-panel-open', '1');
         btn.style.display = 'none';
@@ -161,6 +218,14 @@
     syncBtn(); // 初始同步：面板创建时可能已是 open 状态（首次注入后默认打开）
     _panelWatch = new MutationObserver(syncBtn);
     _panelWatch.observe(p, { attributes: true, attributeFilter: ['class'] });
+    // 额外观察输入条的开关，让圆球显隐跟随
+    var _qbTimer = null;
+    var _qbWatch = new MutationObserver(function () { clearTimeout(_qbTimer); _qbTimer = setTimeout(syncBtn, 30); });
+    (function waitQb() {
+      var qb = document.getElementById('caidQuickBar');
+      if (qb) { _qbWatch.observe(qb, { attributes: true, attributeFilter: ['data-open'] }); return; }
+      setTimeout(waitQb, 500);
+    })();
   }
   watchPanel();
 

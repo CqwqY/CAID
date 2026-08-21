@@ -46,7 +46,10 @@
   var _fetchPending = new Map();
   window.addEventListener('message', function (ev) {
     var d = ev.data;
-    if (!d || !d.__caidType) return;
+    if (!d) return;
+    // 圆球按钮交互：单击=输入条 / 双击=完整面板 / 拖动文字=快速任务
+    if (d.__caidBall) { try { handleBallMsg(d); } catch (e) {} return; }
+    if (!d.__caidType) return;
     if (d.__caidType === 'CAID_FETCH_RESP') {
       var p = _fetchPending.get(d.id);
       if (p) { _fetchPending.delete(d.id); p(d); }
@@ -371,12 +374,96 @@
 #caidExtCopilot .cp-plan-confirm-btn{padding:6px 16px;border-radius:8px;border:0;cursor:pointer;font-size:12.5px;}
 #caidExtCopilot .cp-plan-confirm-btn.primary{background:#2a6bb8;color:#fff;}
 #caidExtCopilot .cp-plan-confirm-btn.primary:hover{background:#3a7bc8;}
-#caidExtCopilot .cp-plan-confirm-btn.cancel{background:#1f3650;color:#9fb6cf;}
 #caidExtCopilot .cp-plan-confirm-btn.cancel:hover{background:#2a4460;}
+
+/* ============ 圆球按钮（状态呼吸灯）============ */
+#caidLauncher[data-caid-ready="1"]{width:44px;height:44px;}
+#caidLauncher .caid-ball-ic{display:flex;align-items:center;justify-content:center;pointer-events:none;margin:0;line-height:0;width:100%;height:100%;}
+#caidLauncher .caid-ball-ic svg{margin:0!important;display:block!important;vertical-align:top;}
+#caidLauncher.state-running{background:radial-gradient(circle at 30% 30%,#3dd68c,#1d7a4f)!important;animation:caidBreatheG 1.6s ease-in-out infinite;}
+@keyframes caidBreatheG{0%,100%{box-shadow:0 0 6px 2px rgba(61,214,140,.35);}50%{box-shadow:0 0 22px 8px rgba(61,214,140,.75);}}
+#caidLauncher.state-error{background:radial-gradient(circle at 30% 30%,#ff6b6b,#a12c2c)!important;animation:caidBreatheR 1.1s ease-in-out infinite;}
+@keyframes caidBreatheR{0%,100%{box-shadow:0 0 6px 2px rgba(255,107,107,.35);}50%{box-shadow:0 0 24px 9px rgba(255,107,107,.85);}}
+#caidLauncher.state-completed{background:radial-gradient(circle at 30% 30%,#ffd479,#c58a2a)!important;animation:caidBreatheY 1.4s ease-in-out infinite;}
+@keyframes caidBreatheY{0%,100%{box-shadow:0 0 6px 2px rgba(255,212,121,.35);}50%{box-shadow:0 0 22px 8px rgba(255,212,121,.8);}}
+/* ============ 横向输入条（点击圆球弹出）============ */
+#caidQuickBar{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);z-index:2147483646;display:flex;align-items:center;gap:8px;background:rgba(15,23,34,.92);backdrop-filter:blur(14px);border:1px solid #294a6b;border-radius:30px;padding:6px 8px;box-shadow:0 10px 34px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
+#caidQuickBar[data-open="1"]{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
+#caidQuickBar .qb-input{width:320px;background:transparent;border:0;outline:none;color:#e6f1fb;font:13px/1.4 system-ui,sans-serif;padding:4px 2px;}
+#caidQuickBar .qb-input::placeholder{color:#64748b;}
+#caidQuickBar .qb-btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:0;background:#1f3650;color:#9fb6cf;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+#caidQuickBar .qb-btn:hover{background:#2a4460;color:#d6e8ff;}
+#caidQuickBar .qb-send{width:auto;padding:0 14px;border-radius:16px;background:#2a6bb8;color:#fff;font-size:12px;}
+#caidQuickBar .qb-send:hover{background:#3a7bc8;}
+/* ============ 右上角弹窗 (toast) ============ */
+#caidToastWrap{position:fixed;top:16px;right:16px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+#caidToastWrap .caid-toast{pointer-events:auto;min-width:240px;max-width:340px;background:rgba(15,23,34,.96);backdrop-filter:blur(12px);border:1px solid #294a6b;border-left:4px solid var(--t,#5b8dff);border-radius:10px;padding:10px 12px;color:#e6f1fb;font:12.5px/1.5 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.4);display:flex;align-items:flex-start;gap:8px;animation:caidToastIn .22s ease;}
+@keyframes caidToastIn{from{transform:translateX(30px);opacity:0;}to{transform:none;opacity:1;}}
+#caidToastWrap .caid-toast.t-error{--t:#ff6b6b;}
+#caidToastWrap .caid-toast.t-success{--t:#ffd479;}
+#caidToastWrap .caid-toast.t-running{--t:#3dd68c;}
+#caidToastWrap .caid-toast .t-close{margin-left:auto;background:none;border:0;color:#64748b;cursor:pointer;font-size:14px;line-height:1;}
+/* ============ 阅读推荐条（顶部中央，可关闭）============ */
+#caidRecoBar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483646;max-width:560px;width:calc(100vw - 40px);background:rgba(15,23,34,.94);backdrop-filter:blur(14px);border:1px solid #3a6b8a;border-radius:14px;padding:10px 14px;color:#e6f1fb;font:12.5px/1.5 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.5);display:flex;align-items:flex-start;gap:10px;}
+#caidRecoBar .reco-ic{flex:0 0 auto;font-size:16px;margin-top:2px;}
+#caidRecoBar .reco-body{flex:1;min-width:0;}
+#caidRecoBar .reco-title{font-weight:600;color:#ffd479;margin-bottom:2px;}
+#caidRecoBar .reco-text{color:#b9cfe8;}
+#caidRecoBar .reco-actions{display:flex;gap:6px;margin-top:8px;}
+#caidRecoBar .reco-btn{padding:4px 12px;border-radius:8px;border:0;cursor:pointer;font-size:12px;}
+#caidRecoBar .reco-btn.primary{background:#2a6bb8;color:#fff;}
+#caidRecoBar .reco-btn.primary:hover{background:#3a7bc8;}
+#caidRecoBar .reco-btn.ghost{background:transparent;color:#9fb6cf;border:1px solid #294a6b;}
+#caidRecoBar .reco-btn.ghost:hover{background:#1f3650;}
 `;
   // 自建启动按钮：仅当 content.js（ISOLATED world）未创建 #caidLauncher 时调用。
   // 用于扩展页 / 自己接管的 newtab —— content script 不注入该环境，没有常驻启动按钮。
   // 注意 MAIN 与 ISOLATED world 的 window 是隔离的，但 DOM 共享，故用 getElementById 判定可靠。
+  // 圆球通用能力（MAIN world 版）：圆球本身可拖动。
+  function _setupBallExtras(ball) {
+    if (ball.__caidX) return; ball.__caidX = 1;
+    // 圆球本身可拖动：按住拖动改变停靠位置
+    (function MB(ball) {
+      var sx = 0, sy = 0, ox = 0, oy = 0, sway = false, wow = false;
+      ball.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        var r = ball.getBoundingClientRect();
+        sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+        ball.style.left = r.left + 'px'; ball.style.top = r.top + 'px';
+        ball.style.right = 'auto'; ball.style.bottom = 'auto';
+        sway = true; wow = false;
+        function mm(e2) {
+          if (!sway) return;
+          var dx = e2.clientX - sx, dy = e2.clientY - sy;
+          if (!wow && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) wow = true;
+          ball.style.left = Math.max(0, Math.min(window.innerWidth - ball.offsetWidth, ox + dx)) + 'px';
+          ball.style.top = Math.max(0, Math.min(window.innerHeight - ball.offsetHeight, oy + dy)) + 'px';
+        }
+        function up() {
+          sway = false;
+          window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', up);
+          ball.__caidDragMoved = wow;
+          setTimeout(function () { ball.__caidDragMoved = false; }, 20);
+        }
+        window.addEventListener('mousemove', mm); window.addEventListener('mouseup', up);
+      });
+    })(ball);
+  }
+  function _makeBallNode(panelOpen) {
+    var b = document.createElement('div');
+    b.id = 'caidLauncher';
+    b.setAttribute('role', 'button');
+    b.innerHTML = '<span class="caid-ball-ic">' + caidIcon(26) + '</span>';
+    b.title = 'CAID 副驾：点击输入任务，双击展开面板，按住圆球可拖动';
+    b.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:2147483647!important;width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#2f6fc0,#14355f);display:flex;align-items:center;justify-content:center;box-shadow:0 5px 16px rgba(20,53,95,.55),inset 0 1px 0 rgba(255,255,255,.25);cursor:pointer;user-select:none;transition:box-shadow .25s,transform .15s;color:#fff;pointer-events:auto!important;' + (panelOpen ? 'display:none!important;' : '');
+    var ic = b.querySelector('.caid-ball-ic'); if (ic) { ic.style.cssText = 'display:flex;align-items:center;justify-content:center;pointer-events:none;margin:0;line-height:0;width:100%;height:100%;'; var svgIc = ic.querySelector('svg'); if (svgIc) { svgIc.style.margin = '0'; svgIc.style.display = 'block'; svgIc.style.verticalAlign = 'top'; } }
+    b.addEventListener('click', function () { if (b.__caidDragMoved) return; try { window.postMessage({ __caidBall: 'toggle' }, '*'); } catch (e) {} });
+    b.addEventListener('dblclick', function (e) { e.preventDefault(); try { window.postMessage({ __caidBall: 'dbl' }, '*'); } catch (e2) {} });
+    _setupBallExtras(b);
+    if (panelOpen) b.setAttribute('data-panel-open', '1');
+    return b;
+  }
   function ensureLauncher() {
     var existing = document.getElementById('caidLauncher');
     // 面板开着时按钮应保持隐藏（与 content.js watchPanel 的 data-panel-open 语义一致）
@@ -392,17 +479,8 @@
       }
       return;
     }
-    var btn = document.createElement('div');
-    btn.id = 'caidLauncher';
-    btn.textContent = '';
-    btn.innerHTML = caidIcon(16) + ' <span style="vertical-align:middle">CAID 副驾</span>';
-    btn.title = '在当前页面启动 CAID 智能体副驾';
-    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647!important;background:#185FA5;color:#fff;padding:8px 14px;border-radius:20px;font:13px/1.2 sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none;pointer-events:auto!important;' + (panelOpen ? 'display:none!important;' : '');
+    var btn = _makeBallNode(panelOpen);
     if (panelOpen) btn.setAttribute('data-panel-open', '1');
-    btn.addEventListener('click', function () {
-      var cp = document.getElementById('caidExtCopilot');
-      if (cp) cp.classList.add('open');
-    });
     document.body.appendChild(btn);
   }
 
@@ -413,7 +491,9 @@
 
     const aside = document.createElement('aside');
     aside.id = 'caidExtCopilot';
-    aside.className = 'open';
+    // 面板默认收起。首次单击圆球只弹横向输入条，而非直接铺开整块面板；
+    // 需要完整面板时由双击 / 右键 / openFullPanel 显式展开。
+    aside.className = '';
     aside.innerHTML =
       '<div class="cp-head">' +
         '<span class="cp-title">' + caidIcon(14) + ' CAID 副驾</span>' +
@@ -476,6 +556,115 @@
   const sendEl = document.getElementById('cpSend');
   const closeEl = document.getElementById('cpClose');
   const stopEl = document.getElementById('cpStop');
+
+  // ============ 圆球按钮 + 横向输入条 + 右上角弹窗 + 阅读推荐条 ============
+  function ensureBall() {
+    var b = document.getElementById('caidLauncher');
+    if (!b) {
+      b = _makeBallNode(false);
+      document.body.appendChild(b);
+    }
+    b.setAttribute('data-caid-ready', '1');
+    return b;
+  }
+  // 标记已接管（供 content.js / 后续识别圆球可用）
+  function markReady() {
+    var cp = document.getElementById('caidExtCopilot');
+    if (cp) cp.setAttribute('data-caid-ready', '1');
+    try { var b = ensureBall(); b.setAttribute('data-caid-ready', '1'); } catch (e) {}
+  }
+  // 右上角弹窗
+  function toast(type, title, body, dur) {
+    var wrap = document.getElementById('caidToastWrap');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'caidToastWrap'; document.body.appendChild(wrap); }
+    var t = document.createElement('div');
+    t.className = 'caid-toast t-' + (type || '');
+    var clsBtn = document.createElement('button'); clsBtn.className = 't-close'; clsBtn.textContent = '×';
+    var ic = document.createElement('span'); ic.style.cssText = 'flex:0 0 auto;';
+    ic.innerHTML = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'running' ? '⚙️' : '💡';
+    var bodyEl = document.createElement('div'); bodyEl.style.cssText = 'flex:1;min-width:0;';
+    bodyEl.innerHTML = (title ? '<b style="display:block;margin-bottom:2px;">' + cpEscapeHtml(title) + '</b>' : '') + (body ? cpEscapeHtml(body) : '');
+    t.appendChild(ic); t.appendChild(bodyEl); t.appendChild(clsBtn);
+    clsBtn.addEventListener('click', function () { t.remove(); });
+    wrap.appendChild(t);
+    var ms = dur || 3800, gone = false;
+    var tm = setTimeout(function () { if (!gone) { gone = true; try { t.remove(); } catch (e) {} } }, ms);
+    // 悬停不自动消失
+    t.addEventListener('mouseenter', function () { clearTimeout(tm); });
+    t.addEventListener('mouseleave', function () { if (!gone) tm = setTimeout(function () { if (!gone) { gone = true; try { t.remove(); } catch (e) {} } }, 1200); });
+    return t;
+  }
+  // 圆球状态呼吸灯 + 完成/出错弹窗
+  var _completedBallTimer = null;
+  function setBallStatus(st) {
+    var b = ensureBall();
+    b.classList.remove('state-running', 'state-error', 'state-completed');
+    clearTimeout(_completedBallTimer); _completedBallTimer = null;
+    if (st === 'running') b.classList.add('state-running');
+    else if (st === 'error') { b.classList.add('state-error'); toast('error', '任务出错', '请查看副驾面板中的错误详情'); }
+    else if (st === 'completed') {
+      b.classList.add('state-completed');
+      toast('success', '任务完成', '副驾已处理好你的任务');
+      // 黄色呼吸 5 秒后回到空闲
+      _completedBallTimer = setTimeout(function () { var bb = document.getElementById('caidLauncher'); if (bb) bb.classList.remove('state-completed'); }, 5000);
+    }
+    // idle / stopped → 无状态类，回到正常圆球
+  }
+  // 横向输入条
+  var quickBar = null;
+  function buildQuickBar() {
+    if (quickBar) return quickBar;
+    quickBar = document.createElement('div');
+    quickBar.id = 'caidQuickBar';
+    quickBar.innerHTML =
+      '<button class="qb-btn" id="qbExpand" title="展开完整面板">☰</button>' +
+      '<input class="qb-input" id="qbInput" placeholder="输入任务，Enter 交给 CAID 副驾…" />' +
+      '<button class="qb-btn qb-send" id="qbSend">发送</button>' +
+      '<button class="qb-btn" id="qbClose" title="收起">✕</button>';
+    quickBar.setAttribute('data-open', '0');
+    document.body.appendChild(quickBar);
+    quickBar.querySelector('#qbExpand').addEventListener('click', openFullPanel);
+    quickBar.querySelector('#qbClose').addEventListener('click', closeQuickBar);
+    var qbSend = quickBar.querySelector('#qbSend');
+    var qbInput = quickBar.querySelector('#qbInput');
+    qbSend.addEventListener('click', function () { submitQuick(qbInput.value); });
+    qbInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitQuick(qbInput.value); } });
+    return quickBar;
+  }
+  function toggleQuickBar() {
+    var qb = buildQuickBar();
+    if (qb.getAttribute('data-open') === '1') closeQuickBar();
+    else {
+      qb.setAttribute('data-open', '1');
+      setTimeout(function () { qb.querySelector('#qbInput').focus(); }, 60);
+    }
+  }
+  function closeQuickBar() {
+    var qb = document.getElementById('caidQuickBar');
+    if (qb) qb.setAttribute('data-open', '0');
+  }
+  function openFullPanel() {
+    closeQuickBar();
+    var cp = document.getElementById('caidExtCopilot');
+    if (cp) cp.classList.add('open');
+    setTimeout(function () { try { var i = document.getElementById('cpInput'); if (i) i.focus(); } catch (e) {} }, 80);
+  }
+  // 从输入条/拖拽提交任务：保留小栏，不跳到整块面板，任务进度由圆球呼吸灯 + 弹窗反馈
+  function submitQuick(text) {
+    text = String(text || '').trim();
+    if (!text) return;
+    closeQuickBar();
+    try { if (inputEl) inputEl.value = text; } catch (e) {}
+    // 打开面板只在用户主动双击/右键时才做；直接从输入条提交保持小栏工作流
+    setTimeout(function () { sendTask(); }, 120);
+  }
+  // 圆球消息路由（content.js / 扩展页 ensureLauncher 都经 postMessage 转发到这里）
+  function handleBallMsg(d) {
+    if (!d) return;
+    if (d.__caidBall === 'toggle') toggleQuickBar();
+    else if (d.__caidBall === 'dbl') openFullPanel();
+  }
+  markReady();
 
   function logBubble(role, text) {
     const div = document.createElement('div');
@@ -1664,7 +1853,7 @@
       console.log('[CAID-R] 任务历史已记录:', goal, '→', result.slice(0, 80));
     } catch (e) { console.warn('[CAID-R] recordTaskHistory 异常:', e); }
   }
-  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed') { recordTaskHistory(); } else if ((st === 'stopped' || st === 'error') && !(st === 'stopped' && isHandingOff)) { recordTaskHistory(); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
+  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed') { recordTaskHistory(); } else if ((st === 'stopped' || st === 'error') && !(st === 'stopped' && isHandingOff)) { recordTaskHistory(); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); try { if (isHandingOff && st === 'stopped') setBallStatus('idle'); else setBallStatus(st); } catch (e) {} }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
@@ -1804,6 +1993,8 @@
     }
     // execute 会清空 agent.history：先把已产生的条目同步进显示层，再重置同步指针，
     // 让新任务条目从 0 开始追加，面板对话跨任务连续。
+    // 【场景专项优化】购物/视频场景追加提示，让副驾对该页面更聚焦（非续传任务）
+    try { if (t.indexOf('【任务续传】') !== 0 && window.__caidSceneHint) { var _hint = window.__caidSceneHint(); if (_hint) fullInstruction += '\n\n' + _hint; } } catch (e2) {}
     syncDisplay(); syncedLen = 0; renderHistory();
     // 清空旧 plan UI（上一个任务的 plan 进度不再相关）
     try { var _pa = document.querySelector('#caidExtCopilot #cpPlanArea'); if (_pa) _pa.innerHTML = ''; } catch (e) {}
@@ -1999,4 +2190,120 @@
     }, 300);
   });
   _launcherGuard.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true });
+
+  // ============ 阅读记录 + 场景识别 + 空闲推荐条 ============
+  (function initReadingAndScene() {
+    var host = location.hostname || '';
+    var url = location.href;
+    var pageTitle = document.title || '';
+    var t0 = Date.now();
+    var depth = 0;                       // 最大滚动深度（0-100）
+    window.addEventListener('scroll', function () {
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      if (max > 50) { var d = Math.round((window.scrollY || document.documentElement.scrollTop || 0) / max * 100); if (d > depth) depth = d; }
+    }, { passive: true });
+
+    // 轻量提取摘要 + 实体
+    function extractPageInfo() {
+      var summary = '';
+      try { var m1 = document.querySelector('meta[property="og:description"]') || document.querySelector('meta[name="description"]'); if (m1) summary = String(m1.getAttribute('content') || '').trim(); } catch (e) {}
+      summary = summary.slice(0, 160);
+      var entities = [];
+      var chunks = [String(pageTitle || '')];
+      try { var h = document.querySelector('h1,h2'); if (h) chunks.push(h.textContent || ''); } catch (e2) {}
+      chunks.join(' ').split(/[\s|—_\-·,，。:：.()（）【】《》"'“”]+/).forEach(function (w) {
+        w = w.trim();
+        if (!w || entities.length >= 12) return;
+        if (/^[A-Za-z][\w.-]{2,}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
+        else if (/^[\u4e00-\u9fa5]{2,10}$/.test(w)) { if (entities.indexOf(w) === -1) entities.push(w); }
+      });
+      return { summary: summary, entities: entities };
+    }
+
+    var committed = false;
+    function commit() {
+      if (committed) return; committed = true;
+      var dwellSec = Math.round((Date.now() - t0) / 1000);
+      if (dwellSec < 3) return; // 停留不足不记
+      var info = extractPageInfo();
+      caidSendToBg({ type: 'CAID_READLOG_SAVE', record: {
+        url: url, host: host, title: String(pageTitle || '').slice(0, 200),
+        summary: info.summary, entities: info.entities,
+        dwellSec: dwellSec, maxDepth: depth
+      } });
+    }
+    window.addEventListener('pagehide', commit);
+    window.addEventListener('beforeunload', commit);
+
+    // ---------- 场景识别：购物 / 视频 ----------
+    var vidHost = ['youtube.com', 'bilibili.com', 'douyin.com', 'v.qq.com', 'iqiyi.com', 'youku.com', 'mgtv.com', 'tv.sohu.com', 'kuaishou.com'];
+    var shopHost = ['taobao.com', 'tmall.com', 'jd.com', 'pinduoduo.com', '1688.com', 'amazon.com', 'suning.com', 'vip.com', 'gome.com.cn', 'meituan.com', 'dianping.com'];
+    var u = url.toLowerCase();
+    var scene = null;
+    var isVideoUrl = /(\/(watch|video|live|bangumi|episode|play)\/)/u.test(u) || /\bwatch\?/i.test(u) || /dou\.yin|youtube\.com\/watch/i.test(u);
+    var isShopUrl = /(\/item\/|\/product\/|item\.(taobao|youku)|detail\.tmall|p\.proper|\/goods\/)/i.test(u) || /taobao\.com\/item|jd\.com\/\d+\.html/i.test(u);
+    if (isVideoUrl || vidHost.some(function (d) { return u.indexOf(d) !== -1; })) scene = 'video';
+    if (isShopUrl || shopHost.some(function (d) { return u.indexOf(d) !== -1; })) {
+      // 购物站上的具体商品页才算购物场景
+      scene = (scene === 'video') ? 'both' : 'shopping';
+    }
+    window.__caidScene = scene;
+    window.__caidSceneHint = function () {
+      if (scene === 'shopping') return '【购物场景】优先提取商品标题、价格、规格、承诺、评价要点；用户可能想比价/查优惠/核对参数。';
+      if (scene === 'both') return '【购物+视频】优先处理当前页面商品信息，其次理解视频内容。';
+      if (scene === 'video') return '【视频场景】优先理解视频标题、简介、发布时间与要点，可总结或提取片段。';
+      return '';
+    };
+
+    // ---------- 空闲推荐条（可关闭 + 黑名单 + 开关）----------
+    function getPrefs() {
+      return caidRequestBg({ type: 'CAID_READPREFS_GET' }).then(function (r) { return (r && r.prefs) || { enabled: true, blacklist: [], recKey: '' }; });
+    }
+    function setPref(_p) { return caidRequestBg({ type: 'CAID_READPREFS_SET', enabled: _p.enabled, blacklist: _p.blacklist, recKey: _p.recKey }); }
+    function showRecoBar(pick, prefs) {
+      var old = document.getElementById('caidRecoBar'); if (old) old.remove();
+      var bar = document.createElement('div'); bar.id = 'caidRecoBar';
+      bar.innerHTML =
+        '<span class="reco-ic">📚</span>' +
+        '<div class="reco-body">' +
+          '<div class="reco-title">继续读？你之前认真看过这篇</div>' +
+          '<div class="reco-text">' + cpEscapeHtml(pick.title || '未命名页面') + '</div>' +
+          '<div class="reco-actions">' +
+            '<button class="reco-btn ghost" data-act="open">打开</button>' +
+            '<button class="reco-btn ghost" data-act="black">不再推荐本站</button>' +
+            '<button class="reco-btn ghost" data-act="off">关闭推荐</button>' +
+          '</div>' +
+        '</div>' +
+        '<button class="reco-btn ghost" data-act="close" style="flex:0 0 auto;padding:2px 8px;">×</button>';
+      document.body.appendChild(bar);
+      bar.querySelectorAll('[data-act]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var act = btn.getAttribute('data-act');
+          if (act === 'open') { bar.remove(); try { window.open(pick.url, '_blank'); } catch (e) {} }
+          else if (act === 'black') { var p2 = prefs; p2.blacklist = (p2.blacklist || []).concat([host]); setPref(p2); bar.remove(); toast('info', '已加入黑名单', host + ' 不再出现阅读推荐'); }
+          else if (act === 'off') { var p3 = prefs; p3.enabled = false; setPref(p3); bar.remove(); toast('info', '已关闭阅读推荐', '可在新标签设置里重新开启'); }
+          else if (act === 'close') { bar.remove(); }
+        });
+      });
+    }
+    function maybeReco() {
+      setTimeout(function () {
+        if (depth < 20 && (Date.now() - t0) < 6000) return; // 认真看过的判定：滚动过或停留够久
+        getPrefs().then(function (prefs) {
+          if (prefs.enabled === false) return;
+          if ((prefs.blacklist || []).indexOf(host) !== -1) return;
+          caidRequestBg({ type: 'CAID_READLOG_GET' }).then(function (r) {
+            var list = (r && r.log && r.log.list) || [];
+            var pick = null;
+            for (var i = 0; i < list.length; i++) { var x = list[i]; if (x.url !== url && x.url !== prefs.recKey) { pick = x; break; } }
+            if (!pick) return;
+            // 只推荐确实"看过"的（停留>=20s）
+            if ((pick.dwellSec || 0) < 20) return;
+            showRecoBar(pick, prefs);
+          });
+        });
+      }, 14000);
+    }
+    maybeReco();
+  })();
 })();

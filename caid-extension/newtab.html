@@ -2971,6 +2971,22 @@ a:hover { text-decoration: underline; }
           <div class="setting-title"><i data-lucide="layout-dashboard"></i>新标签页</div>
           <div class="setting-desc">CAID 扩展动态接管浏览器新标签页：新建标签页自动重定向为本工作台（常驻开启）。若需恢复浏览器默认新标签页，请在扩展管理页停用或卸载本扩展。</div>
         </div>
+
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="book-open"></i>阅读记录 & 推荐</div>
+          <div class="setting-desc">副驾会自动记录你「认真看过」的页面（停留时长 + 滚动深度），并在新标签页 / 搜索时给出「继续读」推荐。可在此开关推荐或治理站点黑名单。</div>
+          <div class="form-group">
+            <label class="form-label" style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="readRecEnabled" style="width:auto;">启用阅读推荐（关闭后不再弹出任何「继续读」提示）</label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">站点黑名单（逗号分隔域名，不含 http://）</label>
+            <input type="text" class="form-input" id="readRecBlacklist" placeholder="example.com, foo.cn">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn primary" id="saveReadPrefsBtn"><i data-lucide="save"></i>保存阅读设置</button>
+            <button class="btn" id="clearReadLogBtn"><i data-lucide="trash-2"></i>清空阅读记录</button>
+          </div>
+        </div>
       </div>
 
       <div class="settings-panel" data-panel="llm">
