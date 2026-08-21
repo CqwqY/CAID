@@ -3205,9 +3205,16 @@ async function renderSmartSites() {
 async function renderSmartAiSuggestion() {
   const body = caidQs('#smartZoneBody');
   if (!body) return;
-  // 同一时段已输出过建议则不再输出（手动刷新会清除此标记）
+  // 同一时段已输出过建议则不再输出（持久化到 storage，关闭重开也不重复）
   const p = getPeriodKey();
-  if (SMART_ZONE.outputPeriodKey === p.key) return;
+  let savedPeriod = '';
+  try {
+    if (storageAvailable()) {
+      const { smartAiPeriod } = await chrome.storage.local.get('smartAiPeriod');
+      savedPeriod = smartAiPeriod || '';
+    }
+  } catch (e) {}
+  if (savedPeriod === p.key || SMART_ZONE.outputPeriodKey === p.key) return;
   const cfg = state.llmCfg;
   // 无 API Key：显示 fallback 卡片引导用户配置
   if (!cfg || !cfg.apiKey) {
@@ -3229,6 +3236,7 @@ async function renderSmartAiSuggestion() {
     });
     body.insertBefore(fallback, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
+    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
     if (window.lucide) lucide.createIcons();
     return;
   }
@@ -3341,6 +3349,7 @@ async function renderSmartAiSuggestion() {
     });
     body.insertBefore(card, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
+    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.warn('[CAID] smart AI suggestion failed:', e);
@@ -3359,6 +3368,7 @@ async function renderSmartAiSuggestion() {
     fb.querySelector('.smart-ai-btn').addEventListener('click', () => fb.classList.add('dismissed'));
     body.insertBefore(fb, body.firstChild);
     SMART_ZONE.outputPeriodKey = p.key;
+    try { if (storageAvailable()) chrome.storage.local.set({ smartAiPeriod: p.key }); } catch (e) {}
     if (window.lucide) lucide.createIcons();
   }
 }
@@ -3383,6 +3393,7 @@ function bindSmartZoneEvents() {
       refresh.classList.add('spinning');
       SMART_ZONE.dismissedAiKey = null; // 手动刷新时重置关闭状态
       SMART_ZONE.outputPeriodKey = ''; // 手动刷新时重置已输出标记，允许重新输出
+      try { if (storageAvailable()) await chrome.storage.local.set({ smartAiPeriod: '' }); } catch (e) {}
       await renderSmartZone();
       setTimeout(() => refresh.classList.remove('spinning'), 600);
     });
