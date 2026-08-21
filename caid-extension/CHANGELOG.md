@@ -3,6 +3,26 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [v0.3.6] - 2026-08-21
+
+### 新增
+- **多步规划（plan）工具**：LLM 可一次性规划多步任务并自动执行，大幅减少 LLM 调用次数（原每步 1 次 → 整个 plan 1 次）。
+  - 输入：`{ goal, steps: [{ tool, args, desc, confirm, on_fail }, ...] }`，执行器按序调用其他工具（`execute_javascript` / `navigate_to_url` / `manage_todo` 等），支持 1-15 步。
+  - **暂停点**：`confirm: true` 在敏感操作（删除/提交/支付）前弹窗等用户确认；`on_fail: "ask"` 在步骤失败后询问是否继续。
+  - **失败策略**：`on_fail` 支持 `stop`（默认，停止整个 plan）/ `continue`（跳过继续）/ `ask`（询问用户）。失败步骤后的剩余步骤标记为 `skipped`。
+  - **可视化进度条**：彩色状态圆点（灰=待执行 / 黄脉冲=运行中 / 绿=完成 / 红=失败 / 暗灰=跳过）+ 渐变进度条 + 每步耗时统计 + 完成汇总。
+  - **强化 systemPrompt**：明确"2+步任务必须使用 plan"的判断准则（连接词 / 多动词 / 不确定时优先 plan），缓解 LLM 跳过 plan 直接单步执行的问题。
+  - `sendTask` 启发式检测多步任务（"然后/之后/再"等连接词或多个动词），自动追加 plan 使用提示。
+
+### 修复
+- **plan 进度条 UI 被 `renderHistory` 清空**：
+  - 根因：`renderHistory()` 每次 `historychange` 都会 `logEl.innerHTML = ''` 重建日志区；plan 执行子步骤会触发 `historychange`，导致刚插入的 plan 进度条被立即清掉。
+  - 解决：副驾面板新增独立 `#cpPlanArea` 容器（位于 `.cp-activity` 与 `.cp-log` 之间），plan UI 改插入到这里，不受 `renderHistory` 清空影响；`:empty` 时自动隐藏不占空间。
+- **`.cp-log` 输出池不显示 `[plan]` 记录**：
+  - 根因：Page-Agent 在工具 `execute` 返回后才记录 step；若 plan 内含导航步骤，页面跳转会让 agent 中断、plan 不返回 summary，导致 `.cp-log` 没有任何 plan 相关条目。
+  - 解决：plan 开始时主动往 `displayEvents` push 一条 `[plan] ▷ 开始执行：goal（N 步）`；完成时再 push 一条 `[plan] ✓ goal：done/total 成功`，确保输出池始终有 plan 记录。
+- **新任务开始时清空旧 plan 进度条**，避免多个 plan 进度条堆积。
+
 ## [v0.3.5] - 2026-08-20
 
 ### 修复

@@ -980,6 +980,15 @@
         var signal = ctx && ctx.signal;
         if (!steps.length) throw new Error('plan: steps array is empty');
 
+        // ---- 同步一条 [plan] 记录到 .cp-log 输出池 ----
+        // Page-Agent 在工具 execute 返回后才记录 step；若 plan 内含导航步骤，
+        // 页面跳转会让 agent 中断、plan 不返回 summary，导致 .cp-log 没有-plan-记录。
+        // 这里主动往 displayEvents push 一条，让 renderHistory 立即显示 [plan] 条目。
+        try {
+          displayEvents.push({ type: 'step', action: { name: 'plan', input: planInput, output: '▷ 开始执行：' + goal + '（' + steps.length + ' 步）' } });
+          if (typeof renderHistory === 'function') renderHistory();
+        } catch (e) {}
+
         // ---- 创建 plan 进度 UI（可视化进度条 + 彩色状态点）----
         var planId = 'plan_' + Date.now().toString(36);
         var planEl = document.createElement('div');
@@ -1157,6 +1166,11 @@
           summary += icon + ' [步骤' + (r.step + 1) + '] ' + (r.desc || r.tool) + '：' + (r.result || r.error || '') + '\n';
         });
         if (failCount > 0) summary += '\n有步骤失败，请根据结果决定是否重新规划剩余部分。';
+        // 同步完成记录到 .cp-log（带简短 summary，避免被 Page-Agent 的 step 截断后看不见）
+        try {
+          displayEvents.push({ type: 'step', action: { name: 'plan', input: planInput, output: '✓ ' + goal + '：' + doneCount + '/' + steps.length + ' 成功' + (failCount ? '，' + failCount + ' 失败' : '') } });
+          if (typeof renderHistory === 'function') renderHistory();
+        } catch (e) {}
         return summary;
       }
     }
