@@ -3345,11 +3345,9 @@ async function renderSmartZone() {
   body.innerHTML = '';
   const p = getPeriodKey();
   SMART_ZONE.lastPeriodKey = p.key;
-  if (label) label.textContent = `${p.label} · 智能推荐`;
-  // 顺序：时段卡片 → 常用站点 → AI 建议（AI 异步最后渲染，不阻塞前面）
-  await renderSmartPeriodCard();
-  await renderSmartSites();
-  renderSmartAiSuggestion(); // 不 await，让 AI 建议异步出现
+  if (label) label.textContent = `${p.label} · 主动建议`;
+  // 只渲染 AI 主动建议（时段卡片和常用站点已移除）
+  renderSmartAiSuggestion();
   if (window.lucide) lucide.createIcons();
 }
 
