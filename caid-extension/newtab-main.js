@@ -3223,7 +3223,7 @@ async function renderSmartAiSuggestion() {
         } else { fallback.classList.add('dismissed'); }
       });
     });
-    body.appendChild(fallback);
+    body.insertBefore(fallback, body.firstChild);
     if (window.lucide) lucide.createIcons();
     return;
   }
@@ -3287,7 +3287,7 @@ async function renderSmartAiSuggestion() {
       <div class="smart-ai-body">${escapeHtml(suggestion)}</div>
       <div class="smart-ai-actions">
         ${urlMatch ? `<button class="smart-ai-btn primary" data-act="open" data-url="${escapeHtml(urlMatch[0])}">打开链接</button>` : ''}
-        <button class="smart-ai-btn" data-act="ask" data-q="${escapeHtml(suggestion.slice(0, 60))}">让 AI 处理</button>
+        <button class="smart-ai-btn" data-act="ask" data-q="${escapeHtml(suggestion.slice(0, 60))}" data-url="${urlMatch ? escapeHtml(urlMatch[0]) : ''}">让 AI 处理</button>
         <button class="smart-ai-btn" data-act="dismiss">稍后</button>
       </div>
     `;
@@ -3301,16 +3301,22 @@ async function renderSmartAiSuggestion() {
         if (act === 'open' && btn.dataset.url) {
           window.open(btn.dataset.url, '_blank');
           addHistory('AI 建议打开', 'nav', btn.dataset.url);
-        } else if (act === 'ask' && btn.dataset.q) {
-          const input = caidQs('#searchInput');
-          if (input) { input.value = btn.dataset.q; input.focus(); }
+        } else if (act === 'ask') {
+          // 跳转到建议网站 + 唤起副驾（background 在 tab 加载完成时自动注入）
+          const url = btn.dataset.url || ('https://www.bing.com/search?q=' + encodeURIComponent(btn.dataset.q || ''));
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+            chrome.tabs.create({ url: url, active: true });
+          } else {
+            window.open(url, '_blank');
+          }
+          addHistory('AI 建议跳转', 'nav', url);
         } else if (act === 'dismiss') {
           card.classList.add('dismissed');
           SMART_ZONE.dismissedAiKey = aiKey;
         }
       });
     });
-    body.appendChild(card);
+    body.insertBefore(card, body.firstChild);
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.warn('[CAID] smart AI suggestion failed:', e);
@@ -3327,7 +3333,7 @@ async function renderSmartAiSuggestion() {
       <div class="smart-ai-body">${escapeHtml(fbText)}</div>
       <div class="smart-ai-actions"><button class="smart-ai-btn" data-act="dismiss">知道了</button></div>`;
     fb.querySelector('.smart-ai-btn').addEventListener('click', () => fb.classList.add('dismissed'));
-    body.appendChild(fb);
+    body.insertBefore(fb, body.firstChild);
     if (window.lucide) lucide.createIcons();
   }
 }
