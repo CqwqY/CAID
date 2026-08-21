@@ -329,26 +329,37 @@
 #caidExtCopilot .cp-input-row{padding:10px 12px;border-top:1px solid #1f3650;display:flex;gap:8px;}
 #caidExtCopilot .cp-input{flex:1;padding:8px 10px;border-radius:8px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;outline:none;}
 #caidExtCopilot .cp-send{background:#185FA5;color:#fff;border:0;padding:0 16px;border-radius:8px;cursor:pointer;}\n#caidExtCopilot .cp-settings{padding:10px 14px;background:#0b1a2a;border-bottom:1px solid #1f3650;display:none;}\n#caidExtCopilot .cp-settings.open{display:block;}\n#caidExtCopilot .cp-settings label{display:block;margin:8px 0 3px;font-size:12px;color:#9fb6cf;}\n#caidExtCopilot .cp-settings input[type=text],#caidExtCopilot .cp-settings input[type=password]{width:100%;padding:6px 8px;border-radius:6px;background:#0b1420;color:#e6f1fb;border:1px solid #294a6b;box-sizing:border-box;font-size:12px;}\n#caidExtCopilot .cp-settings .cp-row{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}\n#caidExtCopilot .cp-settings .cp-save{background:#185FA5;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px;}\n#caidExtCopilot .cp-settings .cp-hint{color:#7a8ba0;font-size:11px;margin-top:6px;line-height:1.5;}\n#caidExtCopilot .cp-settings .cp-saved{color:#2a9d5c;font-size:12px;margin-top:6px;min-height:14px;}
-#caidExtCopilot .cp-plan{margin:6px 14px 10px;padding:10px 12px;background:#0b1a2a;border:1px solid #1f3650;border-radius:10px;font-size:12px;}
-#caidExtCopilot .cp-plan-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+#caidExtCopilot .cp-plan{margin:6px 14px 10px;padding:12px 14px;background:linear-gradient(135deg,#0b1a2a,#13233a);border:1px solid #1f3650;border-radius:12px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);}
+#caidExtCopilot .cp-plan-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 #caidExtCopilot .cp-plan-title{flex:1;font-weight:600;color:#d6e8ff;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-#caidExtCopilot .cp-plan-prog{flex:0 0 auto;font-size:11px;color:#9fb6cf;background:#1f3650;padding:2px 8px;border-radius:10px;}
-#caidExtCopilot .cp-plan-bar{height:4px;background:#1f3650;border-radius:2px;overflow:hidden;margin-bottom:8px;}
-#caidExtCopilot .cp-plan-bar-fill{height:100%;background:linear-gradient(90deg,#2a6bb8,#3dd68c);transition:width .3s ease;width:0;}
-#caidExtCopilot .cp-plan-steps{display:flex;flex-direction:column;gap:5px;}
-#caidExtCopilot .cp-plan-step{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:6px;line-height:1.4;}
-#caidExtCopilot .cp-plan-step.active{background:#1f3650;}
-#caidExtCopilot .cp-plan-step.done{opacity:.6;}
-#caidExtCopilot .cp-plan-step.failed{background:#2a1414;}
-#caidExtCopilot .cp-plan-step.skipped{opacity:.4;}
-#caidExtCopilot .cp-plan-step-icon{flex:0 0 16px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;}
-#caidExtCopilot .cp-plan-step-icon.pending{color:#5b7187;}
-#caidExtCopilot .cp-plan-step-icon.active{color:#ffd479;}
-#caidExtCopilot .cp-plan-step-icon.done{color:#3dd68c;}
-#caidExtCopilot .cp-plan-step-icon.failed{color:#ff6b6b;}
-#caidExtCopilot .cp-plan-step-icon.skipped{color:#5b7187;}
-#caidExtCopilot .cp-plan-step-desc{flex:1;min-width:0;color:#b9cfe8;font-size:11.5px;word-break:break-word;}
-#caidExtCopilot .cp-plan-step-tool{flex:0 0 auto;font-size:10px;color:#9fe1cb;background:#1f3650;padding:1px 5px;border-radius:3px;}
+#caidExtCopilot .cp-plan-prog{flex:0 0 auto;font-size:11px;color:#9fb6cf;background:#1f3650;padding:2px 8px;border-radius:10px;font-variant-numeric:tabular-nums;}
+#caidExtCopilot .cp-plan-bar{height:6px;background:#0b1420;border-radius:3px;overflow:hidden;margin-bottom:10px;position:relative;}
+#caidExtCopilot .cp-plan-bar-fill{height:100%;background:linear-gradient(90deg,#2a6bb8 0%,#5b8dff 50%,#3dd68c 100%);transition:width .4s cubic-bezier(.2,.9,.3,1);width:0;box-shadow:0 0 8px rgba(91,141,255,.5);}
+#caidExtCopilot .cp-plan-bar-pct{position:absolute;top:0;right:6px;font-size:9px;color:#7fb0e0;line-height:6px;}
+#caidExtCopilot .cp-plan-steps{display:flex;flex-direction:column;gap:3px;}
+#caidExtCopilot .cp-plan-step{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;line-height:1.4;transition:background .2s;position:relative;}
+#caidExtCopilot .cp-plan-step.active{background:linear-gradient(90deg,rgba(255,212,121,.12),transparent);}
+#caidExtCopilot .cp-plan-step.done{opacity:.55;}
+#caidExtCopilot .cp-plan-step.failed{background:rgba(255,107,107,.1);}
+#caidExtCopilot .cp-plan-step.skipped{opacity:.35;}
+#caidExtCopilot .cp-plan-step-dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%;background:#2a3a52;transition:all .3s;position:relative;}
+#caidExtCopilot .cp-plan-step-dot.pending{background:#2a3a52;}
+#caidExtCopilot .cp-plan-step-dot.active{background:#ffd479;box-shadow:0 0 8px rgba(255,212,121,.8);animation:cpPulse 1.2s ease-in-out infinite;}
+#caidExtCopilot .cp-plan-step-dot.done{background:#3dd68c;box-shadow:0 0 4px rgba(61,214,140,.5);}
+#caidExtCopilot .cp-plan-step-dot.failed{background:#ff6b6b;box-shadow:0 0 6px rgba(255,107,107,.6);}
+#caidExtCopilot .cp-plan-step-dot.skipped{background:#3a4458;}
+#caidExtCopilot .cp-plan-step-conn{flex:0 0 2px;width:2px;align-self:stretch;background:#1f3650;margin-left:4px;border-radius:1px;}
+#caidExtCopilot .cp-plan-step-conn.done{background:#3dd68c;opacity:.5;}
+#caidExtCopilot .cp-plan-step-desc{flex:1;min-width:0;color:#b9cfe8;font-size:11.5px;word-break:break-word;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#caidExtCopilot .cp-plan-step.active .cp-plan-step-desc{color:#ffd479;}
+#caidExtCopilot .cp-plan-step.done .cp-plan-step-desc{text-decoration:line-through;text-decoration-color:rgba(61,214,140,.4);}
+#caidExtCopilot .cp-plan-step-tool{flex:0 0 auto;font-size:10px;color:#9fe1cb;background:#0b1a2a;border:1px solid #1f3650;padding:1px 6px;border-radius:4px;font-family:ui-monospace,Consolas,monospace;}
+#caidExtCopilot .cp-plan-step-time{flex:0 0 auto;font-size:10px;color:#5b7187;font-variant-numeric:tabular-nums;}
+@keyframes cpPulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.3);opacity:.7;}}
+#caidExtCopilot .cp-plan-summary{margin-top:8px;padding:6px 8px;border-radius:6px;font-size:11px;line-height:1.5;white-space:pre-wrap;display:none;}
+#caidExtCopilot .cp-plan-summary.show{display:block;}
+#caidExtCopilot .cp-plan-summary.ok{background:rgba(61,214,140,.08);color:#9fe1cb;border:1px solid rgba(61,214,140,.2);}
+#caidExtCopilot .cp-plan-summary.fail{background:rgba(255,107,107,.08);color:#ff8a8a;border:1px solid rgba(255,107,107,.2);}
 #caidExtCopilot .cp-plan-confirm{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;}
 #caidExtCopilot .cp-plan-confirm.open{display:flex;}
 #caidExtCopilot .cp-plan-confirm-dlg{background:#0f1722;border:1px solid #1f3650;border-radius:14px;padding:18px 22px;max-width:340px;box-shadow:0 16px 50px rgba(0,0,0,.5);}
@@ -966,37 +977,60 @@
         var signal = ctx && ctx.signal;
         if (!steps.length) throw new Error('plan: steps array is empty');
 
-        // ---- 创建 plan 进度 UI ----
+        // ---- 创建 plan 进度 UI（可视化进度条 + 彩色状态点）----
         var planId = 'plan_' + Date.now().toString(36);
         var planEl = document.createElement('div');
         planEl.className = 'cp-plan';
         planEl.id = planId;
-        var ICONS = { pending: '○', active: '▶', done: '✓', failed: '✗', skipped: '⊘' };
         var stepStates = steps.map(function () { return 'pending'; });
+        var stepTimes = steps.map(function () { return null; });   // 每步耗时（ms）
+        var stepStarts = steps.map(function () { return 0; });     // 每步开始时间戳
         var results = [];
+        var planStartTime = Date.now();
+
+        function fmtMs(ms) {
+          if (!ms || ms < 0) return '';
+          if (ms < 1000) return ms + 'ms';
+          return (ms / 1000).toFixed(1) + 's';
+        }
 
         function renderPlan() {
-          var done = 0, failed = 0;
-          stepStates.forEach(function (s) { if (s === 'done') done++; else if (s === 'failed') failed++; });
+          var done = 0, failed = 0, active = 0;
+          stepStates.forEach(function (s) { if (s === 'done') done++; else if (s === 'failed') failed++; else if (s === 'active') active++; });
           var pct = Math.round((done / steps.length) * 100);
+          var elapsed = Date.now() - planStartTime;
           var stepsHtml = steps.map(function (st, i) {
             var state = stepStates[i];
-            var icon = ICONS[state] || ICONS.pending;
             var toolName = cpEscapeHtml(String(st.tool || ''));
             var descText = st.desc ? cpEscapeHtml(String(st.desc)) : toolName;
+            // 连线：当前步及之前已完成则连线变绿
+            var connClass = (state === 'done') ? 'done' : '';
+            var timeText = fmtMs(stepTimes[i]);
             return '<div class="cp-plan-step ' + state + '">' +
-              '<span class="cp-plan-step-icon ' + state + '">' + icon + '</span>' +
+              '<span class="cp-plan-step-dot ' + state + '"></span>' +
               '<span class="cp-plan-step-desc">' + descText + '</span>' +
               '<span class="cp-plan-step-tool">' + toolName + '</span>' +
+              (timeText ? '<span class="cp-plan-step-time">' + timeText + '</span>' : '') +
               '</div>';
           }).join('');
+          // 汇总信息（plan 完成或失败时显示）
+          var allDone = (done + failed + stepStates.filter(function(s){return s==='skipped';}).length) === steps.length;
+          var summaryHtml = '';
+          if (allDone) {
+            var sumClass = failed > 0 ? 'fail' : 'ok';
+            var sumText = failed > 0
+              ? '⚠ 完成 ' + done + '/' + steps.length + '，失败 ' + failed + '，耗时 ' + fmtMs(elapsed)
+              : '✓ 全部完成 ' + done + '/' + steps.length + '，耗时 ' + fmtMs(elapsed);
+            summaryHtml = '<div class="cp-plan-summary ' + sumClass + ' show">' + sumText + '</div>';
+          }
           planEl.innerHTML =
             '<div class="cp-plan-head">' +
               '<span class="cp-plan-title" title="' + cpEscapeHtml(goal) + '">' + cpEscapeHtml(goal) + '</span>' +
-              '<span class="cp-plan-prog">' + done + '/' + steps.length + (failed ? ' (' + failed + '失败)' : '') + '</span>' +
+              '<span class="cp-plan-prog">' + done + '/' + steps.length + (failed ? ' · ' + failed + '失败' : '') + (active ? ' · 运行中' : '') + '</span>' +
             '</div>' +
             '<div class="cp-plan-bar"><div class="cp-plan-bar-fill" style="width:' + pct + '%"></div></div>' +
-            '<div class="cp-plan-steps">' + stepsHtml + '</div>';
+            '<div class="cp-plan-steps">' + stepsHtml + '</div>' +
+            summaryHtml;
         }
 
         renderPlan();
@@ -1085,12 +1119,14 @@
           }
 
           // 执行
-          stepStates[i] = 'active'; renderPlan();
+          stepStates[i] = 'active'; stepStarts[i] = Date.now(); renderPlan();
           try {
             var result = await tool.execute.call(this, toolArgs, ctx);
+            stepTimes[i] = Date.now() - stepStarts[i];
             stepStates[i] = 'done'; renderPlan();
             results.push({ step: i, tool: toolName, desc: step.desc || '', status: 'done', result: String(result || '').slice(0, 500) });
           } catch (err) {
+            stepTimes[i] = Date.now() - stepStarts[i];
             var errMsg = String(err && err.message ? err.message : err);
             stepStates[i] = 'failed'; renderPlan();
             results.push({ step: i, tool: toolName, desc: step.desc || '', status: 'failed', error: errMsg });
