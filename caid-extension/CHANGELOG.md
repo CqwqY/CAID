@@ -6,6 +6,10 @@
 ## [v0.3.7] - 2026-08-21
 
 ### 修复
+- **正则网页上副驾桥接全部失效（核心 bug）**：
+  - 根因：`caid-copilot.js` 通过 `chrome.scripting.executeScript({ world: 'MAIN' })` 注入，在正则网页的 MAIN world 中 `window.chrome.runtime` **存在**（浏览器内置对象），但 `chrome.runtime.sendMessage` 无法真正发送给 background（无扩展上下文）。`caidSendToBg` / `caidRequestBg` / `caidRequestNavigate` 用 `typeof chrome.runtime.sendMessage === 'function'` 判断扩展环境，条件为 true → 走 `chrome.runtime.sendMessage` 静默失败 → `return` → 跳过 `window.postMessage` → content.js 永远收不到消息。
+  - 影响范围：正则网页上所有副驾桥接操作失效——任务历史不记录（`CAID_MEMORY_ADD_HISTORY`）、待办不写入（`CAID_TODO_OP`）、长期记忆不读写（`CAID_MEMORY_GET/ADD_FACT`）、导航不跳转（`NAVIGATE_TO_URL`）。
+  - 解决：三个桥接函数改用 `chrome.runtime.id`（扩展 ID 字符串）判断是否在扩展环境。`caidSendToBg` 去掉 `return`，让 `window.postMessage` 总是执行作为兜底（扩展页上 content.js 不运行，不会重复）。`caidRequestBg` 和 `caidRequestNavigate` 非扩展环境直接走 postMessage / DOM 事件桥。
 - **副驾任务历史不再同步**：
   - 根因：`recordTaskHistory()` 只在 `agent.status === 'completed'` 时调用。任务被用户停止（`stopped`）、出错（`error`）、或因 plan 内导航中断时，不会记录历史，导致执行过的任务不出现在新标签页的副驾任务列表里。
   - 解决：`renderStatus()` 中 `stopped`（非 handoff）和 `error` 状态也调用 `recordTaskHistory()`，只有因导航跳转的 `stopped`（`isHandingOff=true`）才跳过（任务会在新页面续跑）。

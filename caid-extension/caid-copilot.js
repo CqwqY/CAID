@@ -1254,15 +1254,18 @@
   // background 收到后：存储 handoff（chrome.storage.session，永远有权限）+ 用 chrome.tabs.create 打开新标签，
   // 新标签加载完成触发 tabs.onUpdated → 自动注入副驾续跑。
   function caidRequestNavigate(url, active, handoff) {
+    // 判断是否在扩展环境（有 chrome.runtime.id），避免 MAIN world 误用浏览器内置 chrome.runtime
+    var inExt = false;
+    try { inExt = (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.id === 'string'); } catch (e) {}
     // ① 扩展页 MAIN world 自带 chrome API → 直接发消息（最可靠）
-    try {
-      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+    if (inExt) {
+      try {
         chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_URL', url: url, active: active !== false, handoff: handoff || null });
         console.log('[CAID-R] caidRequestNavigate: 已直接发 NAVIGATE_TO_URL 给 background (url=' + url + ', handoff=' + !!(handoff) + ')');
         return;
+      } catch (e) {
+        console.warn('[CAID-R] caidRequestNavigate: 直接发送失败, 转 DOM 桥:', e.message || e);
       }
-    } catch (e) {
-      console.warn('[CAID-R] caidRequestNavigate: 直接发送失败, 转 DOM 桥:', e.message || e);
     }
     // ② 正则网页 MAIN world 无 chrome API → 派发 DOM 事件，由 content.js（ISOLATED world）转发
     try {
@@ -1327,11 +1330,15 @@
           } catch (e3) {}
         }
       }
-      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-        chrome.runtime.sendMessage(msg);
-        return;
+      // 注意：不能在这里 return！在正则网页 MAIN world 中 window.chrome.runtime 存在（浏览器内置），
+      // 但 chrome.runtime.sendMessage 无法真正发送给 background（无扩展上下文），
+      // 会静默失败。如果 return 了就跳过了下面的 window.postMessage，
+      // 导致 content.js（ISOLATED world）永远收不到消息——任务历史就丢了。
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function' && chrome.runtime.id) {
+        try { chrome.runtime.sendMessage(msg); } catch (e) {}
       }
     } catch (e) {}
+    // 正则网页 MAIN world：chrome.runtime 不可靠，走 postMessage 给 content.js 转发
     try {
       window.postMessage({ __caid: true, kind: 'bg_message', msg: msg }, '*');
     } catch (e) {}
@@ -1442,8 +1449,14 @@
 
   function caidRequestBg(msg) {
     return new Promise(function (resolve) {
+      // 判断是否在扩展环境（有 chrome.runtime.id）：
+      // 正则网页 MAIN world 中 window.chrome.runtime 存在（浏览器内置），
+      // 但 chrome.runtime.id 为 undefined，chrome.runtime.sendMessage 无法真正发送。
+      // 必须用 chrome.runtime.id 判断，否则会误走 sendMessage 路径导致消息丢失。
+      var inExtContext = false;
+      try { inExtContext = (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.id === 'string' && typeof chrome.runtime.sendMessage === 'function'); } catch (e) {}
       try {
-        if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        if (inExtContext) {
           // 扩展页：存储类操作直接走 chrome.storage.local（零延迟、无 SW 依赖）
           var directP = _tryDirectStorage(msg);
           if (directP) { directP.then(resolve); return; }
