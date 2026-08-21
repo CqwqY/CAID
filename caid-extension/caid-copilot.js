@@ -936,21 +936,19 @@
     // 大幅减少 LLM 调用次数：原来每步 1 次 LLM 调用，现在整个 plan 只 1 次（+失败时重规划）。
     plan: {
       description:
-        'Plan multiple tool calls in ONE shot and execute them sequentially without asking the LLM between steps. ' +
-        'Use this when the task involves 2+ sequential actions you can predict in advance (e.g., navigate → input text → click search → click first result). ' +
-        'Each step specifies a tool name and its arguments. Steps execute in order; results are collected and returned together. ' +
-        'SETUP: "steps" is an array. Each step = { tool, args, desc, confirm, on_fail }. ' +
-        '  - tool (required): name of another tool (execute_javascript, navigate_to_url, input_text, click_element_by_index, manage_todo, etc.). ' +
-        '    ⚠️ CANNOT call "plan" recursively. ' +
-        '  - args (object): arguments for that tool (e.g., {url:"https://..."} for navigate_to_url, {script:"..."} for execute_javascript). ' +
-        '  - desc (string, optional): human-readable description of what this step does. ' +
-        '  - confirm (boolean, optional, default false): if true, pause execution and ask user to confirm before running this step. Use for sensitive actions (deleting, submitting, navigating to payment pages). ' +
-        '  - on_fail (string, optional, default "stop"): "stop" (halt plan on failure), "continue" (ignore failure, proceed to next step), or "ask" (pause and ask user whether to continue). ' +
-        'EXECUTION: steps run sequentially. After ALL steps complete (or plan stops), a summary of each step result is returned. ' +
-        'If a step fails and on_fail="stop", remaining steps are marked "skipped". ' +
-        'Do NOT use plan for single-step tasks — just call the tool directly. ' +
-        'Do NOT include steps whose arguments depend on results you don\'t have yet (e.g., clicking a search result whose index you don\'t know). ' +
-        'For such dependent steps, plan the first part, see results, then plan the next part in a new call.',
+        '【优先使用】Plan multiple tool calls in ONE shot and execute them sequentially WITHOUT asking the LLM between steps. ' +
+        'You MUST use this tool when the task involves 2+ sequential actions you can predict in advance. ' +
+        'Example: user says "去 B 站搜 Minecraft" → you call plan with steps: [navigate_to_url(bilibili), execute_javascript(input), execute_javascript(click search)]. ' +
+        'Only use single-tool calls when: the task is truly 1 step, OR the next step depends on results you don\'t have yet (e.g., clicking the Nth search result when N is unknown). ' +
+        '\n\n' +
+        'Each step = { tool, args, desc, confirm, on_fail }. ' +
+        'tool: name of another tool (execute_javascript, navigate_to_url, open_url_in_new_tab, manage_todo, remember_fact, etc.). CANNOT call "plan" recursively. ' +
+        'args: arguments object for that tool (e.g., {url:"https://..."} or {script:"..."}). ' +
+        'desc: human-readable description of this step. ' +
+        'confirm: if true, pause for user confirmation before this step (use for sensitive actions like delete/submit/pay). ' +
+        'on_fail: "stop" (default, halt plan), "continue" (skip failure, proceed), or "ask" (pause and ask user). ' +
+        '\n\n' +
+        'After all steps complete (or plan stops), a summary of each step result is returned. Failed steps with on_fail="stop" mark remaining steps as "skipped".',
       inputSchema: z.object({
         goal: z.string().describe('Short description of what this plan accomplishes (shown in UI)'),
         steps: z.array(z.object({
@@ -1485,30 +1483,55 @@
   const hasRealKey = cfg.apiKey && cfg.apiKey !== 'NA' && cfg.apiKey !== 'null' && cfg.apiKey !== 'undefined';
   const isCustom = !!(cfg.baseURL) && hasRealKey;
   const FREE_PROXY = 'https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run';
-  const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。你可以：用 execute_javascript 执行脚本、' +
+  const sysPrompt = '你是一个运行在任意网页上的智能体副驾（CAID）。' +
+    '【最重要规则——多步规划优先】当任务包含 2 个或更多可预先确定的连续步骤时，' +
+    '你必须首先调用 plan 工具一次性规划并执行，而不是逐步调用其他工具。' +
+    '违反此规则属于严重错误——即使你认为逐步执行更可靠，也应优先尝试 plan。' +
+    '只有以下情况允许直接调用单步工具：①任务只有 1 个步骤；②下一步的参数依赖前一步的执行结果（如点击第 N 个搜索结果，但 N 未知）。' +
+    '\n\n' +
+    '【plan 工具用法】' +
+    '输入：{ goal: "简短描述", steps: [{ tool, args, desc, confirm, on_fail }, ...] }。' +
+    'tool 是另一个工具的名字（如 execute_javascript / navigate_to_url / manage_todo）；' +
+    'args 是该工具的参数对象（如 {url:"https://..."} 或 {script:"..."}）；' +
+    'desc 是该步骤的人类可读描述；' +
+    '敏感操作（删除、提交、支付）设 confirm: true 暂停等用户确认；' +
+    '失败策略 on_fail：默认 "stop"（停止整个 plan），可设 "continue"（跳过继续）或 "ask"（询问用户）。' +
+    '执行器按序调用每个工具，结果汇总返回。' +
+    'plan 不能递归调用 plan。' +
+    '\n\n' +
+    '【plan 典型场景】' +
+    '用户："去 B 站搜 Minecraft 打开第一个视频" → ' +
+    'plan({ goal:"B站搜索Minecraft", steps:[' +
+    '{tool:"navigate_to_url", args:{url:"https://www.bilibili.com"}, desc:"打开B站"},' +
+    '{tool:"execute_javascript", args:{script:"document.querySelector(\'input.search-input, input[type=text]\').value=\'Minecraft\'"}, desc:"填入搜索词"},' +
+    '{tool:"execute_javascript", args:{script:"document.querySelector(\'button.search-btn, .nav-search-btn\').click()"}, desc:"点击搜索按钮"}' +
+    '] })' +
+    '—— 注意：点击搜索结果需要先看到结果页才知道 index，所以"打开第一个视频"不在首个 plan 里，' +
+    'plan 返回后你会看到搜索结果页，再根据页面内容 plan 下一步。' +
+    '\n\n' +
+    '用户："记一下明天开会，然后去百度搜天气" → ' +
+    'plan({ goal:"记待办+查天气", steps:[' +
+    '{tool:"manage_todo", args:{action:"add", text:"明天开会", priority:"high"}, desc:"添加待办"},' +
+    '{tool:"navigate_to_url", args:{url:"https://www.baidu.com"}, desc:"打开百度"}' +
+    '] })' +
+    '\n\n' +
+    '【可用工具】execute_javascript 执行脚本（页面内行动，禁止跳转语句）、' +
     'navigate_to_url / open_url_in_new_tab 控制导航、search_web / search_code 检索、output_code 输出代码、' +
-    'auto_fill_form 填表、extract_page_data 提取数据、go_to_workbench 回到工作台、' +
+    'auto_fill_form 填表、extract_page_data 提取数据、go_to_workbench 回工作台、' +
     'remember_fact / forget_fact 管理长期记忆、manage_todo 管理待办。' +
-    '优先使用合适的工具完成任务，最后用 done 汇报结果。' +
-    '跳转其他网站时优先用 navigate_to_url（在新标签打开、保留当前页面）；' +
-    '无论是跨站还是站内跳转（如搜索后进入结果页），任务都会自动续跑，不要因为页面切换而中断或重复已完成的工作。' +
-    '【多步规划 plan 工具】当任务包含 2+ 个可预先确定的连续步骤时，用 plan 工具一次性规划并自动执行，' +
-    '而不是每步单独调用工具——这样更快、更省 token、更不容易在中途跑偏。' +
-    '典型场景：导航到网站 → 在搜索框输入关键词 → 点击搜索按钮 → 点击第一个结果。' +
-    'plan 的 steps 中每个 step 指定 { tool, args, desc }，执行器按序调用，结果汇总返回。' +
-    '遇到敏感操作（删除、提交、支付）可在 step 中设 confirm: true 暂停等待用户确认。' +
-    '步骤失败时默认停止整个 plan；设 on_fail: "continue" 可跳过失败继续下一步。' +
-    '注意：不要在 plan 中包含参数依赖前一步结果的步骤（如点击搜索结果，index 未知）——' +
-    '此时先 plan 前半部分，看到结果后再 plan 后半部分。' +
-    '【跳转链接规则】页面观察结果中的链接会带 href=URL：当你的目标是"进入某链接/打开某页面"时，' +
-    '不要用 click 点击链接（点击后页面切换无法控制），而是直接从 href 读取完整 URL，' +
-    '用 open_url_in_new_tab 或 navigate_to_url 打开它，任务会自动在新页面续跑。' +
-    '若 href 显示被截断（以 ... 结尾），先用 execute_javascript 读取元素的完整 href 再跳转。' +
-    '【行动 vs 跳转判断】execute_javascript 只做当前页面内的行动：滚动、点击不跳转的按钮、填表、修改 DOM、读取数据。' +
+    '最后用 done 汇报结果。' +
+    '\n\n' +
+    '【跳转链接规则】页面观察结果中的链接带 href=URL：目标是"进入某链接"时，' +
+    '不要用 click 点击链接（页面切换无法控制），而是从 href 读取完整 URL，' +
+    '用 open_url_in_new_tab 或 navigate_to_url 打开，任务自动在新页面续跑。' +
+    '若 href 被截断（以 ... 结尾），先用 execute_javascript 读取完整 href 再跳转。' +
+    '\n\n' +
+    '【行动 vs 跳转判断】execute_javascript 只做页面内行动：滚动、点击不跳转的按钮、填表、修改 DOM、读取数据。' +
     '凡是会让页面切换地址的操作——点击带 href 的链接、location.href= / location.assign / location.replace、' +
-    'window.open、表单提交跳转——都属于跳转，一律先读出完整 URL，改用 navigate_to_url / open_url_in_new_tab 打开。' +
+    'window.open、表单提交跳转——都属于跳转，先读出完整 URL，改用 navigate_to_url / open_url_in_new_tab 打开。' +
     'execute_javascript 脚本里禁止任何跳转语句；若脚本导致地址变化，工具会返回警告并要求改用导航工具。' +
-    '【长期记忆】你拥有跨任务、跨会话的长期记忆：用户指令前可能附带【长期记忆】块（已知事实 + 最近完成的任务记录），' +
+    '\n\n' +
+    '【长期记忆】用户指令前可能附带【长期记忆】块（已知事实 + 最近完成的任务记录），' +
     '可直接引用其中的信息回答，不要重复查询已有答案。' +
     '当以下情况出现时，用 remember_fact 记录（简洁一句话）：任务结果包含值得长期记住的数据（如查询到的数字、状态、结论）、' +
     '用户明确说"记住/记一下"的内容、用户的偏好或身份信息。' +
@@ -1685,6 +1708,24 @@
       memCtx = buildMemoryContext(mem);
     } catch (e) { memCtx = buildMemoryContext(memoryCache); }
     var fullInstruction = memCtx ? (memCtx + '\n\n【本次任务】\n' + t) : t;
+    // 【多步规划强制提示】当用户消息看起来像多步任务时，追加 plan 工具使用提示。
+    // 只在非续传任务上追加（续传任务已有上下文，不需要）。
+    if (t.indexOf('【任务续传】') !== 0) {
+      // 启发式：包含"然后/之后/再/并/和/同时"等连接词，或包含多个动词（去+搜+打开）
+      var multiStepHints = ['然后', '之后', '再', '并且', '同时', '接着', '随后', '最后'];
+      var isMultiStep = false;
+      for (var hi = 0; hi < multiStepHints.length; hi++) {
+        if (t.indexOf(multiStepHints[hi]) !== -1) { isMultiStep = true; break; }
+      }
+      // 也可以是"去 X 搜 Y 打开 Z"这种连续动词
+      if (!isMultiStep) {
+        var verbs = (t.match(/去|打开|搜索|搜|点击|输入|填写|记|添加|删除|跳转/g) || []);
+        if (verbs.length >= 2) isMultiStep = true;
+      }
+      if (isMultiStep) {
+        fullInstruction += '\n\n【系统提示】此任务包含多个步骤，请优先使用 plan 工具一次性规划并执行所有可预先确定的步骤，而不是逐步调用工具。';
+      }
+    }
     // execute 会清空 agent.history：先把已产生的条目同步进显示层，再重置同步指针，
     // 让新任务条目从 0 开始追加，面板对话跨任务连续。
     syncDisplay(); syncedLen = 0; renderHistory();
