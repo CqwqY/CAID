@@ -3205,7 +3205,28 @@ async function renderSmartAiSuggestion() {
   const body = caidQs('#smartZoneBody');
   if (!body) return;
   const cfg = state.llmCfg;
-  if (!cfg || !cfg.apiKey) return; // 无 API Key 不调 AI
+  // 无 API Key：显示 fallback 卡片引导用户配置
+  if (!cfg || !cfg.apiKey) {
+    const fallback = document.createElement('div');
+    fallback.className = 'smart-ai-card';
+    fallback.innerHTML = `
+      <div class="smart-ai-head"><i data-lucide="sparkles"></i>AI 主动建议</div>
+      <div class="smart-ai-body">配置 AI API Key 后，这里会根据时段、待办和最近任务，主动给你下一步建议。</div>
+      <div class="smart-ai-actions">
+        <button class="smart-ai-btn primary" data-act="settings">前往配置</button>
+        <button class="smart-ai-btn" data-act="dismiss">稍后</button>
+      </div>`;
+    fallback.querySelectorAll('.smart-ai-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.act === 'settings') {
+          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); });
+        } else { fallback.classList.add('dismissed'); }
+      });
+    });
+    body.appendChild(fallback);
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
 
   // 准备上下文：时段 + 待办 + 最近任务 + 最近记忆事实
   const p = getPeriodKey();
@@ -3250,10 +3271,10 @@ async function renderSmartAiSuggestion() {
         max_tokens: 120,
       })
     });
-    if (!resp.ok) return;
+    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
     const j = await resp.json();
     const suggestion = (j?.choices?.[0]?.message?.content || '').trim().split('\n')[0].slice(0, 100);
-    if (!suggestion) return;
+    if (!suggestion) throw new Error('LLM 返回为空');
 
     // 解析出一个可执行动作：若建议里提到 URL，第一个按钮打开；否则按钮触发搜索框预填
     const urlMatch = suggestion.match(/https?:\/\/[^\s，。]+/);
@@ -3293,6 +3314,21 @@ async function renderSmartAiSuggestion() {
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.warn('[CAID] smart AI suggestion failed:', e);
+    // LLM 调用失败时显示 fallback 卡片（不是静默失败）
+    const fb = document.createElement('div');
+    fb.className = 'smart-ai-card';
+    const p = getPeriodKey();
+    let fbText = '';
+    if (p.key === 'morning' || p.key === 'forenoon') fbText = todos.length ? `今天有 ${todos.length} 件待办，先处理高优先级的。` : '今天暂无待办，可以规划新任务。';
+    else if (p.key === 'evening' || p.key === 'night') fbText = todos.length ? `还有 ${todos.length} 件待办未完成，考虑留到明天。` : '今天全部完成，可以放松一下。';
+    else fbText = recentTasks.length ? `最近任务：${recentTasks[0].goal}` : '专注当下，可以打开常用站点开始工作。';
+    fb.innerHTML = `
+      <div class="smart-ai-head"><i data-lucide="sparkles"></i>智能建议</div>
+      <div class="smart-ai-body">${escapeHtml(fbText)}</div>
+      <div class="smart-ai-actions"><button class="smart-ai-btn" data-act="dismiss">知道了</button></div>`;
+    fb.querySelector('.smart-ai-btn').addEventListener('click', () => fb.classList.add('dismissed'));
+    body.appendChild(fb);
+    if (window.lucide) lucide.createIcons();
   }
 }
 

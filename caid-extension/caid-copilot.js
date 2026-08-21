@@ -1651,7 +1651,7 @@
       console.log('[CAID-R] 任务历史已记录:', goal, '→', result.slice(0, 80));
     } catch (e) { console.warn('[CAID-R] recordTaskHistory 异常:', e); }
   }
-  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed') { recordTaskHistory(); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
+  function renderStatus() { var st = agent.status; if (statusEl) statusEl.textContent = ({ idle: '空闲', running: '运行中…', completed: '已完成', error: '出错', stopped: '已停止' })[st] || String(st); if (stopEl) { if (st === 'running') stopEl.classList.add('running'); else stopEl.classList.remove('running'); } if (st === 'completed') { recordTaskHistory(); } else if ((st === 'stopped' || st === 'error') && !(st === 'stopped' && isHandingOff)) { recordTaskHistory(); } if (st === 'completed' || st === 'error' || st === 'stopped') { if (!(st === 'stopped' && isHandingOff)) { clearCheckpoint(); caidSendToBg({ type: 'AGENT_INACTIVE' }); } } renderApiInfo(); }
   function renderActivity(detail) {
     if (!activityEl) return;
     if (!detail) { activityEl.textContent = ''; return; }
