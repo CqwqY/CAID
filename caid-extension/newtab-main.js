@@ -3027,6 +3027,10 @@ async function init() {
   // 插件：加载并渲染已启用的侧边栏区块
   loadPlugins();
 
+  // 智能推荐区：时段卡片 + 常用站点 + AI 主动建议
+  bindSmartZoneEvents();
+  renderSmartZone();
+
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
   if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); }));
@@ -3061,6 +3065,268 @@ try {
     });
   }
 } catch (e) {}
+
+// ============ Smart Zone（智能推荐：时段卡片 + 常用站点 + AI 主动建议） ============
+// 设计：新标签页打开时，根据时段 + 访问习惯 + 副驾历史任务，动态生成推荐内容。
+// 不动用户自定义的 #shortcutBar（那是用户手动添加的快捷入口），smart-zone 是独立推荐区。
+const SMART_ZONE = {
+  lastPeriodKey: '',   // 避免同时段内重复刷新
+  dismissedAiKey: null, // 用户本次会话关闭过的 AI 建议缓存键
+};
+
+function getPeriodKey() {
+  const h = new Date().getHours();
+  if (h < 6)  return { key: 'night',   label: '深夜', icon: 'moon',   cls: 'night' };
+  if (h < 9)  return { key: 'morning', label: '清晨', icon: 'sunrise',cls: 'morning' };
+  if (h < 12) return { key: 'forenoon',label: '上午', icon: 'sun',    cls: 'work' };
+  if (h < 14) return { key: 'noon',    label: '中午', icon: 'utensils',cls: 'work' };
+  if (h < 18) return { key: 'afternoon',label:'下午', icon: 'briefcase',cls:'work' };
+  if (h < 22) return { key: 'evening', label: '晚上', icon: 'sunset',  cls: 'evening' };
+  return { key: 'night', label: '深夜', icon: 'moon', cls: 'night' };
+}
+
+// 时段卡片：根据时段 + 待办/历史任务，生成个性化内容
+async function renderSmartPeriodCard() {
+  const body = caidQs('#smartZoneBody');
+  if (!body) return;
+  const p = getPeriodKey();
+  const now = new Date();
+  const todoCount = (state.todos || []).length;
+  const todoUndone = (state.todos || []).filter(t => !t.done).length;
+  const todoDone = todoCount - todoUndone;
+
+  // 取最近 3 条副驾任务历史
+  let recentTasks = [];
+  try {
+    if (storageAvailable()) {
+      const { caidMemory } = await chrome.storage.local.get('caidMemory');
+      recentTasks = ((caidMemory && caidMemory.history) || []).slice(-3).reverse();
+    }
+  } catch (e) {}
+
+  let head = '', content = '';
+  switch (p.key) {
+    case 'morning':
+      head = `${p.label}好，开启元气满满的一天`;
+      content = todoUndone > 0
+        ? `今天还有 <b>${todoUndone}</b> 件待办未完成，先挑一件高优先级的开始吧。`
+        : `今天没有未完成待办，可以规划新的目标。`;
+      break;
+    case 'forenoon':
+      head = `${p.label}好，专注代码时间`;
+      content = recentTasks.length
+        ? `最近任务：${recentTasks.map(t => escapeHtml((t.goal||'').slice(0,30))).join(' · ')}`
+        : `专注时段，可常用站点直接进入工作。`;
+      break;
+    case 'noon':
+      head = `中午好，记得吃饭和休息`;
+      content = `上午完成了 <b>${todoDone}</b> 件待办${todoUndone ? `，还剩 <b>${todoUndone}</b> 件下午继续` : ''}。`;
+      break;
+    case 'afternoon':
+      head = `${p.label}好，继续推进`;
+      content = todoUndone > 0
+        ? `下午还有 <b>${todoUndone}</b> 件待办，按优先级处理。`
+        : `今天待办已全部完成，可以处理新任务。`;
+      break;
+    case 'evening':
+      head = `${p.label}好，辛苦了`;
+      content = todoUndone > 0
+        ? `今天还剩 <b>${todoUndone}</b> 件待办，是否留到明天？`
+        : `今天全部完成，可以放松一下：听听音乐、看个视频。`;
+      break;
+    case 'night':
+      head = `夜深了，注意休息`;
+      content = `已经 ${pad2(now.getHours())}:${pad2(now.getMinutes())}，早点睡对身体好。待办明天再处理。`;
+      break;
+  }
+
+  const card = document.createElement('div');
+  card.className = `smart-period-card ${p.cls}`;
+  card.innerHTML = `
+    <div class="smart-period-head">
+      <i data-lucide="${p.icon}"></i>
+      <span>${head}</span>
+    </div>
+    <div class="smart-period-body">${content}</div>
+  `;
+  body.appendChild(card);
+  if (window.lucide) lucide.createIcons();
+}
+
+// 推荐站点：chrome.topSites 拿最常访问的站点（去重、过滤扩展页/新标签页）
+async function renderSmartSites() {
+  const body = caidQs('#smartZoneBody');
+  if (!body || !chrome.topSites) return;
+  return new Promise((resolve) => {
+    chrome.topSites.get((sites) => {
+      if (chrome.runtime.lastError || !sites || !sites.length) { resolve(); return; }
+      // 过滤：排除 chrome:// / chrome-extension:// / about: / 新标签页
+      const extUrl = chrome.runtime.getURL('');
+      const filtered = sites.filter(s => {
+        const u = s.url || '';
+        return u.startsWith('http') && !u.startsWith(extUrl) && !u.includes('newtab');
+      }).slice(0, 6);
+      if (!filtered.length) { resolve(); return; }
+
+      const title = document.createElement('div');
+      title.className = 'smart-sites-title';
+      title.textContent = '常去站点';
+      body.appendChild(title);
+
+      const grid = document.createElement('div');
+      grid.className = 'smart-sites-grid';
+      filtered.forEach(s => {
+        const a = document.createElement('a');
+        a.className = 'smart-site';
+        a.href = s.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        // favicon 用 Google s2 service（扩展有 <all_urls> 权限可加载）
+        const host = (() => { try { return new URL(s.url).hostname; } catch(e) { return ''; } })();
+        const fav = host ? `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(host)}` : '';
+        const name = s.title || host || s.url;
+        a.innerHTML = `
+          <span class="smart-site-favicon">${fav ? `<img src="${fav}" alt="" onerror="this.style.display='none'">` : host.charAt(0).toUpperCase()}</span>
+          <span class="smart-site-name">${escapeHtml(name)}</span>
+        `;
+        a.addEventListener('click', (e) => {
+          addHistory(name, 'nav', s.url);
+        });
+        grid.appendChild(a);
+      });
+      body.appendChild(grid);
+      resolve();
+    });
+  });
+}
+
+// AI 主动建议：根据 caidMemory + agentTasks + 待办生成上下文，调 LLM 一次（非流式），输出 1 条主动建议
+async function renderSmartAiSuggestion() {
+  const body = caidQs('#smartZoneBody');
+  if (!body) return;
+  const cfg = state.llmCfg;
+  if (!cfg || !cfg.apiKey) return; // 无 API Key 不调 AI
+
+  // 准备上下文：时段 + 待办 + 最近任务 + 最近记忆事实
+  const p = getPeriodKey();
+  const todos = (state.todos || []).filter(t => !t.done).slice(0, 5).map(t => t.text);
+  let memoryFacts = [], recentTasks = [];
+  try {
+    if (storageAvailable()) {
+      const { caidMemory } = await chrome.storage.local.get('caidMemory');
+      memoryFacts = ((caidMemory && caidMemory.facts) || []).slice(-5).map(f => f.text);
+      recentTasks = ((caidMemory && caidMemory.history) || []).slice(-3).reverse().map(t => ({
+        goal: t.goal, result: (t.result || '').slice(0, 80)
+      }));
+    }
+  } catch (e) {}
+
+  // 防抖：本次会话已关闭过的建议不重弹
+  const aiKey = p.key + '|' + (todos.join(',') || 'none') + '|' + (recentTasks[0]?.goal || '');
+  if (SMART_ZONE.dismissedAiKey === aiKey) return;
+
+  const sysPrompt = `你是一个简洁的智能助手，给用户一句主动建议（不超过 60 字）。基于时段、待办和最近任务，给出一个具体的、可执行的下一步动作建议。
+格式：纯文本一句话，不要解释、不要 markdown。示例：
+- "你昨天让查的 PR 已完成 review，今天继续处理 issue #123 吗？"
+- "上午适合专注编码，要不要打开 GitHub 看看你的仓库？"
+- "晚上有 3 件待办未完成，要不要留到明天处理？"
+- "夜深了，建议先休息，明天再处理待办。"`;
+
+  const userPrompt = `当前时段：${p.label}\n未完成待办：${todos.length ? todos.join(' / ') : '无'}\n最近任务：${recentTasks.length ? recentTasks.map(t => t.goal).join(' / ') : '无'}\n已知事实：${memoryFacts.length ? memoryFacts.join(' / ') : '无'}\n请给一条主动建议。`;
+
+  try {
+    const url = cfg.baseUrl + '/chat/completions';
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: sysPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7,
+        stream: false,
+        max_tokens: 120,
+      })
+    });
+    if (!resp.ok) return;
+    const j = await resp.json();
+    const suggestion = (j?.choices?.[0]?.message?.content || '').trim().split('\n')[0].slice(0, 100);
+    if (!suggestion) return;
+
+    // 解析出一个可执行动作：若建议里提到 URL，第一个按钮打开；否则按钮触发搜索框预填
+    const urlMatch = suggestion.match(/https?:\/\/[^\s，。]+/);
+    const card = document.createElement('div');
+    card.className = 'smart-ai-card';
+    card.dataset.aiKey = aiKey;
+    card.innerHTML = `
+      <button class="smart-ai-close" title="关闭"><i data-lucide="x"></i></button>
+      <div class="smart-ai-head"><i data-lucide="sparkles"></i>AI 主动建议</div>
+      <div class="smart-ai-body">${escapeHtml(suggestion)}</div>
+      <div class="smart-ai-actions">
+        ${urlMatch ? `<button class="smart-ai-btn primary" data-act="open" data-url="${escapeHtml(urlMatch[0])}">打开链接</button>` : ''}
+        <button class="smart-ai-btn" data-act="ask" data-q="${escapeHtml(suggestion.slice(0, 60))}">让 AI 处理</button>
+        <button class="smart-ai-btn" data-act="dismiss">稍后</button>
+      </div>
+    `;
+    card.querySelector('.smart-ai-close').addEventListener('click', () => {
+      card.classList.add('dismissed');
+      SMART_ZONE.dismissedAiKey = aiKey;
+    });
+    card.querySelectorAll('.smart-ai-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.act;
+        if (act === 'open' && btn.dataset.url) {
+          window.open(btn.dataset.url, '_blank');
+          addHistory('AI 建议打开', 'nav', btn.dataset.url);
+        } else if (act === 'ask' && btn.dataset.q) {
+          const input = caidQs('#searchInput');
+          if (input) { input.value = btn.dataset.q; input.focus(); }
+        } else if (act === 'dismiss') {
+          card.classList.add('dismissed');
+          SMART_ZONE.dismissedAiKey = aiKey;
+        }
+      });
+    });
+    body.appendChild(card);
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    console.warn('[CAID] smart AI suggestion failed:', e);
+  }
+}
+
+async function renderSmartZone() {
+  const body = caidQs('#smartZoneBody');
+  const label = caidQs('#smartZoneLabel');
+  if (!body) return;
+  body.innerHTML = '';
+  const p = getPeriodKey();
+  SMART_ZONE.lastPeriodKey = p.key;
+  if (label) label.textContent = `${p.label} · 智能推荐`;
+  // 顺序：时段卡片 → 常用站点 → AI 建议（AI 异步最后渲染，不阻塞前面）
+  await renderSmartPeriodCard();
+  await renderSmartSites();
+  renderSmartAiSuggestion(); // 不 await，让 AI 建议异步出现
+  if (window.lucide) lucide.createIcons();
+}
+
+function bindSmartZoneEvents() {
+  const refresh = caidQs('#smartZoneRefresh');
+  if (refresh) {
+    refresh.addEventListener('click', async () => {
+      refresh.classList.add('spinning');
+      SMART_ZONE.dismissedAiKey = null; // 手动刷新时重置关闭状态
+      await renderSmartZone();
+      setTimeout(() => refresh.classList.remove('spinning'), 600);
+    });
+  }
+  // 每 5 分钟检测时段变化（避免长时间停留旧时段）
+  setInterval(() => {
+    const p = getPeriodKey();
+    if (p.key !== SMART_ZONE.lastPeriodKey) renderSmartZone();
+  }, 5 * 60 * 1000);
+}
 
 init();
 

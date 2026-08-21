@@ -801,6 +801,203 @@ a:hover { text-decoration: underline; }
   border-radius: 6px;
 }
 .server-monitor-manage:hover { background: rgba(91,141,255,.1); }
+/* 智能推荐区（插件挂载区下方） */
+.smart-zone {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto 24px;
+}
+.smart-zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.smart-zone-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.smart-zone-refresh {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+}
+.smart-zone-refresh:hover { background: rgba(91,141,255,.1); color: var(--accent); }
+.smart-zone-refresh svg { width: 14px; height: 14px; }
+.smart-zone-refresh.spinning svg { animation: smartSpin 1s linear infinite; }
+@keyframes smartSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+.smart-zone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* 时段大卡片（早上/工作/晚上/深夜） */
+.smart-period-card {
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--glass-bg) 0%, var(--glass-bg-2) 100%);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+.smart-period-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  pointer-events: none;
+}
+.smart-period-card.morning { border-left: 3px solid var(--warn); }
+.smart-period-card.work   { border-left: 3px solid var(--accent); }
+.smart-period-card.evening { border-left: 3px solid var(--purple); }
+.smart-period-card.night  { border-left: 3px solid #5b6b8c; }
+.smart-period-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.smart-period-head svg { width: 18px; height: 18px; }
+.smart-period-card.morning .smart-period-head { color: var(--warn); }
+.smart-period-card.work .smart-period-head { color: var(--accent); }
+.smart-period-card.evening .smart-period-head { color: var(--purple); }
+.smart-period-card.night .smart-period-head { color: #8b9bbf; }
+.smart-period-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.smart-period-body b { color: var(--ink); font-weight: 600; }
+/* 推荐站点胶囊 */
+.smart-sites-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.smart-sites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+.smart-site {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: all .2s;
+  text-decoration: none;
+  color: var(--ink);
+}
+.smart-site:hover {
+  background: rgba(91,141,255,0.12);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.smart-site-favicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--bg3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+}
+.smart-site-favicon img { width: 16px; height: 16px; border-radius: 3px; }
+.smart-site-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+/* AI 主动建议卡片 */
+.smart-ai-card {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(91,141,255,0.08), rgba(180,139,255,0.05));
+  border: 1px solid rgba(91,141,255,0.25);
+  position: relative;
+}
+.smart-ai-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.smart-ai-head svg { width: 13px; height: 13px; }
+.smart-ai-body {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.smart-ai-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.smart-ai-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.smart-ai-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.smart-ai-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.smart-ai-btn.primary:hover { background: var(--accent-2); }
+.smart-ai-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.smart-ai-close:hover { color: var(--ink); background: rgba(255,255,255,0.08); }
+.smart-ai-close svg { width: 14px; height: 14px; }
+.smart-ai-card.dismissed { display: none; }
+.smart-zone-empty {
+  text-align: center;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--rule);
+  border-radius: 10px;
+}
 /* 插件挂载区（服务器监控列表下方） */
 .plugin-zone {
   width: 100%;
@@ -2649,6 +2846,16 @@ a:hover { text-decoration: underline; }
           <span class="plugin-zone-title"><i data-lucide="puzzle" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:5px;"></i>插件</span>
         </div>
         <div class="plugin-zone-body" id="pluginZoneBody"></div>
+      </div>
+      <!-- 智能推荐区：分时段内容 + 动态站点 + AI 主动建议 -->
+      <div class="smart-zone" id="smartZone">
+        <div class="smart-zone-head">
+          <span class="smart-zone-title"><i data-lucide="sparkles" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:5px;"></i><span id="smartZoneLabel">智能推荐</span></span>
+          <button class="smart-zone-refresh" id="smartZoneRefresh" title="刷新推荐"><i data-lucide="refresh-cw"></i></button>
+        </div>
+        <div class="smart-zone-body" id="smartZoneBody">
+          <!-- 动态注入：时段卡片 / 推荐站点 / AI 建议 -->
+        </div>
       </div>
     </div>
     <div class="right-panels" id="rightPanels"></div>
