@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "CAID 副驾（纯净版）",
+  "version": "0.3.10",
+  "description": "纯净版 CAID 副驾：不接管/不捆绑新标签页，保留浏览器原生新标签页，仅在任意网页提供跨页智能体副驾（圆球启动、AI 回答/Bing 搜索、待办、长期记忆）。",
+  "permissions": ["storage", "scripting", "tabs", "activeTab", "contextMenus", "notifications"],
+  "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16": "icons/icon-400.png",
+    "32": "icons/icon-400.png",
+    "48": "icons/icon-400.png",
+    "128": "icons/icon-400.png"
+  },
+  "action": {
+    "default_title": "CAID 副驾：点击在当前页面启动",
+    "default_icon": {
+      "16": "icons/icon-400.png",
+      "32": "icons/icon-400.png",
+      "48": "icons/icon-400.png",
+      "128": "icons/icon-400.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/zod-v4.umd.js", "lib/page-agent.headless.js", "caid-copilot.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

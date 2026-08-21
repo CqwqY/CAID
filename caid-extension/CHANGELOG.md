@@ -15,6 +15,13 @@
 
 > ⚠️ 需重新加载扩展后生效。
 
+## [纯净版 caid-extension-lite] - 2026-08-21
+
+### 新增
+- **不捆绑新标签页的纯净版**：新增独立目录 `caid-extension-lite/`，保留浏览器原生新标签页，只在任意网页提供跨页智能体副驾。
+- **保留**：content.js（任意页面圆球 + 阅读采集）、background.js（注入副驾/断点续传/待办与记忆后台）、caid-copilot.js（副驾本体，含内联 LLM 设置面板）、lib/、icons/。
+- **移除**：newtab.html/newtab-main.js 工作台；background 的 newtab 动态接管（`maybeTakeoverNewTab`）、newtab bootstrap 分支、`OPEN_OPTIONS` 的 newtab 兜底；`__CAID_OPTIONS_URL` 指向 newtab 的写法（置空，`go_to_workbench` 优雅降级）；manifest 的 `options_ui`、`sandbox`、`topSites` 权限。
+
 ## [v0.3.9] - 2026-08-21
 
 ### 圆球交互修正
