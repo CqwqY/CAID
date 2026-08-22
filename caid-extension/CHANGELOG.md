@@ -3,6 +3,14 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.17] - 2026-08-22
+
+### 新增（仅清凉版 caid-extension-lite）
+- **版本更新检查**：工作台打开时向 `changelog-production.up.railway.app/latest`（后端 changelog 仓库部署）探测最新版本，通过语义化版本对比判断是否有新版。发现新版本时在页面顶部显示渐变提示条，含版本号与更新要点，点击「前往 GitHub 更新」跳转到 GitHub Releases；可点 × 忽略本次提示。若后端不可达或请求超时（8s）则静默，不影响工作台使用。
+- 新增 `#updateBanner` 容器与 `checkForUpdate()`（newtab-main.js），在 `init()` 中调用。
+
+> 配套后端：`https://github.com/CqwqY/changelog`（Express，`/latest?v=版本号` 返回 `{ mustUpdate, latest:{version, releaseUrl, ...} }`）。发布新版本时同步更新后端 `LATEST`。
+
 ## [纯净版 v0.3.16] - 2026-08-22
 
 ### 修复（仅清凉版 caid-extension-lite）
