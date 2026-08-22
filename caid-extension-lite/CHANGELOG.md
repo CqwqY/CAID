@@ -5,6 +5,12 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.22] - 2026-08-22
+
+### 重构（仅纯净版 caid-extension-lite）
+- **移除「AI 主动建议」**：选项页中的智能推荐区（`#smartZone`，含时段卡片、常去站点、AI 主动建议）整体移除，不再动态生成推荐内容、也不再调 LLM 生成建议。删除 `renderSmartZone` / `renderSmartAiSuggestion` / `bindSmartZoneEvents` 等函数与其 DOM、CSS，去掉无效的 `smartAiCache` / `smartAiPeriod` 存储读写。
+- **服务器探活改成卡片**：服务器监控由原独立全宽区块改为与功能区块同级的 `sidebar-section` 卡片，直接平铺在工作台功能卡片网格中（格子风格、可折叠），并复用与其他卡片一致的布局样式；「管理服务器」按钮保留，点击打开设置弹窗的服务器 tab。
+
 ## [纯净版 v0.3.21] - 2026-08-22
 
 ### 重构（仅纯净版 caid-extension-lite）

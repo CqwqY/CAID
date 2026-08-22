@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CAID 程序员工作台（纯净版）",
-  "version": "0.3.21",
+  "version": "0.3.22",
   "description": "纯净版 CAID 工作台：保留浏览器原生新标签页（不接管），仅提供「选项」入口打开原版工作台设置页，并在任意网页提供跨页智能体副驾（圆球启动、AI 回答/Bing 搜索、待办、长期记忆）与轻量插件系统。",
   "permissions": ["storage", "scripting", "tabs", "activeTab", "contextMenus", "notifications", "topSites"],
   "host_permissions": ["<all_urls>"],
