@@ -479,6 +479,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         var _okU = /^https?:\/\//i.test(_u);
         if (!_okU) { sendResponse({ status: 0, error: 'invalid_url: ' + (_u || '(empty)') }); return; }
         const init = { method: msg.method || 'GET', headers: msg.headers || {}, redirect: 'follow' };
+        // 超时控制：避免域名无法解析（ERR_NAME_NOT_RESOLVED）/挂起时长时间占用 SW，
+        // 进而拖垮并发消息端口（如错题本写入）。
+        const _ctrl = new AbortController();
+        init.signal = _ctrl.signal;
+        const _tmr = setTimeout(() => { try { _ctrl.abort(); } catch (e2) {} }, 15000);
         if (msg.bodyB64) {
           const bin = atob(msg.bodyB64);
           const bytes = new Uint8Array(bin.length);
@@ -488,6 +493,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           init.body = msg.bodyText;
         }
         const resp = await fetch(msg.url, init);
+        clearTimeout(_tmr);
         const status = resp.status, statusText = resp.statusText;
         const headers = {};
         resp.headers.forEach((v, k) => {
@@ -499,6 +505,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const buf = await resp.arrayBuffer();
         sendResponse({ status, statusText, headers, bodyB64: bytesToBase64(new Uint8Array(buf)) });
       } catch (e) {
+        try { clearTimeout(_tmr); } catch (e2) {}
         sendResponse({ status: 0, error: String(e && e.message ? e.message : e) });
       }
     })();

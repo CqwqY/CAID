@@ -3,6 +3,16 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.14] - 2026-08-22
+
+### 修复（仅清凉版 caid-extension-lite）
+- **错题本写入不再依赖 background 端口**：此前错题本经 `chrome.runtime.sendMessage` 到 background 读写，当 LLM 端点域名不可解析（如 `net::ERR_NAME_NOT_RESOLVED`）导致 SW 忙/回收时会触发「消息端口关闭、错题本无法写入」。现改为在 content.js（ISOLATED world）**直接读写 `chrome.storage.local.caidMistakes`**（`mistRead/mistWrite`），彻底绕开 SW 端口往返。
+- **副驾读错题本也绕过 SW**：content.js 的 `bg_request` 桥新增直连 `CAID_MISTAKES_GET` 处理（同 `CAID_MEMORY_GET` 模式），MAIN world 副驾发送任务时读取错题本不再走 background。
+- **LLM fetch 加 15s 超时**：`CAID_LLM_FETCH` 用 AbortController 兜底，域名无法解析/挂起时最多 15s 即中断并返回错误，避免长时间占用 service worker 进而拖垮并发消息端口。
+
+> ⚠️ 需重新加载扩展并刷新页面生效。
+> 提示：若 `hif-dliq.deepseek.com/query` 这类端点仍报 ERR_NAME_NOT_RESOLVED，属该**域名本身无法解析**（非扩展 bug），请核对设置的 LLM 地址是否正确/可达。
+
 ## [纯净版 v0.3.13] - 2026-08-22
 
 ### 修复（仅清凉版 caid-extension-lite）

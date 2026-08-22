@@ -297,68 +297,71 @@
         document.body.appendChild(t);
         setTimeout(function () { t.remove(); }, 2600);
       }
+      // 错题本 CRUD：直接在 content.js（ISOLATED world）读写 chrome.storage.local，
+      // 不走 background 端口往返——彻底避免 MV3 SW 端口关闭导致的写入失败。
+      function mistRead(cb) {
+        try {
+          chrome.storage.local.get('caidMistakes', function (got) {
+            cb && cb((got && Array.isArray(got.caidMistakes)) ? got.caidMistakes : []);
+          });
+        } catch (e) { cb && cb([]); }
+      }
+      function mistWrite(list, cb) {
+        try {
+          chrome.storage.local.set({ caidMistakes: list }, function () { cb && cb(!chrome.runtime.lastError); });
+        } catch (e) { cb && cb(false); }
+      }
       // 实时加载现有错题列表（可删除/清空）：让用户明确看到写入是否成功
       function loadMistakes() {
-        try {
-          chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_GET' }, function (r) {
-            if (chrome.runtime.lastError) { if (cntEl) cntEl.textContent = '?'; return; }
-            var list = (r && r.ok && Array.isArray(r.mistakes)) ? r.mistakes : [];
-            if (cntEl) cntEl.textContent = String(list.length);
-            if (!listEl) return;
-            if (!list.length) { listEl.innerHTML = '<div style="color:#b8c1cd;font-size:13px;padding:6px;">暂无错题，副驾会严格按上面的纠错执行。</div>'; return; }
-            listEl.innerHTML = '';
-            for (var i = 0; i < list.length; i++) {
-              var item = list[i];
-              var row = document.createElement('div');
-              row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid #eef1f5;font-size:13px;color:#3a4a5c;';
-              var txtSpan = document.createElement('span');
-              txtSpan.style.cssText = 'flex:1;line-height:1.4;word-break:break-all;';
-              txtSpan.textContent = (i + 1) + '. ' + String(item.text || '');
-              var delBtn = document.createElement('button');
-              delBtn.textContent = '删';
-              delBtn.title = '删除此条';
-              delBtn.style.cssText = 'border:none;background:#fdeceb;color:#c0392b;font-size:12px;padding:2px 7px;border-radius:5px;cursor:pointer;flex-shrink:0;';
-              delBtn.addEventListener('click', function (id) {
-                return function () {
-                  try {
-                    chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_DEL', id: id }, function () { if (chrome.runtime.lastError) {} loadMistakes(); });
-                  } catch (e) {}
-                };
-              })(String(item.id));
-              row.appendChild(txtSpan);
-              row.appendChild(delBtn);
-              listEl.appendChild(row);
-            }
-          });
-        } catch (e) {}
+        mistRead(function (list) {
+          if (cntEl) cntEl.textContent = String(list.length);
+          if (!listEl) return;
+          if (!list.length) { listEl.innerHTML = '<div style="color:#b8c1cd;font-size:13px;padding:6px;">暂无错题，副驾会严格按上面的纠错执行。</div>'; return; }
+          listEl.innerHTML = '';
+          for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid #eef1f5;font-size:13px;color:#3a4a5c;';
+            var txtSpan = document.createElement('span');
+            txtSpan.style.cssText = 'flex:1;line-height:1.4;word-break:break-all;';
+            txtSpan.textContent = (i + 1) + '. ' + String(item.text || '');
+            var delBtn = document.createElement('button');
+            delBtn.textContent = '删';
+            delBtn.title = '删除此条';
+            delBtn.style.cssText = 'border:none;background:#fdeceb;color:#c0392b;font-size:12px;padding:2px 7px;border-radius:5px;cursor:pointer;flex-shrink:0;';
+            delBtn.addEventListener('click', function (id) {
+              return function () {
+                mistRead(function (l) {
+                  for (var k = 0; k < l.length; k++) if (String(l[k].id) === id) { l.splice(k, 1); break; }
+                  mistWrite(l, function () { loadMistakes(); });
+                });
+              };
+            })(String(item.id));
+            row.appendChild(txtSpan);
+            row.appendChild(delBtn);
+            listEl.appendChild(row);
+          }
+        });
       }
       loadMistakes();
       modal.querySelector('#caidMistakeCancel').addEventListener('click', close);
       modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
       modal.querySelector('#caidMistakeClear').addEventListener('click', function () {
         if (!confirm('确定清空 AI 错题本中的全部记录吗？')) return;
-        try { chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_CLEAR' }, function () { if (chrome.runtime.lastError) {} loadMistakes(); }); } catch (e) {}
+        mistWrite([], function () { loadMistakes(); });
       });
       modal.querySelector('#caidMistakeSave').addEventListener('click', function () {
         var txt = ta.value.trim();
         if (!txt) { ta.focus(); return; }
-        try {
-          chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_ADD', text: txt, url: location.href }, function (r) {
-            if (chrome.runtime.lastError) {
-              mistTip('❌ 写入错题本失败：消息端口关闭，请重试', true);
-              loadMistakes();
-              return;
-            }
-            if (r && r.ok && typeof r.total === 'number') {
-              mistTip('✅ 已记入 AI 错题本（当前共 ' + r.total + ' 条），副驾将始终遵守');
-            } else {
-              mistTip('❌ 写入错题本失败，请重试或检查扩展', true);
-            }
+        mistRead(function (l) {
+          l.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: txt, url: location.href, ts: Date.now() });
+          while (l.length > 50) l.shift();
+          mistWrite(l, function (ok) {
+            if (ok) { mistTip('✅ 已记入 AI 错题本（当前共 ' + l.length + ' 条），副驾将始终遵守'); }
+            else { mistTip('❌ 写入错题本失败，请重试', true); }
             loadMistakes();
           });
-        } catch (e) {
-          mistTip('❌ 写入错题本失败：' + (e && e.message ? e.message : e), true);
-        }
+        });
       });
     }
 
@@ -646,6 +649,20 @@
           if (!Array.isArray(m.facts)) m.facts = [];
           if (!Array.isArray(m.history)) m.history = [];
           window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true, memory: m } }, '*');
+        });
+      } catch (e) {
+        window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
+      }
+    } else if (msg.type === 'CAID_MISTAKES_GET') {
+      handled = true;
+      try {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: null }, '*');
+          return;
+        }
+        chrome.storage.local.get('caidMistakes', function (got) {
+          var list = (got && Array.isArray(got.caidMistakes)) ? got.caidMistakes : [];
+          window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: true, mistakes: list } }, '*');
         });
       } catch (e) {
         window.postMessage({ __caid: true, kind: 'bg_response', reqId: d.reqId, resp: { ok: false, error: String(e && e.message || e) } }, '*');
