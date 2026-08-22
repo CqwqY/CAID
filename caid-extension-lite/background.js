@@ -473,6 +473,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'CAID_LLM_FETCH') {
     (async () => {
       try {
+        // 防御：URL 非 http(s) 或为空时直接返回错误，不发起注定失败的 fetch
+        // （空/配置错误 URL 会触发 net::ERR_NAME_NOT_RESOLVED 等网络报错与端口竞态）。
+        var _u = String(msg.url || '').trim();
+        var _okU = /^https?:\/\//i.test(_u);
+        if (!_okU) { sendResponse({ status: 0, error: 'invalid_url: ' + (_u || '(empty)') }); return; }
         const init = { method: msg.method || 'GET', headers: msg.headers || {}, redirect: 'follow' };
         if (msg.bodyB64) {
           const bin = atob(msg.bodyB64);

@@ -34,6 +34,7 @@
               console.log('[CAID-content] session.get 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
               try {
                 chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
+                  if (chrome.runtime.lastError) { resolve({}); return; }
                   resolve(resp && resp.data || {});
                 });
               } catch (e2) { resolve({}); }
@@ -42,6 +43,7 @@
         } catch (e) {
           try {
             chrome.runtime.sendMessage({ type: 'CAID_SESSION_GET', keys: keys }, function (resp) {
+              if (chrome.runtime.lastError) { resolve({}); return; }
               resolve(resp && resp.data || {});
             });
           } catch (e2) { resolve({}); }
@@ -63,18 +65,18 @@
             if (chrome.runtime.lastError) {
               console.log('[CAID-content] session.set 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
               try {
-                chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+                chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { if (chrome.runtime.lastError) {} resolve(true); });
               } catch (e2) { resolve(false); }
             } else { resolve(true); }
           });
         } catch (e) {
           try {
-            chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+            chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { if (chrome.runtime.lastError) {} resolve(true); });
           } catch (e2) { resolve(false); }
         }
       } else {
         try {
-          chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { resolve(true); });
+          chrome.runtime.sendMessage({ type: 'CAID_SESSION_SET', data: data }, function () { if (chrome.runtime.lastError) {} resolve(true); });
         } catch (e2) { resolve(false); }
       }
     });
@@ -87,18 +89,18 @@
             if (chrome.runtime.lastError) {
               console.log('[CAID-content] session.remove 失败, 回退 bg 代理:', chrome.runtime.lastError.message);
               try {
-                chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+                chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { if (chrome.runtime.lastError) {} resolve(true); });
               } catch (e2) { resolve(false); }
             } else { resolve(true); }
           });
         } catch (e) {
           try {
-            chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+            chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { if (chrome.runtime.lastError) {} resolve(true); });
           } catch (e2) { resolve(false); }
         }
       } else {
         try {
-          chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { resolve(true); });
+          chrome.runtime.sendMessage({ type: 'CAID_SESSION_REMOVE', keys: keys }, function () { if (chrome.runtime.lastError) {} resolve(true); });
         } catch (e2) { resolve(false); }
       }
     });
@@ -319,7 +321,7 @@
               delBtn.addEventListener('click', function (id) {
                 return function () {
                   try {
-                    chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_DEL', id: id }, function () { loadMistakes(); });
+                    chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_DEL', id: id }, function () { if (chrome.runtime.lastError) {} loadMistakes(); });
                   } catch (e) {}
                 };
               })(String(item.id));
@@ -335,13 +337,18 @@
       modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
       modal.querySelector('#caidMistakeClear').addEventListener('click', function () {
         if (!confirm('确定清空 AI 错题本中的全部记录吗？')) return;
-        try { chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_CLEAR' }, function () { loadMistakes(); }); } catch (e) {}
+        try { chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_CLEAR' }, function () { if (chrome.runtime.lastError) {} loadMistakes(); }); } catch (e) {}
       });
       modal.querySelector('#caidMistakeSave').addEventListener('click', function () {
         var txt = ta.value.trim();
         if (!txt) { ta.focus(); return; }
         try {
           chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_ADD', text: txt, url: location.href }, function (r) {
+            if (chrome.runtime.lastError) {
+              mistTip('❌ 写入错题本失败：消息端口关闭，请重试', true);
+              loadMistakes();
+              return;
+            }
             if (r && r.ok && typeof r.total === 'number') {
               mistTip('✅ 已记入 AI 错题本（当前共 ' + r.total + ' 条），副驾将始终遵守');
             } else {
@@ -884,7 +891,8 @@
         console.log('[CAID-R] tryAutoResume: storage 两次均失败，请求 background 代查并注入');
         try {
           chrome.runtime.sendMessage({ type: 'TRY_RESUME_FROM_BG' }, function (resp) {
-            if (resp && resp.ok) console.log('[CAID-R] tryAutoResume: background 已代为注入副驾');
+            if (chrome.runtime.lastError) { console.log('[CAID-R] tryAutoResume: TRY_RESUME_FROM_BG 端口关闭'); }
+            else if (resp && resp.ok) console.log('[CAID-R] tryAutoResume: background 已代为注入副驾');
             else console.log('[CAID-R] tryAutoResume: background 也无有效 handoff');
           });
         } catch (e) {

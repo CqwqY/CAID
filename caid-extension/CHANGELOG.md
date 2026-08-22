@@ -3,6 +3,14 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.13] - 2026-08-22
+
+### 修复（仅清凉版 caid-extension-lite）
+- **消除 "message port closed before a response" / "Unchecked runtime.lastError" 报错**：content.js 中所有带回调的 `chrome.runtime.sendMessage`（session 代理 CAID_SESSION_*、错题本 DEL/CLEAR/ADD、TRY_RESUME_FROM_BG）统一补读 `chrome.runtime.lastError`，避免 MV3 运行时 SW 端口关闭时产生未处理告警；错题本写入失败时也会明确提示"消息端口关闭"。
+- **消掉 `net::ERR_NAME_NOT_RESOLVED` 网络报错**：background 的 `CAID_LLM_FETCH` 在发起请求前先校验 URL（必须为 `http(s)` 前缀），URL 为空或配置错误时直接返回 `invalid_url` 错误，不再发起注定失败的 fetch，避免产生 DNS 解析失败与端口竞态。
+
+> ⚠️ 需重新加载扩展并刷新页面生效。
+
 ## [纯净版 v0.3.12] - 2026-08-22
 
 ### 修复与增强（仅清凉版 caid-extension-lite）
