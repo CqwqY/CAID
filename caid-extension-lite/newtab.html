@@ -316,6 +316,72 @@ a:hover { text-decoration: underline; }
   flex: 1;
   min-width: 0;
 }
+/* ============ 新版仪表盘（主区重排） ============ */
+/* 去掉原顶部快捷栏 + 搜索框（保留 DOM 以免破坏 JS 绑定，仅视觉隐藏） */
+.topbar { display: none !important; }
+/* 侧边栏移除：不再占用右侧常驻布局，改为点击模块时从右侧滑出的抽屉（保留 DOM 以免破坏 JS 绑定） */
+.sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 320px; z-index: 9999;
+  transform: translateX(100%);
+  transition: transform .24s ease;
+  border-right: none; border-left: 1px solid var(--rule);
+  box-shadow: -8px 0 28px rgba(0,0,0,.35);
+}
+.sidebar.dash-open { transform: translateX(0); width: 320px !important; }
+.sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+/* 时间去掉 */
+.hero { display: none !important; }
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 24px 6px;
+}
+/* 监控大卡片：今日调用量 + 近几日柱状图 + 最近任务 三栏横排 */
+.dash-card {
+  display: grid;
+  grid-template-columns: 200px 1fr 1.35fr;
+  gap: 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  backdrop-filter: blur(8px);
+}
+.dash-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--rule);
+  padding-right: 18px;
+}
+.dash-left:last-child, .dash-left.mid { border-right: none; }
+.dash-left .stat-tag { font-size: 13px; color: var(--muted); }
+.dash-left .stat-big { font-size: 36px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.dash-left .stat-sub { font-size: 12.5px; color: var(--muted); }
+.dash-hr { height: 1px; background: var(--rule); margin: 14px 0; }
+.dash-t { font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.dash-t .more { font-size: 11.5px; color: var(--accent); cursor: pointer; font-weight: 500; }
+.usage-chart { display: flex; align-items: flex-end; gap: 6px; height: 90px; padding: 4px 0; }
+.usage-chart .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 4px; }
+.usage-chart .bar .v { width: 100%; max-width: 26px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--accent), #2b4ea0); min-height: 2px; transition: height .3s; }
+.usage-chart .bar.today .v { background: linear-gradient(180deg, var(--green), #1f8f5c); }
+.usage-chart .bar .l { font-size: 10px; color: var(--muted); }
+.dash-tasks { display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; }
+.dash-task { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.dash-task .dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; background: var(--accent); }
+.dash-task .g { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-task .t { flex-shrink: 0; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.dash-empty { color: var(--muted); font-size: 12.5px; padding: 6px 0; }
+.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; align-content: start; }
+.module-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px; cursor: pointer; transition: .18s; display: flex; flex-direction: column; gap: 10px; min-height: 96px; }
+.module-card:hover { transform: translateY(-2px); border-color: rgba(91,141,255,.5); background: var(--glass-bg-2); }
+.module-card .mc-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(91,141,255,.16); color: var(--accent); }
+.module-card .mc-ic svg { width: 20px; height: 20px; }
+.module-card .mc-nt { font-size: 14px; font-weight: 600; color: var(--ink); }
+.module-card .mc-ds { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .right-panels {
   width: 300px;
   flex-shrink: 0;
@@ -2784,7 +2850,8 @@ a:hover { text-decoration: underline; }
       </button>
     </div>
   </aside>
-  <!-- 侧边栏插件右键菜单 -->
+  <!-- 侧边栏抽屉背板 -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <div class="ctx-menu" id="pluginCtxMenu">
     <button class="ctx-item" id="pluginCtxEdit"><i data-lucide="pencil"></i>编辑插件</button>
     <button class="ctx-item ctx-danger" id="pluginCtxDelete">删除插件</button>
@@ -2802,6 +2869,25 @@ a:hover { text-decoration: underline; }
     <div id="updateBanner" style="display:none;max-width:1200px;margin:10px auto 0;padding:10px 16px;background:linear-gradient(90deg,#17327a,#2b5bff);border-radius:10px;color:#fff;font-size:13px;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(43,91,255,.25)"></div>
     <div class="main-body">
     <div class="container">
+      <!-- 功能仪表盘：监控大卡片 + 功能模块平铺 -->
+      <div class="dash">
+        <div class="dash-card">
+          <div class="dash-left">
+            <div class="stat-tag">今日调用量</div>
+            <div class="stat-big" id="statTodayCount">0</div>
+            <div class="stat-sub" id="statTodaySub">任务 0 · LLM 0</div>
+          </div>
+          <div class="dash-left mid">
+            <div class="dash-t">近几日调用量</div>
+            <div class="usage-chart" id="usageChart"><div class="dash-empty">暂无数据</div></div>
+          </div>
+          <div class="dash-left">
+            <div class="dash-t">最近任务</div>
+            <div class="dash-tasks" id="dashRecentTasks"><div class="dash-empty">暂无任务记录</div></div>
+          </div>
+        </div>
+        <div class="module-grid" id="moduleGrid"></div>
+      </div>
       <div class="hero">
         <div class="clock-date">
           <div class="clock-time" id="clockTime">--:--</div>
