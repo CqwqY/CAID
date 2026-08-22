@@ -3,6 +3,12 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.18] - 2026-08-22
+
+### 新增（仅清凉版 caid-extension-lite）
+- **副驾打开时提示更新**：打开副驾（单击圆球输入条或双击完整面板）时，经 content.js 的 `CAID_UPDATE` 桥检查 `changelog-production.up.railway.app/latest`。发现新版本则在副驾面板顶部显示"发现新版本 vX · 前往 GitHub 更新"提示条，可跳转 GitHub Releases；已是最新或后端不可达（8s 超时）则静默。10 分钟内不重复请求后端。
+- content.js 新增 `CAID_UPDATE` / `CAID_UPDATE_RESP` 消息对与 `#cpUpdateBanner` 渲染（caid-copilot.js），连同上一步的工作台更新横幅。
+
 ## [纯净版 v0.3.17] - 2026-08-22
 
 ### 新增（仅清凉版 caid-extension-lite）

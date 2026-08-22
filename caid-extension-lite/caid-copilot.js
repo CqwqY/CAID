@@ -61,6 +61,10 @@
       try { _consumeCtxPending(); } catch (e) {}
       return;
     }
+    if (d.__caidType === 'CAID_UPDATE_RESP') {
+      renderCopilotUpdate(d.data);
+      return;
+    }
   });
   // 消费右键文本：填入输入框 + 打开面板 + 聚焦（mode=plugin 时附上「制作插件」指令前缀）
   function _consumeCtxPending() {
@@ -299,6 +303,14 @@
 #caidExtCopilot .cp-api-badge.free{background:#2a9d5c;color:#fff;}
 #caidExtCopilot .cp-api-badge.nokey{background:#7a3b3b;color:#fff;}
 #caidExtCopilot .cp-activity{padding:6px 14px;font-size:12px;color:#ffd479;min-height:18px;border-bottom:1px solid #16273c;}
+#caidExtCopilot .cp-update{display:none;padding:8px 14px;font-size:12px;background:linear-gradient(90deg,#17327a,#2b5bff);color:#fff;border-bottom:1px solid #1f3650;align-items:center;gap:8px;}
+#caidExtCopilot .cp-update.show{display:flex;}
+#caidExtCopilot .cp-update b{flex:0 0 auto;}
+#caidExtCopilot .cp-update span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;}
+#caidExtCopilot .cp-update button{flex:0 0 auto;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;}
+#caidExtCopilot .cp-update .go{background:#fff;color:#1d4ed8;font-weight:600;}
+#caidExtCopilot .cp-update .dim{background:rgba(255,255,255,.18);color:#fff;padding:3px 8px;}
+#caidExtCopilot .cp-update .err{background:rgba(255,255,255,.16);font-style:italic;}
 #caidExtCopilot .cp-plan-area{flex:0 0 auto;max-height:50%;overflow:auto;padding:0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #16273c;}
 #caidExtCopilot .cp-plan-area:empty{display:none;}
 #caidExtCopilot .cp-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
@@ -515,6 +527,7 @@
         '<button class="cp-close" id="cpClose" title="关闭">×</button>' +
       '</div>' +
       '<div class="cp-api-info" id="cpApiInfo"></div>' +
+      '<div class="cp-update" id="cpUpdateBanner"></div>' +
       '<div class="cp-settings" id="cpSettingsPanel">' +
         '<div class="cp-row"><input type="checkbox" id="cpUseFree" checked /> <label style="margin:0" for="cpUseFree">使用 DashScope 免费代理</label></div>' +
         '<label>模型 (model)</label>' +
@@ -687,6 +700,7 @@
       qb.setAttribute('data-open', '1');
       setTimeout(function () { qb.querySelector('#qbInput').focus(); }, 60);
     }
+    checkCopilotUpdate(); // 打开副驾时顺便检查更新
   }
   function closeQuickBar() {
     var qb = document.getElementById('caidQuickBar');
@@ -697,6 +711,42 @@
     var cp = document.getElementById('caidExtCopilot');
     if (cp) cp.classList.add('open');
     setTimeout(function () { try { var i = document.getElementById('cpInput'); if (i) i.focus(); } catch (e) {} }, 80);
+    checkCopilotUpdate(); // 打开副驾面板时检查更新
+  }
+  // ============ 副驾打开时的版本更新检查（经 content.js CAID_UPDATE 桥） ============
+  var _updateCheckedAt = 0;   // 10 分钟内不重复请求，避免每次打开都打后端
+  function checkCopilotUpdate() {
+    try {
+      var now = Date.now();
+      if (_updateCheckedAt && (now - _updateCheckedAt) < 600000) return; // 已缓存
+      _updateCheckedAt = now;
+      window.postMessage({ __caidType: 'CAID_UPDATE' }, '*');
+    } catch (e) {}
+  }
+  function renderCopilotUpdate(data) {
+    var banner = document.getElementById('cpUpdateBanner');
+    if (!banner) return;
+    banner.className = 'cp-update';
+    if (!data || !data.ok) {
+      // 后端不可达/超时：静默，不打扰
+      banner.innerHTML = '';
+      return;
+    }
+    if (!data.mustUpdate) {
+      banner.innerHTML = ''; // 已是最新，不显示
+      return;
+    }
+    var when = data.notes && data.notes.length ? (data.description ? data.description + ' · ' + data.notes[0] : data.notes[0]) : (data.description || '');
+    banner.innerHTML =
+      '<b>发现新版本 v' + cpEscapeHtml(data.version) + '</b>' +
+      '<span>' + cpEscapeHtml(when || '') + '</span>' +
+      '<button class="go" id="cpUpdateGo">前往 GitHub 更新</button>' +
+      '<button class="dim" id="cpUpdateDim" title="本次不再提示">×</button>';
+    banner.classList.add('show');
+    var go = banner.querySelector('#cpUpdateGo');
+    if (go) go.addEventListener('click', function () { try { window.open(String(data.releaseUrl || 'https://github.com/CqwqY/CAID'), '_blank'); } catch (e) {} });
+    var dim = banner.querySelector('#cpUpdateDim');
+    if (dim) dim.addEventListener('click', function () { banner.className = 'cp-update'; banner.innerHTML = ''; });
   }
   // 从输入条/拖拽提交任务：保留小栏，不跳到整块面板，任务进度由圆球呼吸灯 + 弹窗反馈
   function submitQuick(text) {

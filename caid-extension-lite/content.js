@@ -857,6 +857,41 @@
     }
   });
 
+  // MAIN world 的副驾在打开时检查版本更新：本 ISOLATED world 直接 fetch（扩展网络，不受页面 CSP 限制），
+  // 解析成 { mustUpdate, version, description, latestVersion, releaseUrl, githubUrl } 回传副驾渲染提示。
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.__caidType !== 'CAID_UPDATE') return;
+    (async function () {
+      var _ctrl = new AbortController();
+      var _tmr = setTimeout(function () { try { _ctrl.abort(); } catch (e) {} }, 8000);
+      var _reply = function (payload) {
+        try { clearTimeout(_tmr); } catch (e) {}
+        try { window.postMessage({ __caidType: 'CAID_UPDATE_RESP', data: payload }, '*'); } catch (e) {}
+      };
+      try {
+        var _cur = '';
+        try { if (chrome && chrome.runtime && chrome.runtime.getManifest) { _cur = chrome.runtime.getManifest().version || ''; } } catch (e) {}
+        var _resp = await fetch('https://changelog-production.up.railway.app/latest' + (_cur ? '?v=' + encodeURIComponent(_cur) : ''), { signal: _ctrl.signal });
+        if (!_resp.ok) { _reply({ ok: false }); return; }
+        var _j = await _resp.json();
+        if (!_j || !_j.latest) { _reply({ ok: false }); return; }
+        var _l = _j.latest;
+        _reply({
+          ok: true,
+          current: _cur,
+          mustUpdate: !!_j.mustUpdate,
+          version: _l.version || '',
+          description: _l.description || '',
+          releaseUrl: _l.releaseUrl || _l.githubUrl || 'https://github.com/CqwqY/CAID',
+          notes: Array.isArray(_l.notes) ? _l.notes : []
+        });
+      } catch (e) {
+        _reply({ ok: false });
+      }
+    })();
+  });
+
   // 自动续传：若本次导航由本扩展副驾发起（存在待续传上下文且命中目标页），
   // 自动启动副驾并把上下文传进去，实现"跳转后断点续传"。
   // 扩展副驾（#caidExtCopilot 已注入）时跳过，避免重复启动。
