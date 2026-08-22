@@ -65,7 +65,8 @@ section{position:relative;z-index:2;padding:64px 0}
 .feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
 .card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:24px;transition:.2s;backdrop-filter:blur(8px)}
 .card:hover{transform:translateY(-3px);border-color:rgba(91,141,255,.45)}
-.card .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:22px;background:rgba(91,141,255,.14)}
+.card .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;background:rgba(91,141,255,.14);color:var(--accent)}
+.card .ic svg{width:22px;height:22px}
 .card h3{font-size:17px;font-weight:700;margin-bottom:8px}
 .card p{color:var(--muted);font-size:14px}
 /* 步骤 */
@@ -104,11 +105,11 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <span class="badge">✦ 纯净版 v0.3.19 · 不占新标签页</span>
+  <span class="badge">纯净版 v0.3.19 · 不占新标签页</span>
   <h1>网页上的跨页 AI 副驾<br class="desk">让浏览器替你 <span class="g">自动干活</span></h1>
   <p class="sub">CAID 是一款浏览器智能体扩展。在任意网页唤出副驾，它自动规划并逐步完成搜索、填表、导航、取数等任务；内置纠错错题本让 AI 越用越懂你，打开副驾自动检查更新。</p>
   <div class="hero-btns">
-    <a class="btn primary" href="#install">下载安装</a>
+    <a class="btn primary" href="https://github.com/CqwqY/CAID/releases/tag/v0.3.19" target="_blank" rel="noopener">下载 v0.3.19</a>
     <a class="btn ghost" href="https://github.com/CqwqY/CAID" target="_blank" rel="noopener">查看源码 · GitHub ↗</a>
   </div>
   <p class="hero-mini">兼容 Chromium（Edge / Chrome）· 魔改 Page-Agent · 副驾完全本地可配</p>
@@ -121,12 +122,12 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
     <p>从"记一件事"到"在多网站间自动完成一串操作"，CAID 把复杂的多步过程交给 AI 规划与执行。</p>
   </div>
   <div class="feat-grid">
-    <div class="card"><div class="ic">🧠</div><h3>跨页智能体副驾</h3><p>基于魔改 Page-Agent。在任意网页单击圆球唤出副驾，输入一句话即可由 LLM 自动规划多步 plan 并逐步执行。</p></div>
-    <div class="card"><div class="ic">🗂️</div><h3>多步自动规划</h3><p>搜索、打开链接、点击、输入、添加待办……含连接词或多动词的任务自动拆成 plan，带进度条与确认点，敏感操作先征得同意。</p></div>
-    <div class="card"><div class="ic">📒</div><h3>AI 纠错错题本</h3><p>发现副驾出错了？一键「纠错」记入错题本。副驾此后始终遵守，避免在同一件事上重蹈覆辙，越用越懂你。</p></div>
-    <div class="card"><div class="ic">⌨️</div><h3>顺手的快捷键</h3><p>Ctrl+I+L 快速启动副驾，Ctrl+L 一键终止任务；圆球运行时左侧还有实体停止键，随时把控制权拿回来。</p></div>
-    <div class="card"><div class="ic">⤴️</div><h3>内置更新检查</h3><p>打开副驾或进入工作台自动检查新版本，发现新版在面板顶部提示并一键跳转 GitHub 更新，不再错过修复。</p></div>
-    <div class="card"><div class="ic">⚡</div><h3>轻盈不打扰</h3><p>纯净版不接管你的新标签页，保留浏览器原生体验；副驾仅在你需要时出现，注入的 UI 不会被 AI 误认为网站内容。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></svg></div><h3>跨页智能体副驾</h3><p>基于魔改 Page-Agent。在任意网页单击圆球唤出副驾，输入一句话即可由 LLM 自动规划多步 plan 并逐步执行。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></div><h3>多步自动规划</h3><p>搜索、打开链接、点击、输入、添加待办……含连接词或多动词的任务自动拆成 plan，带进度条与确认点，敏感操作先征得同意。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><h3>AI 纠错错题本</h3><p>发现副驾出错了？一键「纠错」记入错题本。副驾此后始终遵守，避免在同一件事上重蹈覆辙，越用越懂你。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg></div><h3>顺手的快捷键</h3><p>Ctrl+I+L 快速启动副驾，Ctrl+L 一键终止任务；圆球运行时左侧还有实体停止键，随时把控制权拿回来。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></div><h3>内置更新检查</h3><p>打开副驾或进入工作台自动检查新版本，发现新版在面板顶部提示并一键跳转 GitHub 更新，不再错过修复。</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><h3>轻盈不打扰</h3><p>纯净版不接管你的新标签页，保留浏览器原生体验；副驾仅在你需要时出现，注入的 UI 不会被 AI 误认为网站内容。</p></div>
   </div>
 </div></section>
 
@@ -137,7 +138,7 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
     <p>使用浏览器"加载已解压的扩展程序"即可，无需上架商店也能本地使用。</p>
   </div>
   <div class="steps">
-    <div class="step"><h4>下载源码</h4><p>前往 GitHub 仓库获取最新的 <code>caid-extension-lite</code> 目录代码，解压到本地文件夹。</p></div>
+    <div class="step"><h4>下载压缩包</h4><p>下载 <a href="https://github.com/CqwqY/CAID/releases/tag/v0.3.19" target="_blank" rel="noopener">v0.3.19</a> 的 <code>CAID-lite0.3.19.zip</code>（在 Release 页获取，直链会过期），解压到本地文件夹。</p></div>
     <div class="step"><h4>加载扩展</h4><p>打开 <code>edge://extensions</code> 或 <code>chrome://extensions</code>，开启「开发人员模式」，点击「加载已解压的扩展程序」，选择该目录。</p></div>
     <div class="step"><h4>配置 LLM</h4><p>右键扩展图标 → 选项，在【副驾】页填入你的 LLM 地址与 API Key（可留空走免费代理）。回到任意网页单击圆球即可开始。</p></div>
     <div class="step"><h4>开用</h4><p>输入任务 → 副驾自动规划执行。出错随时「纠错」，养成你的 AI 错题本。</p></div>
