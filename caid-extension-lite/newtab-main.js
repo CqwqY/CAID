@@ -1528,72 +1528,7 @@ function renderAgentTasks(tasks) {
   refreshIcons();
 }
 
-// ============ 新版仪表盘：功能模块平铺 + 左上统计卡 ============
-const DASH_MODULES = [
-  { comp: 'agentTasks',    icon: 'bot',          name: '副驾任务', desc: '查看副驾执行记录' },
-  { comp: 'todos',         icon: 'check-square', name: '待办清单', desc: '管理待办事项' },
-  { comp: 'snippets',      icon: 'file-code',    name: '代码片段', desc: '管理常用代码' },
-  { comp: 'history',       icon: 'history',      name: '搜索历史', desc: '最近搜索记录' },
-  { settings: true,        icon: 'settings',     name: '设置',     desc: 'LLM / 副驾 / 更新' },
-  { mistake: true,         icon: 'notebook-pen', name: '错题本',   desc: 'AI 纠错记录管理' },
-  { update: true,          icon: 'refresh-cw',   name: '检查更新', desc: '前往 GitHub 更新' },
-];
-
-function openSidebarComp(comp) {
-  if (!comp) return;
-  const sec = caidQs(`.sidebar-section[data-comp="${comp}"]`);
-  if (!sec) return;
-  sec.classList.remove('collapsed');
-  state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
-  delete state.uiPrefs.collapsed[comp];
-  LS.set('uiPrefs', state.uiPrefs);
-  // 侧边栏已改为右侧抽屉：滑出抽屉 + 显示背板 + 滚动到对应区块
-  try {
-    const sb = caidQs('#sidebar');
-    const bd = caidQs('#sidebarBackdrop');
-    if (sb) sb.classList.add('dash-open');
-    if (bd) bd.classList.add('show');
-  } catch (e) {}
-  requestAnimationFrame(() => sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-}
-
-function closeSidebarDrawer() {
-  try {
-    const sb = caidQs('#sidebar');
-    const bd = caidQs('#sidebarBackdrop');
-    if (sb) sb.classList.remove('dash-open');
-    if (bd) bd.classList.remove('show');
-  } catch (e) {}
-}
-
-function renderModuleGrid() {
-  const grid = caidQs('#moduleGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  DASH_MODULES.forEach(m => {
-    const card = document.createElement('div');
-    card.className = 'module-card';
-    card.innerHTML = `
-      <div class="mc-ic"><i data-lucide="${m.icon}"></i></div>
-      <div class="mc-nt">${m.name}</div>
-      <div class="mc-ds">${m.desc}</div>`;
-    card.addEventListener('click', () => {
-      if (m.settings) {
-        openSettingsModal();
-      } else if (m.mistake) {
-        openSettingsModal('copilot');   // 错题本位于【副驾】设置面板
-      } else if (m.update) {
-        openSettingsModal();
-        setTimeout(() => checkForUpdate(caidQs('#settingsUpdateResult')), 300);
-      } else {
-        openSidebarComp(m.comp);
-      }
-    });
-    grid.appendChild(card);
-  });
-  if (window.lucide) lucide.createIcons();
-}
-
+// ============ 新版仪表盘：监控大卡片 + 功能区块直接平铺 ============
 function caidDayKeyLocal(d) {
   d = d || new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -3310,14 +3245,8 @@ async function init() {
   await renderSnippets();
   loadAgentTasks();
   updateCounts();
-  // 新版仪表盘：功能模块平铺 + 监控大卡片
-  renderModuleGrid();
+  // 新版仪表盘：监控大卡片 + 功能区块直接平铺（无需再渲染模块网格/抽屉）
   renderDashboard();
-  // 侧边栏抽屉背板：点击关闭
-  try {
-    const sbBd = caidQs('#sidebarBackdrop');
-    if (sbBd) sbBd.addEventListener('click', () => closeSidebarDrawer());
-  } catch (e) {}
   // 监听 storage 变化实时刷新统计卡（副驾在后台产生任务记录后即时更新，无需重开页面）
   try {
     chrome.storage.onChanged.addListener(function (changes, area) {

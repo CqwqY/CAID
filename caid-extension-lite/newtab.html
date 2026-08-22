@@ -319,20 +319,45 @@ a:hover { text-decoration: underline; }
 /* ============ 新版仪表盘（主区重排） ============ */
 /* 去掉原顶部快捷栏 + 搜索框（保留 DOM 以免破坏 JS 绑定，仅视觉隐藏） */
 .topbar { display: none !important; }
-/* 侧边栏移除：不再占用右侧常驻布局，改为点击模块时从右侧滑出的抽屉（保留 DOM 以免破坏 JS 绑定） */
-.sidebar {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  width: 320px; z-index: 9999;
-  transform: translateX(100%);
-  transition: transform .24s ease;
-  border-right: none; border-left: 1px solid var(--rule);
-  box-shadow: -8px 0 28px rgba(0,0,0,.35);
-}
-.sidebar.dash-open { transform: translateX(0); width: 320px !important; }
-.sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity .2s; }
-.sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+/* 侧边栏样式停用：功能区块改为在面板内直接平铺展示（不再抽开抽屉） */
+.sidebar, .sidebar-backdrop { display: none !important; }
 /* 时间去掉 */
 .hero { display: none !important; }
+/* 功能面板：各区块卡片直接在面板内平铺 */
+.panel-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 10px 24px 24px;
+}
+.panel-sections .sidebar-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.panel-sections .sidebar-section {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 4px 0 6px;
+  overflow: hidden;
+}
+.panel-sections .sidebar-header {
+  padding: 13px 16px;
+}
+.panel-sections .sidebar-body {
+  padding: 0 16px 14px;
+}
+.panel-sections .sidebar-footer {
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--glass);
+  border-top: none;
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.panel-sections .sidebar-footer-btn { width: auto; min-width: 140px; }
 .dash {
   display: flex;
   flex-direction: column;
@@ -2738,120 +2763,6 @@ a:hover { text-decoration: underline; }
 
 </head><body>
 <div class="app">
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <img class="sidebar-brand-icon" src="icons/icon.svg" width="20" height="20" alt="">
-      <span class="sidebar-brand-text">CAID</span>
-    </div>
-    <div class="sidebar-sections">
-      <!-- Snippets -->
-      <div class="sidebar-section" data-comp="snippets">
-        <div class="sidebar-header">
-          <span class="sidebar-icon green"><i data-lucide="file-code"></i></span>
-          <span class="sidebar-title">代码片段</span>
-          <span class="sidebar-count" id="snippetCount">0</span>
-          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="sidebar-body">
-          <input type="text" class="comp-search" id="snippetSearch" placeholder="搜索代码片段…">
-          <div class="comp-actions">
-            <button class="btn small primary" id="addSnippetBtn"><i data-lucide="plus"></i>添加片段</button>
-          </div>
-          <div class="snippet-list" id="snippetList"></div>
-        </div>
-      </div>
-      <!-- History -->
-      <div class="sidebar-section" data-comp="history">
-        <div class="sidebar-header">
-          <span class="sidebar-icon purple"><i data-lucide="history"></i></span>
-          <span class="sidebar-title">搜索历史</span>
-          <span class="sidebar-count" id="historyCount">0</span>
-          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="sidebar-body">
-          <input type="text" class="comp-search" id="historySearch" placeholder="搜索历史…">
-          <div class="comp-actions">
-            <button class="btn small danger" id="clearHistoryBtn"><i data-lucide="trash-2"></i>清空历史</button>
-          </div>
-          <div class="history-list" id="historyList"></div>
-        </div>
-      </div>
-      <!-- Todos -->
-      <div class="sidebar-section" data-comp="todos">
-        <div class="sidebar-header">
-          <span class="sidebar-icon warn"><i data-lucide="check-square"></i></span>
-          <span class="sidebar-title">待办清单</span>
-          <span class="sidebar-count" id="todoCount">0</span>
-          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="sidebar-body">
-          <div class="todo-progress" id="todoProgressWrap">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
-              <span>完成进度</span>
-              <span id="todoProgressText">0 / 0</span>
-            </div>
-            <div class="todo-progress-bar"><div class="todo-progress-fill" id="todoProgressFill" style="width:0%"></div></div>
-          </div>
-          <div style="display:flex;gap:8px;margin-bottom:12px;">
-            <input type="text" class="comp-search" id="todoInput" placeholder="输入任务，Enter 添加…" style="margin-bottom:0;">
-            <select class="form-select" id="todoPriority" style="width:90px;margin-bottom:0;">
-              <option value="low">低</option>
-              <option value="mid" selected>中</option>
-              <option value="high">高</option>
-            </select>
-            <button class="btn success" id="addTodoBtn" style="flex-shrink:0;"><i data-lucide="plus"></i></button>
-          </div>
-          <div class="todo-list" id="todoList"></div>
-        </div>
-      </div>
-      <!-- Agent Tasks -->
-      <div class="sidebar-section" data-comp="agentTasks">
-        <div class="sidebar-header">
-          <span class="sidebar-icon blue"><i data-lucide="bot"></i></span>
-          <span class="sidebar-title">副驾任务</span>
-          <span class="sidebar-count" id="agentTaskCount">0</span>
-          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="sidebar-body">
-          <div class="agent-task-list" id="agentTaskList">
-            <div class="empty-state">
-              <i data-lucide="bot"></i>
-              <div>暂无副驾任务记录</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- Settings -->
-      <div class="sidebar-section" data-comp="settings">
-        <div class="sidebar-header">
-          <span class="sidebar-icon"><i data-lucide="settings"></i></span>
-          <span class="sidebar-title">设置</span>
-          <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
-        </div>
-        <div class="sidebar-body settings-body">
-          <button class="btn primary" id="sidebarOpenSettings" style="width:100%;margin-bottom:8px;">
-            <i data-lucide="settings"></i>打开设置面板
-          </button>
-          <button class="btn" id="sidebarSetHome" style="width:100%;">
-            <i data-lucide="home"></i>设为首页
-          </button>
-        </div>
-      </div>
-    </div>
-    <!-- 底部：创建插件 + 更新日志 -->
-    <div class="sidebar-footer">
-      <button class="sidebar-footer-btn" id="sidebarCreatePlugin">
-        <i data-lucide="plus-circle"></i><span>创建插件</span>
-      </button>
-      <button class="sidebar-footer-btn" id="sidebarChangelog"
-        style="margin-top:8px;border-style:solid;border-color:var(--rule);background:rgba(255,255,255,0.02);color:var(--muted);font-weight:500;">
-        <i data-lucide="history"></i><span>更新日志</span>
-      </button>
-    </div>
-  </aside>
-  <!-- 侧边栏抽屉背板 -->
-  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <div class="ctx-menu" id="pluginCtxMenu">
     <button class="ctx-item" id="pluginCtxEdit"><i data-lucide="pencil"></i>编辑插件</button>
     <button class="ctx-item ctx-danger" id="pluginCtxDelete">删除插件</button>
@@ -2886,7 +2797,114 @@ a:hover { text-decoration: underline; }
             <div class="dash-tasks" id="dashRecentTasks"><div class="dash-empty">暂无任务记录</div></div>
           </div>
         </div>
-        <div class="module-grid" id="moduleGrid"></div>
+      </div>
+      <!-- 功能面板：直接平铺在面板内，无需点击抽开 -->
+      <div class="panel-sections">
+        <div class="sidebar-sections" id="sidebarSections">
+          <!-- Snippets -->
+          <div class="sidebar-section" data-comp="snippets">
+            <div class="sidebar-header">
+              <span class="sidebar-icon green"><i data-lucide="file-code"></i></span>
+              <span class="sidebar-title">代码片段</span>
+              <span class="sidebar-count" id="snippetCount">0</span>
+              <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+            </div>
+            <div class="sidebar-body">
+              <input type="text" class="comp-search" id="snippetSearch" placeholder="搜索代码片段…">
+              <div class="comp-actions">
+                <button class="btn small primary" id="addSnippetBtn"><i data-lucide="plus"></i>添加片段</button>
+              </div>
+              <div class="snippet-list" id="snippetList"></div>
+            </div>
+          </div>
+          <!-- History -->
+          <div class="sidebar-section" data-comp="history">
+            <div class="sidebar-header">
+              <span class="sidebar-icon purple"><i data-lucide="history"></i></span>
+              <span class="sidebar-title">搜索历史</span>
+              <span class="sidebar-count" id="historyCount">0</span>
+              <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+            </div>
+            <div class="sidebar-body">
+              <input type="text" class="comp-search" id="historySearch" placeholder="搜索历史…">
+              <div class="comp-actions">
+                <button class="btn small danger" id="clearHistoryBtn"><i data-lucide="trash-2"></i>清空历史</button>
+              </div>
+              <div class="history-list" id="historyList"></div>
+            </div>
+          </div>
+          <!-- Todos -->
+          <div class="sidebar-section" data-comp="todos">
+            <div class="sidebar-header">
+              <span class="sidebar-icon warn"><i data-lucide="check-square"></i></span>
+              <span class="sidebar-title">待办清单</span>
+              <span class="sidebar-count" id="todoCount">0</span>
+              <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+            </div>
+            <div class="sidebar-body">
+              <div class="todo-progress" id="todoProgressWrap">
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
+                  <span>完成进度</span>
+                  <span id="todoProgressText">0 / 0</span>
+                </div>
+                <div class="todo-progress-bar"><div class="todo-progress-fill" id="todoProgressFill" style="width:0%"></div></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <input type="text" class="comp-search" id="todoInput" placeholder="输入任务，Enter 添加…" style="margin-bottom:0;">
+                <select class="form-select" id="todoPriority" style="width:90px;margin-bottom:0;">
+                  <option value="low">低</option>
+                  <option value="mid" selected>中</option>
+                  <option value="high">高</option>
+                </select>
+                <button class="btn success" id="addTodoBtn" style="flex-shrink:0;"><i data-lucide="plus"></i></button>
+              </div>
+              <div class="todo-list" id="todoList"></div>
+            </div>
+          </div>
+          <!-- Agent Tasks -->
+          <div class="sidebar-section" data-comp="agentTasks">
+            <div class="sidebar-header">
+              <span class="sidebar-icon blue"><i data-lucide="bot"></i></span>
+              <span class="sidebar-title">副驾任务</span>
+              <span class="sidebar-count" id="agentTaskCount">0</span>
+              <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+            </div>
+            <div class="sidebar-body">
+              <div class="agent-task-list" id="agentTaskList">
+                <div class="empty-state">
+                  <i data-lucide="bot"></i>
+                  <div>暂无副驾任务记录</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Settings -->
+          <div class="sidebar-section" data-comp="settings">
+            <div class="sidebar-header">
+              <span class="sidebar-icon"><i data-lucide="settings"></i></span>
+              <span class="sidebar-title">设置</span>
+              <span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>
+            </div>
+            <div class="sidebar-body settings-body">
+              <button class="btn primary" id="sidebarOpenSettings" style="width:100%;margin-bottom:8px;">
+                <i data-lucide="settings"></i>打开设置面板
+              </button>
+              <button class="btn" id="sidebarSetHome" style="width:100%;">
+                <i data-lucide="home"></i>设为首页
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- 底部：创建插件 + 更新日志 -->
+        <div class="sidebar-footer">
+          <button class="sidebar-footer-btn" id="sidebarCreatePlugin">
+            <i data-lucide="plus-circle"></i><span>创建插件</span>
+          </button>
+          <button class="sidebar-footer-btn" id="sidebarChangelog"
+            style="margin-top:8px;border-style:solid;border-color:var(--rule);background:rgba(255,255,255,0.02);color:var(--muted);font-weight:500;">
+            <i data-lucide="history"></i><span>更新日志</span>
+          </button>
+        </div>
       </div>
       <div class="hero">
         <div class="clock-date">
