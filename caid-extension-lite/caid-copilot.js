@@ -62,7 +62,8 @@
       return;
     }
     if (d.__caidType === 'CAID_UPDATE_RESP') {
-      renderCopilotUpdate(d.data);
+      renderCopilotUpdate(d.data, _updateManual);
+      _updateManual = false;
       return;
     }
   });
@@ -523,6 +524,7 @@
         '<span class="cp-title">' + caidIcon(14) + ' CAID 副驾</span>' +
         '<span class="cp-status" id="cpStatus">就绪</span>' +
         '<button class="cp-stop" id="cpStop" title="强行终止当前任务 (Ctrl+.)">⏹</button>' +
+        '<button class="cp-close" id="cpUpdateBtn" title="检查更新">⟳</button>' +
         '<button class="cp-close" id="cpSettings" title="副驾设置（LLM / 模型）">⚙</button>' +
         '<button class="cp-close" id="cpClose" title="关闭">×</button>' +
       '</div>' +
@@ -713,27 +715,40 @@
     setTimeout(function () { try { var i = document.getElementById('cpInput'); if (i) i.focus(); } catch (e) {} }, 80);
     checkCopilotUpdate(); // 打开副驾面板时检查更新
   }
-  // ============ 副驾打开时的版本更新检查（经 content.js CAID_UPDATE 桥） ============
-  var _updateCheckedAt = 0;   // 10 分钟内不重复请求，避免每次打开都打后端
-  function checkCopilotUpdate() {
+  // ============ 副驾的版本更新检查（经 content.js CAID_UPDATE 桥） ============
+  var _updateCheckedAt = 0;   // 10 分钟内不重复自动请求，避免每次打开都打后端
+  var _updateManual = false;  // 上一次请求是否为手动「检查更新」按钮触发
+  function checkCopilotUpdate(force) {
     try {
       var now = Date.now();
-      if (_updateCheckedAt && (now - _updateCheckedAt) < 600000) return; // 已缓存
+      if (!force && _updateCheckedAt && (now - _updateCheckedAt) < 600000) return; // 已缓存
       _updateCheckedAt = now;
+      _updateManual = !!force;
+      if (_updateManual) {
+        var _b = document.getElementById('cpUpdateBanner');
+        if (_b) { _b.className = 'cp-update'; _b.innerHTML = '<span class="err">检查中…</span>'; _b.classList.add('show'); }
+      }
       window.postMessage({ __caidType: 'CAID_UPDATE' }, '*');
     } catch (e) {}
   }
-  function renderCopilotUpdate(data) {
+  function renderCopilotUpdate(data, manual) {
     var banner = document.getElementById('cpUpdateBanner');
     if (!banner) return;
     banner.className = 'cp-update';
     if (!data || !data.ok) {
-      // 后端不可达/超时：静默，不打扰
-      banner.innerHTML = '';
+      if (manual) { banner.innerHTML = '<span class="err">无法连接更新服务</span>'; banner.classList.add('show'); }
+      else { banner.innerHTML = ''; }
       return;
     }
+    var curVer = data.current ? 'v' + data.current : '';
     if (!data.mustUpdate) {
-      banner.innerHTML = ''; // 已是最新，不显示
+      if (manual) {
+        banner.innerHTML = '<span style="font-weight:600">✓ 已是最新版本 ' + cpEscapeHtml(curVer) + '</span>';
+        banner.classList.add('show');
+        setTimeout(function () { banner.className = 'cp-update'; banner.innerHTML = ''; }, 3000); // 3s 后自动收起
+      } else {
+        banner.innerHTML = '';
+      }
       return;
     }
     var when = data.notes && data.notes.length ? (data.description ? data.description + ' · ' + data.notes[0] : data.notes[0]) : (data.description || '');
@@ -2252,6 +2267,9 @@
 
   var settingsEl = document.getElementById('cpSettings');
   if (settingsEl) settingsEl.addEventListener('click', toggleSettings);
+
+  var updateBtnEl = document.getElementById('cpUpdateBtn');
+  if (updateBtnEl) updateBtnEl.addEventListener('click', function () { checkCopilotUpdate(true); });
 
   // 内联设置表单：保存经 content.js 事件桥接写入 chrome.storage.local（MAIN world 无 chrome.*）
   var saveEl = document.getElementById('cpSave');

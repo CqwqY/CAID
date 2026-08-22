@@ -3,6 +3,12 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.19] - 2026-08-22
+
+### 新增（仅清凉版 caid-extension-lite）
+- **「检查更新」按钮**：副驾完整面板头部新增「⟳ 检查更新」按钮，点击立即强制检查并给出明确反馈（检查中…/✓ 已是最新/无法连接/发现新版+前往 GitHub）；拓展选项（工作台设置弹窗）标题栏新增「检查更新」按钮与结果反馈，手动检查时可看到「已是最新版本」等提示，不再仅在加载时静默。
+- 强化 `checkForUpdate(manualEl)`（工作台）与 `checkCopilotUpdate(force)` / `renderCopilotUpdate(data, manual)`（副驾），支持手动强制查询与结果回显。
+
 ## [纯净版 v0.3.18] - 2026-08-22
 
 ### 新增（仅清凉版 caid-extension-lite）

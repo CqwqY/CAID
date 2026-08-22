@@ -3184,6 +3184,8 @@ async function init() {
 
   // 更新检查：有新版则显示提示条，点击前往 GitHub 更新
   checkForUpdate();
+  const btnChkUpd = caidQs('#settingsCheckUpdate');
+  if (btnChkUpd) btnChkUpd.addEventListener('click', () => checkForUpdate(caidQs('#settingsUpdateResult')));
 
   // 智能推荐区：时段卡片 + 常用站点 + AI 主动建议
   bindSmartZoneEvents();
@@ -3215,22 +3217,29 @@ async function init() {
 // ============ 更新检查：向 changelog API 探测最新版本，有新版则提示前往 GitHub 更新 ============
 const UPDATE_API = 'https://changelog-production.up.railway.app/latest';
 
-async function checkForUpdate() {
+async function checkForUpdate(manualEl) {
   const banner = caidQs('#updateBanner');
   if (!banner) return;                       // 非工作台页面（如仅副驾场景）不处理
+  const say = (txt) => { if (manualEl) manualEl.textContent = txt || ''; };
+  if (manualEl) say('检查中…');
   try {
     const cur = chrome && chrome.runtime && chrome.runtime.getManifest ? (chrome.runtime.getManifest().version || '') : '';
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);   // 8s 超时，静默失败
     const resp = await fetch(UPDATE_API + (cur ? '?v=' + encodeURIComponent(cur) : ''), { signal: ctrl.signal });
     clearTimeout(t);
-    if (!resp.ok) return;
+    if (!resp.ok) { say('无法连接更新服务'); return; }
     const data = await resp.json();
-    if (!data || !data.mustUpdate || !data.latest) return;   // 无更新则静默
+    if (!data || !data.latest) { say('无法连接更新服务'); return; }
     const l = data.latest;
+    const curVer = 'v' + (cur || '?');
+    if (!data.mustUpdate) {                          // 已是最新：手动时有反馈，自动时静默
+      say('✓ 已是最新版本 ' + curVer);
+      return;
+    }
     const notes = Array.isArray(l.notes) ? l.notes : [];
     const html =
-      '<span style="font-weight:600;flex:0 0 auto">发现新版本 v' + (l.version || '') + '</span>' +
+      '<span style="font-weight:600;flex:0 0 auto">发现新版本 v' + (l.version || '') + '，当前 ' + curVer + '</span>' +
       '<span style="flex:1;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
         ((l.description || '') + (notes.length ? ' · ' + notes[0] : '')) + '</span>' +
       '<button id="updateGoBtn" style="flex:0 0 auto;padding:5px 14px;border:none;border-radius:8px;background:#fff;color:#1d4ed8;font-weight:600;cursor:pointer">前往 GitHub 更新</button>' +
@@ -3241,7 +3250,8 @@ async function checkForUpdate() {
     if (go) go.addEventListener('click', () => { window.open(l.releaseUrl || l.githubUrl || 'https://github.com', '_blank'); });
     const dim = caidQs('#updateDismissBtn');
     if (dim) dim.addEventListener('click', () => { banner.style.display = 'none'; });
-  } catch (e) { /* 静默失败，不影响工作台使用 */ }
+    say('发现新版本 v' + (l.version || '') + '，请前往 GitHub 更新');
+  } catch (e) { say('无法连接更新服务'); }
 }
 
 // 副驾任务实时同步：副驾在任意页面完成任务 → background 写 caidMemory → 本页监听变化刷新 sidebar
