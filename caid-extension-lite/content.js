@@ -178,6 +178,7 @@
           if (!wow && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) wow = true;
           ball.style.left = Math.max(0, Math.min(window.innerWidth - ball.offsetWidth, ox + dx)) + 'px';
           ball.style.top = Math.max(0, Math.min(window.innerHeight - ball.offsetHeight, oy + dy)) + 'px';
+          if (typeof layoutBallCompanions === 'function') layoutBallCompanions();
         }
         function up() {
           sway = false;
@@ -190,6 +191,131 @@
     })(btn);
 
     document.body.appendChild(btn);
+
+    // ---------- 圆球配套：AI 运行中的「停止键」+ 悬浮「工具菜单」 ----------
+    // 停止键：副驾 running 时出现在圆球左侧，点击一键终止。
+    // 悬浮菜单：鼠标悬浮圆球向上展开 → 「进入产物页」/「纠错」。
+    var stopBtn = document.createElement('button');
+    stopBtn.id = 'caidStopBtn';
+    stopBtn.title = '终止当前任务';
+    stopBtn.innerHTML = '⏹';
+    stopBtn.style.cssText =
+      'position:fixed;left:0;top:0;z-index:2147483646;width:34px;height:34px;border-radius:50%;' +
+      'border:none;background:#d33c3c;color:#fff;font-size:16px;line-height:34px;text-align:center;' +
+      'cursor:pointer;box-shadow:0 4px 12px rgba(211,60,60,.5);display:none;user-select:none;' +
+      'transition:transform .15s,opacity .2s;';
+    stopBtn.addEventListener('click', function () {
+      try { window.postMessage({ __caidBall: 'stop' }, '*'); } catch (e) {}
+      stopBtn.style.display = 'none';
+    });
+    document.body.appendChild(stopBtn);
+
+    var menuEl = document.createElement('div');
+    menuEl.id = 'caidBallMenu';
+    menuEl.style.cssText =
+      'position:fixed;left:0;top:0;z-index:2147483646;display:flex;flex-direction:column;gap:6px;' +
+      'background:rgba(20,35,63,.94);border:1px solid rgba(255,255,255,.14);border-radius:12px;' +
+      'padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);backdrop-filter:blur(8px);' +
+      'opacity:0;visibility:hidden;transform:translateY(8px);transition:opacity .18s,transform .18s,visibility .18s;';
+    menuEl.innerHTML =
+      '<button data-act="workbench" class="caid-mn" title="打开副驾产物页">🗂 进入产物页</button>' +
+      '<button data-act="mistake" class="caid-mn" title="指出副驾错误，记入错题本">✎ 纠错</button>';
+    menuEl.querySelectorAll('.caid-mn').forEach(function (m) {
+      m.style.cssText = 'border:none;background:transparent;color:#e8eef7;font-size:13px;padding:8px 12px;' +
+        'border-radius:8px;cursor:pointer;text-align:left;white-space:nowrap;transition:background .15s;';
+      m.addEventListener('mouseenter', function () { m.style.background = 'rgba(91,141,255,.22)'; });
+      m.addEventListener('mouseleave', function () { m.style.background = 'transparent'; });
+    });
+    menuEl.querySelector('[data-act="workbench"]').addEventListener('click', function () {
+      hideMenu(); // 打开产物页
+      try { chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS', hash: '#history' }); } catch (e) {}
+    });
+    menuEl.querySelector('[data-act="mistake"]').addEventListener('click', function () {
+      hideMenu(); openMistakeDialog();
+    });
+    document.body.appendChild(menuEl);
+
+    // 停止键随 AI 运行态显隐：观察圆球 class，含 state-running 时显示
+    try {
+      new MutationObserver(function () {
+        var running = btn.classList.contains('state-running');
+        stopBtn.style.display = running ? '' : 'none';
+        if (running) layoutBallCompanions();
+      }).observe(btn, { attributes: true, attributeFilter: ['class'] });
+    } catch (e) {}
+
+    // 悬浮菜单：鼠标悬浮圆球时向上展开，移出后收
+    var _hTimer = null;
+    btn.addEventListener('mouseenter', function () {
+      clearTimeout(_hTimer);
+      menuEl.style.opacity = '1'; menuEl.style.visibility = 'visible'; menuEl.style.transform = 'translateY(0)';
+      layoutBallCompanions();
+    });
+    btn.addEventListener('mouseleave', function () {
+      clearTimeout(_hTimer);
+      _hTimer = setTimeout(hideMenu, 260);
+    });
+    menuEl.addEventListener('mouseenter', function () { clearTimeout(_hTimer); });
+    menuEl.addEventListener('mouseleave', function () { clearTimeout(_hTimer); _hTimer = setTimeout(hideMenu, 200); });
+    function hideMenu() {
+      menuEl.style.opacity = '0'; menuEl.style.visibility = 'hidden'; menuEl.style.transform = 'translateY(8px)';
+    }
+
+    // 纠错对话框：写入 AI 错题本
+    function openMistakeDialog() {
+      var old = document.getElementById('caidMistakeModal');
+      if (old) old.remove();
+      var modal = document.createElement('div');
+      modal.id = 'caidMistakeModal';
+      modal.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);';
+      modal.innerHTML =
+        '<div style="width:min(460px,90vw);background:#fff;border-radius:14px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.35);">' +
+          '<div style="font-size:16px;font-weight:700;color:#14355f;margin-bottom:10px;">✎ 纠错 · AI 错题本</div>' +
+          '<div style="font-size:13px;color:#5a6b80;margin-bottom:8px;">指出副驾哪里出错了、应如何改正。副驾之后运行时会始终遵守。</div>' +
+          '<textarea id="caidMistakeText" placeholder="例：搜索时应该优先用 Bing 而不是默认引擎；刚才首页跳转错了，应该打开设置页…" style="width:100%;box-sizing:border-box;height:110px;border:1px solid #d7dde6;border-radius:8px;padding:10px;font-size:14px;resize:vertical;"></textarea>' +
+          '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">' +
+            '<button id="caidMistakeCancel" style="padding:8px 16px;border:1px solid #d7dde6;background:#fff;border-radius:8px;cursor:pointer;font-size:14px;color:#5a6b80;">取消</button>' +
+            '<button id="caidMistakeSave" style="padding:8px 16px;border:none;background:#2f6fc0;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;">记入错题本</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(modal);
+      var ta = modal.querySelector('#caidMistakeText');
+      setTimeout(function () { try { ta.focus(); } catch (e) {} }, 30);
+      function close() { modal.remove(); }
+      modal.querySelector('#caidMistakeCancel').addEventListener('click', close);
+      modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+      modal.querySelector('#caidMistakeSave').addEventListener('click', function () {
+        var txt = ta.value.trim();
+        if (!txt) { ta.focus(); return; }
+        try {
+          chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_ADD', text: txt, url: location.href }, function (r) {
+            close(); // noop：feedback handled below
+          });
+        } catch (e) {}
+        // 顶部轻提示反馈
+        var tip = document.createElement('div');
+        tip.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);background:#14355f;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:2147483646;box-shadow:0 6px 18px rgba(20,53,95,.35);';
+        tip.textContent = '✅ 已记入 AI 错题本，副驾将始终遵守';
+        document.body.appendChild(tip);
+        setTimeout(function () { tip.remove(); }, 2600);
+      });
+    }
+
+    // 配套元件始终跟随圆球（停止键在左侧、菜单在正上方）
+    function layoutBallCompanions() {
+      try {
+        var r = btn.getBoundingClientRect();
+        var stopW = stopBtn.offsetWidth || 34, stopH = stopBtn.offsetHeight || 34;
+        stopBtn.style.left = Math.max(0, r.left - stopW - 12) + 'px';
+        stopBtn.style.top = Math.max(0, r.top + (r.height - stopH) / 2) + 'px';
+        var mH = menuEl.offsetHeight || 96;
+        var mL = Math.min(r.left, Math.max(0, window.innerWidth - (menuEl.offsetWidth || 150)));
+        menuEl.style.left = mL + 'px';
+        menuEl.style.top = Math.max(0, r.top - mH - 8) + 'px';
+      } catch (e) {}
+    }
+    window.addEventListener('resize', function () { layoutBallCompanions(); });
+    layoutBallCompanions();
   }
 
   // 🤖 按钮与面板的显隐同步（双向）：
@@ -230,6 +356,41 @@
   watchPanel();
 
   addButton();
+
+  // ---------- 全局快捷键 ----------
+  // Ctrl+I+L → 启动副驾（弹出输入条）；Ctrl+L → 终止当前任务。
+  // 说明：Ctrl+I+L 用 I 作为第一段，需在按 L 前 <1.5s 内按过 I（按住 Ctrl 连续按）。
+  // 注：浏览器可能保留 Ctrl+L（聚焦地址栏）而不透传给页面，此时终止建议用「停止键」。
+  var _scSeq = '', _scT = 0;
+  function _bootQuickFromKey() {
+    try {
+      var _cp = document.getElementById('caidExtCopilot');
+      var _ready = !!(_cp && _cp.getAttribute('data-caid-ready') === '1');
+      if (_ready) { window.postMessage({ __caidBall: 'toggle' }, '*'); return; }
+      try { chrome.runtime.sendMessage({ type: 'BOOT_COPILOT' }); } catch (e2) {}
+      var _tr = 0;
+      var _iv = setInterval(function () {
+        _tr++;
+        var _c = document.getElementById('caidExtCopilot');
+        if (_c && _c.getAttribute('data-caid-ready') === '1') { clearInterval(_iv); window.postMessage({ __caidBall: 'toggle' }, '*'); }
+        else if (_tr > 40) clearInterval(_iv);
+      }, 250);
+    } catch (e) {}
+  }
+  function _stopFromKey() {
+    try { window.postMessage({ __caidBall: 'stop' }, '*'); } catch (e) {}
+    var _sb = document.getElementById('caidStopBtn');
+    if (_sb) _sb.style.display = 'none';
+  }
+  document.addEventListener('keydown', function (e) {
+    if (!e.ctrlKey || e.altKey || e.metaKey) return;
+    var _k = (e.key || '').toLowerCase();
+    if (_k === 'i') { _scSeq = 'i'; _scT = Date.now(); return; }
+    if (_k === 'l') {
+      if (_scSeq === 'i' && Date.now() - _scT < 1500) { _scSeq = ''; e.preventDefault(); _bootQuickFromKey(); }
+      else { _scSeq = ''; e.preventDefault(); _stopFromKey(); }
+    } else { _scSeq = ''; }
+  });
 
   // MAIN↔ISOLATED 桥：监听 MAIN world 派发的自定义事件，
   // 用 ISOLATED world 的 chrome.* API 执行特权操作（如打开 options 页）。

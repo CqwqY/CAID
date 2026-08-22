@@ -150,6 +150,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg && msg.type === 'OPEN_OPTIONS') {
     console.log('[CAID-bg] 收到 OPEN_OPTIONS，由 background（特权上下文）打开 options 页');
+    // 带 hash：直接按具体视图打开（如产物页 #history）；不带：走默认 openOptionsPage
+    var _optsHash = String(msg.hash || '').trim();
+    if (_optsHash) {
+      try { chrome.tabs.create({ url: chrome.runtime.getURL('newtab.html' + _optsHash) }); } catch (e3) { console.error('[CAID-bg] tabs.create(hash) 失败:', e3); }
+      return false;
+    }
     try {
       chrome.runtime.openOptionsPage();
       console.log('[CAID-bg] openOptionsPage() 已调用');
@@ -340,6 +346,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (typeof msg.recKey === 'string') p.recKey = msg.recKey;
       chrome.storage.local.set({ caidReadPrefs: p }, function () { sendResponse({ ok: true, prefs: p }); });
     });
+    return true;
+  }
+
+  // ---------- AI 错题本（纠错）：chrome.storage.local.caidMistakes ----------
+  // 用户通过圆球菜单「纠错」指出副驾的错误，写入此处；副驾 sendTask 时始终注入并遵守。
+  // 结构：[{ id, text, url, ts }]，上限 50 条。
+  function _mistRead(cb) {
+    chrome.storage.local.get(['caidMistakes'], function (got) {
+      var list = (got && got.caidMistakes) || [];
+      if (!Array.isArray(list)) list = [];
+      cb(list);
+    });
+  }
+  if (msg && msg.type === 'CAID_MISTAKES_GET') {
+    _mistRead(function (list) { sendResponse({ ok: true, mistakes: list }); });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MISTAKES_ADD') {
+    var mistText = String(msg.text || '').trim().slice(0, 600);
+    _mistRead(function (list) {
+      if (mistText) {
+        list.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: mistText, url: String(msg.url || '').slice(0, 300), ts: Date.now() });
+        while (list.length > 50) list.shift();
+      }
+      chrome.storage.local.set({ caidMistakes: list }, function () { sendResponse({ ok: true, total: list.length }); });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MISTAKES_DEL') {
+    var mId = String(msg.id || '');
+    _mistRead(function (list) {
+      list = list.filter(function (x) { return String(x.id) !== mId; });
+      chrome.storage.local.set({ caidMistakes: list }, function () { sendResponse({ ok: true, total: list.length }); });
+    });
+    return true;
+  }
+  if (msg && msg.type === 'CAID_MISTAKES_CLEAR') {
+    chrome.storage.local.set({ caidMistakes: [] }, function () { sendResponse({ ok: true }); });
     return true;
   }
 

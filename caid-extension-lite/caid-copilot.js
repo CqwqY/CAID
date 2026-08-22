@@ -712,6 +712,7 @@
     if (!d) return;
     if (d.__caidBall === 'toggle') toggleQuickBar();
     else if (d.__caidBall === 'dbl') openFullPanel();
+    else if (d.__caidBall === 'stop') { try { forceStop(); } catch (e) {} }
   }
   markReady();
 
@@ -2048,7 +2049,18 @@
     // 【长期记忆】不再把全部记忆全量拼进指令（避免 LLM 请求体过大触发 HTTP 413）。
     // 改为：注入一条轻量提示，让 LLM 在需要时按需调用 get_memory 工具检索；并预热缓存。
     var memCtx = '【记忆】本副驾具备跨页/跨任务的长期记忆。若本任务依赖此前记住的事实、偏好或过去完成的结果，请先用 get_memory 工具按需检索（传入关键词），检索到后再用其回答；若无需既往记忆，可忽略本条提示。';
-    var fullInstruction = memCtx + '\n\n【本次任务】\n' + t;
+    // 【AI 错题本 · 必须始终遵守】读取用户纠错记录并强制注入。副驾无论执行什么任务都必须遵守
+    // 这些纠正建议（避免重蹈覆辙），不受任务类型/时间影响。取最近若干条，裁剪长度防 413。
+    var mistakesBlock = '';
+    try {
+      var _mr = await caidRequestBg({ type: 'CAID_MISTAKES_GET' });
+      var _ms = (_mr && _mr.ok && Array.isArray(_mr.mistakes)) ? _mr.mistakes : [];
+      if (_ms.length) {
+        var _pick = _ms.slice(-10).map(function (x) { return '- ' + String(x.text).slice(0, 200); });
+        mistakesBlock = '【错题本 · 必须遵守】以下是副驾此前被用户指出的错误与纠正建议，执行任何任务时都必须始终遵守并以其为准，避免重蹈覆辙：\n' + _pick.join('\n');
+      }
+    } catch (e) { mistakesBlock = ''; }
+    var fullInstruction = mistakesBlock + memCtx + '\n\n【本次任务】\n' + t;
     // 【多步规划强制提示】当用户消息看起来像多步任务时，追加 plan 工具使用提示。
     // 只在非续传任务上追加（续传任务已有上下文，不需要）。
     if (t.indexOf('【任务续传】') !== 0) {
