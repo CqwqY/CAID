@@ -3,6 +3,13 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.16] - 2026-08-22
+
+### 修复（仅清凉版 caid-extension-lite）
+- **强制终止后悬浮菜单/停止键消失**：`forceStop()` 调用的 `cleanupAgentOverlays()` 会清掉所有 `z-index > 1000000` 的非 CAID 元素，而悬浮菜单 `#caidBallMenu` 与停止键 `#caidStopBtn` 的 z-index 正好是 2147483646 且不在排除名单，导致停止后两者被从 DOM 删除——之后悬停圆球无法展开菜单。已将 `#caidStopBtn`、`#caidBallMenu`、`#caidMistakeModal`（及圆球/面板）加入清理白名单，两套清理策略都跳过 CAID 控件。
+
+> ⚠️ 需重新加载扩展并刷新页面生效。
+
 ## [纯净版 v0.3.15] - 2026-08-22
 
 ### 新增（仅清凉版 caid-extension-lite）

@@ -2153,14 +2153,25 @@
         '.page-agent-shield', '.pa-modal', '.pa-backdrop'
       ];
       selectors.forEach(function (sel) {
-        try { document.querySelectorAll(sel).forEach(function (el) { el.remove(); }); } catch (_) {}
+        try {
+          document.querySelectorAll(sel).forEach(function (el) {
+            // 跳过 CAID 自己的 UI（圆球/面板/停止键/悬浮菜单/纠错弹窗），它们不是 PageAgent 残留
+            var _eid = el && el.id;
+            if (_eid === 'caidLauncher' || _eid === 'caidExtCopilot' || _eid === 'caidStopBtn' || _eid === 'caidBallMenu' || _eid === 'caidMistakeModal' ||
+                (el.closest && el.closest('#caidExtCopilot,#caidBallMenu,#caidMistakeModal,#caidStopBtn'))) return;
+            el.remove();
+          });
+        } catch (_) {}
       });
       // 策略2：暴力清除所有 position:fixed/absolute 且 z-index > 1000000 的非 CAID 元素（PageAgent 常用超高 z-index）
       document.querySelectorAll('*').forEach(function (el) {
         try {
+          var _id = el && el.id;
+          // 跳过 CAID 自己的 UI（圆球/面板/停止键/悬浮菜单/纠错弹窗），它们不是 PageAgent 残留
+          var _isCaid = _id === 'caidLauncher' || _id === 'caidExtCopilot' || _id === 'caidStopBtn' || _id === 'caidBallMenu' || _id === 'caidMistakeModal' ||
+                        (el.closest && el.closest('#caidExtCopilot,#caidBallMenu,#caidMistakeModal,#caidStopBtn'));
           var s = getComputedStyle(el);
-          if ((s.position === 'fixed' || s.position === 'absolute') && parseInt(s.zIndex || '0', 10) > 1000000 &&
-              el.id !== 'caidLauncher' && el.id !== 'caidExtCopilot' && !el.closest('#caidExtCopilot')) {
+          if ((s.position === 'fixed' || s.position === 'absolute') && parseInt(s.zIndex || '0', 10) > 1000000 && !_isCaid) {
             console.log('[CAID] cleanupAgentOverlays: 移除残留高 z-index 元素', el.tagName, '#' + el.id, '.' + el.className);
             el.remove();
           }
