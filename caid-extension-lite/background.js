@@ -12,27 +12,9 @@ function bytesToBase64(bytes) {
   return btoa(bin);
 }
 
-// ---------- 调用量统计（工作台左上角：今日调用/近几日柱状图） ----------
-// caidUsage = { 'YYYY-MM-DD': { tasks: n, llm: n } }，仅保留近 90 天。
-function caidDayKey(d) {
-  d = d || new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-function bumpUsage(kind) {
-  try {
-    var key = caidDayKey();
-    chrome.storage.local.get(['caidUsage'], function (got) {
-      var u = (got && got.caidUsage) || {};
-      var d = u[key] || { tasks: 0, llm: 0 };
-      d[kind] = (d[kind] || 0) + 1;
-      u[key] = d;
-      // 裁剪 90 天之外的数据，避免无限膨胀
-      var ks = Object.keys(u).sort();
-      while (ks.length > 90) { delete u[ks.shift()]; }
-      chrome.storage.local.set({ caidUsage: u });
-    });
-  } catch (e) {}
-}
+// ---------- 调用量统计已移除 ----------
+// 工作台统计改为直接比对任务记录 caidMemory.history 的 ts 与今天日期（仅最近 5 天），
+// 不再依赖此处的 caidUsage 埋点，故删除 bumpUsage 以消除无关存储写入。
 
 // ---------- Agent 活跃状态跟踪（自动跟随） ----------
 // 当 agent 在某 tab 开始任务时（sendTask），caid-copilot.js 经 caidSendToBg 发 AGENT_ACTIVE。
@@ -218,7 +200,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 内存 Map(activeAgentTabs) 会丢失 → 同标签页跳转时 tabs.onUpdated 查不到状态 → 自动跟随失效。
   // storage.session 跨 SW 重启存活（浏览器会话内有效），是同标签页续跟的可靠载体。
   if (msg && msg.type === 'AGENT_ACTIVE') {
-    bumpUsage('tasks'); // 每次副驾任务启动计一次调用
     const tabId = sender.tab && sender.tab.id;
     if (tabId) {
       var stA = { goal: msg.goal, fromUrl: msg.fromUrl || '', ts: Date.now() };
@@ -526,7 +507,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           headers[k] = v;
         });
         const buf = await resp.arrayBuffer();
-        bumpUsage('llm'); // 成功完成一次 LLM 请求计一次调用
         sendResponse({ status, statusText, headers, bodyB64: bytesToBase64(new Uint8Array(buf)) });
       } catch (e) {
         try { clearTimeout(_tmr); } catch (e2) {}

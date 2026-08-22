@@ -1600,36 +1600,35 @@ function caidDayKeyLocal(d) {
 }
 
 async function renderDashboard() {
-  // 1) 读取调用量 + 历史
-  let usage = {};
+  // 统计来源 = 任务记录 caidMemory.history（每条含 ts），与「今天」日期比对，只统计最近 5 天。
   let history = [];
   try {
     if (storageAvailable()) {
-      const g = await chrome.storage.local.get(['caidUsage', 'caidMemory']);
-      usage = (g && g.caidUsage) || {};
+      const g = await chrome.storage.local.get(['caidMemory']);
       const mem = (g && g.caidMemory) || {};
       history = Array.isArray(mem.history) ? mem.history : [];
     }
   } catch (e) {}
-  // 2) 今日统计
+  // 1) 最近 5 天（含今天）每日任务数
+  const days = 5;
   const todayKey = caidDayKeyLocal();
-  const today = usage[todayKey] || { tasks: 0, llm: 0 };
-  const tTasks = today.tasks || 0, tLlm = today.llm || 0;
+  const arr = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = caidDayKeyLocal(d);
+    const n = history.filter(t => t && caidDayKeyLocal(new Date(t.ts || 0)) === k).length;
+    arr.push({ k, total: n, label: (d.getMonth() + 1) + '/' + d.getDate() });
+  }
+  // 2) 今日统计（取最近 5 天最后一个 = 今天）
+  const today = arr[days - 1];
+  const total5 = arr.reduce((s, x) => s + x.total, 0);
   const elCount = caidQs('#statTodayCount');
-  if (elCount) elCount.textContent = tTasks + tLlm;
+  if (elCount) elCount.textContent = today.total;
   const elSub = caidQs('#statTodaySub');
-  if (elSub) elSub.textContent = `任务 ${tTasks} · LLM ${tLlm}`;
-  // 3) 近 7 日柱状图
+  if (elSub) elSub.textContent = `今日任务 ${today.total} · 近5日 ${total5} 次`;
+  // 3) 近 5 日柱状图
   const chart = caidQs('#usageChart');
   if (chart) {
-    const days = 7;
-    const arr = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const k = caidDayKeyLocal(d);
-      const u = usage[k] || { tasks: 0, llm: 0 };
-      arr.push({ k, total: (u.tasks || 0) + (u.llm || 0), label: (d.getMonth() + 1) + '/' + d.getDate() });
-    }
     const max = Math.max(1, ...arr.map(x => x.total));
     const noData = arr.every(x => x.total === 0);
     chart.innerHTML = noData
@@ -3319,11 +3318,11 @@ async function init() {
     const sbBd = caidQs('#sidebarBackdrop');
     if (sbBd) sbBd.addEventListener('click', () => closeSidebarDrawer());
   } catch (e) {}
-  // 监听 storage 变化实时刷新统计卡（副驾在后台产生调用后即时更新，无需重开页面）
+  // 监听 storage 变化实时刷新统计卡（副驾在后台产生任务记录后即时更新，无需重开页面）
   try {
     chrome.storage.onChanged.addListener(function (changes, area) {
       if (area !== 'local') return;
-      if (changes.caidUsage || changes.caidMemory) renderDashboard();
+      if (changes.caidMemory) renderDashboard();
     });
   } catch (e) {}
   loadServers().then(() => probeAll());
