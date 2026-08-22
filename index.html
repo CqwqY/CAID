@@ -89,6 +89,21 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
 .foot-links{margin-left:auto;display:flex;gap:16px}
 .foot-links a{color:var(--muted);font-size:14px}
 .foot-links a:hover{color:var(--ink)}
+/* 文档页 */
+.doc{max-width:760px;margin:0 auto}
+.doc h3{font-size:20px;font-weight:700;margin:34px 0 12px;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.doc h3 .n{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--accent);border:1px solid rgba(91,141,255,.4);border-radius:8px;padding:2px 10px}
+.doc p{color:var(--muted);margin:10px 0;font-size:14.5px}
+.doc b{color:var(--ink);font-weight:600}
+.doc ul{color:var(--muted);margin:10px 0 10px 22px;font-size:14.5px}
+.doc li{margin:4px 0}
+.doc code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;padding:2px 7px;font-size:13.5px;color:var(--accent)}
+.doc table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;color:var(--muted)}
+.doc th,.doc td{border:1px solid var(--rule);padding:9px 12px;text-align:left}
+.doc th{color:var(--ink);background:var(--bg3)}
+.doc blockquote{border-left:3px solid var(--accent);background:var(--bg3);padding:10px 16px;border-radius:0 10px 10px 0;margin:14px 0;color:var(--muted);font-size:14px}
+.doc .fill{color:var(--warn);font-style:italic;background:rgba(255,180,84,.08);border:1px dashed rgba(255,180,84,.35);border-radius:6px;padding:1px 7px;cursor:text}
+.imgph{display:flex;align-items:center;justify-content:center;min-height:140px;margin:16px 0;border:1.5px dashed rgba(255,255,255,.2);border-radius:10px;color:var(--muted);font-size:13px;background:var(--bg2)}
 </style>
 </head>
 <body>
@@ -99,7 +114,7 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
     <a href="#features">特性</a>
     <a href="#install">安装</a>
     <a href="#update">更新</a>
-    <a href="https://github.com/CqwqY/CAID/blob/main/docs/%E5%AE%89%E8%A3%85%E6%95%99%E7%A8%8B.md" target="_blank" rel="noopener">文档</a>
+    <a href="#doc">文档</a>
     <a href="https://github.com/CqwqY/CAID" target="_blank" rel="noopener">GitHub</a>
     <a class="nav-cta" href="#install">立即使用</a>
   </div>
@@ -162,12 +177,84 @@ footer{border-top:1px solid var(--rule);padding:40px 0;position:relative;z-index
   </div>
 </div></section>
 
+<section id="doc"><div class="wrap doc">
+  <div class="sec-head">
+    <div class="sec-tag">GUIDE</div>
+    <h2>CAID 安装教程</h2>
+    <p>全程在浏览器图形界面完成，无需命令行。图片位置已预留，后续会补上。</p>
+  </div>
+
+  <h3><span class="n">01</span>系统要求</h3>
+  <ul>
+    <li>浏览器：基于 Chromium 内核（推荐 Microsoft Edge 或 Google Chrome）</li>
+    <li>操作系统：Windows / macOS / Linux</li>
+  </ul>
+
+  <h3><span class="n">02</span>下载扩展包</h3>
+  <ul>
+    <li>打开扩展下载页：<span class="fill">【待填：下载地址】</span></li>
+    <li>下载最新压缩包 <code>CAID-lite0.3.19.zip</code></li>
+    <li>解压到不会删除的文件夹（如 <code>D:\CAID</code>），<b>记住该路径</b>，后续加载要用</li>
+  </ul>
+  <blockquote>源仓库：GitHub <span class="fill">【待填：仓库地址】</span></blockquote>
+  <div class="imgph">下载页截图占位——待补充</div>
+
+  <h3><span class="n">03</span>加载扩展</h3>
+  <ul>
+    <li>打开扩展管理页：<code>edge://extensions</code>（Edge）或 <code>chrome://extensions</code>（Chrome）</li>
+    <li>开启右上角 <b>「开发人员模式」</b></li>
+    <li>点击左上角 <b>「加载已解压的扩展程序」</b></li>
+    <li>选择第 02 步解压得到、包含 <code>manifest.json</code> 的文件夹</li>
+    <li>完成后浏览器工具栏出现 CAID 图标即加载成功</li>
+  </ul>
+  <div class="imgph">扩展管理页面占位——待补充</div>
+  <div class="imgph">「加载已解压的扩展程序」占位——待补充</div>
+
+  <h3><span class="n">04</span>配置 AI（LLM）</h3>
+  <ul>
+    <li><b>右键</b>工具栏 CAID 图标 → <b>「选项」</b>，打开设置页</li>
+    <li>切到 <b>【副驾】</b> 页签</li>
+    <li>填写 <b>LLM 接口地址</b>：<span class="fill">【待填：LLM 地址】</span>；<b>API Key</b>：<span class="fill">【待填：API Key】</span></li>
+    <li>也可先留空走内置免费代理体验，之后再填</li>
+    <li>保存设置</li>
+  </ul>
+  <div class="imgph">设置页占位——待补充</div>
+
+  <h3><span class="n">05</span>开始使用</h3>
+  <ul>
+    <li>打开任意网页，<b>单击</b>右下角圆球唤出副驾输入条，或<b>双击</b>展开完整面板</li>
+    <li>输入任务并回车，如「搜索今天的天气」</li>
+    <li>副驾自动规划并逐步执行多步任务</li>
+    <li>发现出错可在悬浮菜单点 <b>「纠错」</b>，错误记入 AI 错题本，此后副驾会遵守</li>
+  </ul>
+  <div class="imgph">圆球唤出副驾占位——待补充</div>
+  <div class="imgph">副驾执行任务占位——待补充</div>
+
+  <h3><span class="n">06</span>常用快捷键</h3>
+  <table>
+    <thead><tr><th>操作</th><th>快捷键</th></tr></thead>
+    <tbody>
+      <tr><td>启动副驾</td><td>Ctrl + I + L</td></tr>
+      <tr><td>一键终止任务</td><td>Ctrl + L</td></tr>
+      <tr><td>强行终止（备用）</td><td>点圆球运行时左侧「⏹」停止键</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="n">07</span>常见问题</h3>
+  <ul>
+    <li><b>加载后没看到图标？</b>确认解压目录选的是包含 <code>manifest.json</code> 的那一层</li>
+    <li><b>副驾没反应？</b>在【副驾】设置核对 LLM 地址拼写正确且域名可达</li>
+    <li><b>想恢复浏览器默认新标签页？</b>纯净版不会接管新标签页，无需操作</li>
+  </ul>
+  <blockquote>如有其它问题，请在反馈入口反馈：<span class="fill">【待填：反馈入口】</span></blockquote>
+</div></section>
+
 <footer><div class="wrap">
   <div class="foot">
     <span class="brand">CAID</span>
     <span class="muted">浏览器跨页智能体副驾 · 纯净版</span>
     <div class="foot-links">
-      <a href="https://github.com/CqwqY/CAID/blob/main/docs/%E5%AE%89%E8%A3%85%E6%95%99%E7%A8%8B.md" target="_blank" rel="noopener">安装教程</a>
+      <a href="#doc">安装教程</a>
       <a href="https://github.com/CqwqY/CAID" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/CqwqY/changelog" target="_blank" rel="noopener">更新服务</a>
     </div>
