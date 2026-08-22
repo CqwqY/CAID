@@ -203,6 +203,37 @@ a:hover { text-decoration: underline; }
 }
 .sidebar-footer-btn:hover { background: rgba(91,141,255,0.16); border-color: var(--accent); }
 .sidebar-footer-btn svg { width: 16px; height: 16px; }
+/* 插件挂载：与功能区块同级，复用同一卡片网格样式 */
+.panel-sections .plugin-zone {
+  width: 100%;
+}
+.panel-sections .plugin-zone-card-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.panel-sections .plugin-zone-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 4px 0 6px;
+  overflow: hidden;
+}
+.panel-sections .plugin-zone-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--rule);
+}
+.panel-sections .plugin-zone-card .plugin-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
 /* 侧边栏插件右键菜单 */
 .ctx-menu {
   position: fixed;
@@ -2905,6 +2936,10 @@ a:hover { text-decoration: underline; }
             <i data-lucide="history"></i><span>更新日志</span>
           </button>
         </div>
+        <!-- 插件挂载：作为同级卡片直接平铺在面板内 -->
+        <div class="plugin-zone" id="pluginZone" style="display:none;">
+          <div class="plugin-zone-card-col" id="pluginZoneBody"></div>
+        </div>
       </div>
       <div class="hero">
         <div class="clock-date">
@@ -2945,12 +2980,6 @@ a:hover { text-decoration: underline; }
           <button class="server-monitor-manage" id="serverMonitorManage">管理服务器</button>
         </div>
         <div class="server-cards" id="serverCards"></div>
-      </div>
-      <div class="plugin-zone" id="pluginZone" style="display:none;">
-        <div class="plugin-zone-head">
-          <span class="plugin-zone-title"><i data-lucide="puzzle" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:5px;"></i>插件</span>
-        </div>
-        <div class="plugin-zone-body" id="pluginZoneBody"></div>
       </div>
       <!-- 智能推荐区：分时段内容 + 动态站点 + AI 主动建议 -->
       <div class="smart-zone" id="smartZone">
