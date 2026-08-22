@@ -270,9 +270,13 @@
       modal.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);';
       modal.innerHTML =
         '<div style="width:min(460px,90vw);background:#fff;border-radius:14px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.35);">' +
-          '<div style="font-size:16px;font-weight:700;color:#14355f;margin-bottom:10px;">✎ 纠错 · AI 错题本</div>' +
-          '<div style="font-size:13px;color:#5a6b80;margin-bottom:8px;">指出副驾哪里出错了、应如何改正。副驾之后运行时会始终遵守。</div>' +
-          '<textarea id="caidMistakeText" placeholder="例：搜索时应该优先用 Bing 而不是默认引擎；刚才首页跳转错了，应该打开设置页…" style="width:100%;box-sizing:border-box;height:110px;border:1px solid #d7dde6;border-radius:8px;padding:10px;font-size:14px;resize:vertical;"></textarea>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+            '<div style="font-size:16px;font-weight:700;color:#14355f;">✎ 纠错 · AI 错题本</div>' +
+            '<button id="caidMistakeClear" title="清空全部错题" style="border:none;background:#f3f5f8;color:#c0392b;font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;">清空全部</button>' +
+          '</div>' +
+          '<div style="font-size:13px;color:#5a6b80;margin-bottom:8px;">指出副驾哪里出错了、应如何改正，副驾之后运行时会始终遵守。当前已存 <b id="caidMistakeCount" style="color:#2f6fc0;">0</b> 条：</div>' +
+          '<div id="caidMistakeList" style="max-height:120px;overflow:auto;margin-bottom:10px;border:1px solid #eef1f5;border-radius:8px;padding:6px;background:#fafbfc;"></div>' +
+          '<textarea id="caidMistakeText" placeholder="例：搜索时应该优先用 Bing 而不是默认引擎；刚才首页跳转错了，应该打开设置页…" style="width:100%;box-sizing:border-box;height:100px;border:1px solid #d7dde6;border-radius:8px;padding:10px;font-size:14px;resize:vertical;"></textarea>' +
           '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">' +
             '<button id="caidMistakeCancel" style="padding:8px 16px;border:1px solid #d7dde6;background:#fff;border-radius:8px;cursor:pointer;font-size:14px;color:#5a6b80;">取消</button>' +
             '<button id="caidMistakeSave" style="padding:8px 16px;border:none;background:#2f6fc0;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;">记入错题本</button>' +
@@ -280,24 +284,74 @@
         '</div>';
       document.body.appendChild(modal);
       var ta = modal.querySelector('#caidMistakeText');
+      var cntEl = modal.querySelector('#caidMistakeCount');
+      var listEl = modal.querySelector('#caidMistakeList');
       setTimeout(function () { try { ta.focus(); } catch (e) {} }, 30);
       function close() { modal.remove(); }
+      function mistTip(text, isErr) {
+        var t = document.createElement('div');
+        t.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);' + (isErr ? 'background:#c0392b;' : 'background:#14355f;') + 'color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:2147483646;box-shadow:0 6px 18px rgba(0,0,0,.3);';
+        t.textContent = text;
+        document.body.appendChild(t);
+        setTimeout(function () { t.remove(); }, 2600);
+      }
+      // 实时加载现有错题列表（可删除/清空）：让用户明确看到写入是否成功
+      function loadMistakes() {
+        try {
+          chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_GET' }, function (r) {
+            if (chrome.runtime.lastError) { if (cntEl) cntEl.textContent = '?'; return; }
+            var list = (r && r.ok && Array.isArray(r.mistakes)) ? r.mistakes : [];
+            if (cntEl) cntEl.textContent = String(list.length);
+            if (!listEl) return;
+            if (!list.length) { listEl.innerHTML = '<div style="color:#b8c1cd;font-size:13px;padding:6px;">暂无错题，副驾会严格按上面的纠错执行。</div>'; return; }
+            listEl.innerHTML = '';
+            for (var i = 0; i < list.length; i++) {
+              var item = list[i];
+              var row = document.createElement('div');
+              row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid #eef1f5;font-size:13px;color:#3a4a5c;';
+              var txtSpan = document.createElement('span');
+              txtSpan.style.cssText = 'flex:1;line-height:1.4;word-break:break-all;';
+              txtSpan.textContent = (i + 1) + '. ' + String(item.text || '');
+              var delBtn = document.createElement('button');
+              delBtn.textContent = '删';
+              delBtn.title = '删除此条';
+              delBtn.style.cssText = 'border:none;background:#fdeceb;color:#c0392b;font-size:12px;padding:2px 7px;border-radius:5px;cursor:pointer;flex-shrink:0;';
+              delBtn.addEventListener('click', function (id) {
+                return function () {
+                  try {
+                    chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_DEL', id: id }, function () { loadMistakes(); });
+                  } catch (e) {}
+                };
+              })(String(item.id));
+              row.appendChild(txtSpan);
+              row.appendChild(delBtn);
+              listEl.appendChild(row);
+            }
+          });
+        } catch (e) {}
+      }
+      loadMistakes();
       modal.querySelector('#caidMistakeCancel').addEventListener('click', close);
       modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+      modal.querySelector('#caidMistakeClear').addEventListener('click', function () {
+        if (!confirm('确定清空 AI 错题本中的全部记录吗？')) return;
+        try { chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_CLEAR' }, function () { loadMistakes(); }); } catch (e) {}
+      });
       modal.querySelector('#caidMistakeSave').addEventListener('click', function () {
         var txt = ta.value.trim();
         if (!txt) { ta.focus(); return; }
         try {
           chrome.runtime.sendMessage({ type: 'CAID_MISTAKES_ADD', text: txt, url: location.href }, function (r) {
-            close(); // noop：feedback handled below
+            if (r && r.ok && typeof r.total === 'number') {
+              mistTip('✅ 已记入 AI 错题本（当前共 ' + r.total + ' 条），副驾将始终遵守');
+            } else {
+              mistTip('❌ 写入错题本失败，请重试或检查扩展', true);
+            }
+            loadMistakes();
           });
-        } catch (e) {}
-        // 顶部轻提示反馈
-        var tip = document.createElement('div');
-        tip.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);background:#14355f;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:2147483646;box-shadow:0 6px 18px rgba(20,53,95,.35);';
-        tip.textContent = '✅ 已记入 AI 错题本，副驾将始终遵守';
-        document.body.appendChild(tip);
-        setTimeout(function () { tip.remove(); }, 2600);
+        } catch (e) {
+          mistTip('❌ 写入错题本失败：' + (e && e.message ? e.message : e), true);
+        }
       });
     }
 
