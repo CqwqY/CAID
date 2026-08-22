@@ -3,6 +3,16 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.15] - 2026-08-22
+
+### 新增（仅清凉版 caid-extension-lite）
+- **工作台「错题本」管理**：在「右键图标→选项」打开的工作台设置弹窗的【副驾】页新增「错题本（AI 纠错记录）」区块，可**查看、编辑、删除**已记录的 AI 错题。数据与网页圆球「纠错」弹窗共用 `chrome.storage.local.caidMistakes`，两边实时同步；副驾运行时仍始终遵守其中的纠错。
+
+### 内部
+- newtab.html 新增 `#mistakeAdminList` 容器；newtab-main.js 新增 `renderMistakeList()` / `saveMistakeList()`，并挂到 4 处设置弹窗打开逻辑。
+
+> ⚠️ 需重新加载扩展并刷新页面生效。
+
 ## [纯净版 v0.3.14] - 2026-08-22
 
 ### 修复（仅清凉版 caid-extension-lite）

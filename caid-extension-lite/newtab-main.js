@@ -1732,6 +1732,78 @@ caidQs('#saveCopilotBtn').addEventListener('click', async () => {
   catch (e) { return toast('保存失败：' + String(e), 'error', 4000); }
   toast('副驾配置已保存（已打开的页面下次注入生效）','success');
 });
+// ============ 错题本管理（chrome.storage.local.caidMistakes）============
+async function saveMistakeList(list) {
+  try { await chrome.storage.local.set({ caidMistakes: list }); } catch (e) {}
+}
+async function renderMistakeList() {
+  const box = caidQs('#mistakeAdminList');
+  if (!box) return;
+  let list = [];
+  try { list = (await chrome.storage.local.get('caidMistakes')).caidMistakes || []; } catch (e) {}
+  if (!Array.isArray(list)) list = [];
+  if (!list.length) {
+    box.innerHTML = '<div style="color:#9aa6b2;font-size:13px;padding:8px 0;">暂无错题记录。可在网页圆球「纠错」里新增。</div>';
+    return;
+  }
+  box.innerHTML = '';
+  list.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'border:1px solid #eef1f5;border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fafbfc;';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    head.innerHTML = '<span style="font-weight:600;font-size:13px;color:#3a4a5c;">#' + (idx + 1) + '</span>';
+    const controls = document.createElement('div');
+    controls.style.cssText = 'margin-left:auto;display:flex;gap:6px;';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn small';
+    editBtn.textContent = '编辑';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn small danger';
+    delBtn.textContent = '删除';
+    controls.appendChild(editBtn);
+    controls.appendChild(delBtn);
+    head.appendChild(controls);
+    const body = document.createElement('div');
+    body.style.cssText = 'font-size:13px;color:#5a6b80;line-height:1.5;word-break:break-all;white-space:pre-wrap;';
+    body.textContent = item.text || '';
+    row.appendChild(head);
+    row.appendChild(body);
+    editBtn.addEventListener('click', () => {
+      const ta = document.createElement('textarea');
+      ta.value = item.text || '';
+      ta.style.cssText = 'width:100%;box-sizing:border-box;min-height:70px;border:1px solid #d7dde6;border-radius:6px;padding:8px;font-size:13px;resize:vertical;';
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:8px;';
+      const save = document.createElement('button');
+      save.className = 'btn small primary';
+      save.textContent = '保存';
+      const cancel = document.createElement('button');
+      cancel.className = 'btn small';
+      cancel.textContent = '取消';
+      actions.appendChild(cancel);
+      actions.appendChild(save);
+      const holder = document.createElement('div');
+      holder.appendChild(ta);
+      holder.appendChild(actions);
+      row.replaceChild(holder, body);
+      save.addEventListener('click', async () => {
+        const v = ta.value.trim();
+        if (v) { item.text = v; item.ts = Date.now(); await saveMistakeList(list); }
+        renderMistakeList();
+      });
+      cancel.addEventListener('click', renderMistakeList);
+      ta.focus();
+    });
+    delBtn.addEventListener('click', async () => {
+      if (!confirm('删除该条错题？')) return;
+      const nl = list.filter(x => String(x.id) !== String(item.id));
+      await saveMistakeList(nl);
+      renderMistakeList();
+    });
+    box.appendChild(row);
+  });
+}
 // ============ 阅读记录 & 推荐设置（chrome.storage.local.caidReadPrefs）============
 async function fillReadPrefs() {
   try {
@@ -2062,7 +2134,7 @@ function switchSettingsTab(name) {
   refreshIcons();
 }
 function openServerSettings() {
-  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); fillReadPrefs(); switchSettingsTab('servers'); });
+  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); fillReadPrefs(); renderMistakeList(); switchSettingsTab('servers'); });
 }
 
 const addServerBtn = caidQs('#addServerBtn');
@@ -3133,7 +3205,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList(); }), 150);
   }
 }
 
@@ -3325,7 +3397,7 @@ function renderCachedAiCard(body, data) {
     card.querySelectorAll('.smart-ai-btn')?.forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.act === 'settings') {
-          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); });
+          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList(); });
         } else { card.classList.add('dismissed'); }
       });
     });
@@ -3381,7 +3453,7 @@ async function renderSmartAiSuggestion() {
     fallback.querySelectorAll('.smart-ai-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.act === 'settings') {
-          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); });
+          openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList(); });
         } else { fallback.classList.add('dismissed'); }
       });
     });
