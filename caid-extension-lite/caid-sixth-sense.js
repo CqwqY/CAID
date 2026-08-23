@@ -16,10 +16,13 @@
   var HOST = location.hostname || '';
   var url = location.href || '';
 
-  // 主题：浅色液态玻璃=默认 / 深色=可选，与工作台、副驾共享 caidTheme
+  // 主题：跟随系统=默认 / 浅色 / 深色，与工作台、副驾共享 caidTheme
   var SIXTH_THEME = 'light';
-  function applySixthTheme(theme) {
-    SIXTH_THEME = theme === 'dark' ? 'dark' : 'light';
+  function applySixthTheme(mode) {
+    if (mode === 'system') {
+      try { mode = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { mode = 'light'; }
+    }
+    SIXTH_THEME = mode === 'dark' ? 'dark' : 'light';
     var b = document.getElementById('caidSixthBubble');
     if (b) { try { styleBubble(b); } catch (e) {} }
   }
@@ -32,6 +35,15 @@
         chrome.storage.onChanged.addListener(function (changes, area) {
           if (area === 'local' && changes && changes.caidTheme) applySixthTheme(changes.caidTheme.newValue);
         });
+        // 跟随系统：系统深浅变化时自动切换（仅当当前模式为 system）
+        if (window.matchMedia) {
+          var mql = window.matchMedia('(prefers-color-scheme: dark)');
+          var onSys = function () {
+            chrome.storage.local.get('caidTheme', function (g2) { if ((g2 && g2.caidTheme) === 'system') applySixthTheme('system'); });
+          };
+          if (mql.addEventListener) mql.addEventListener('change', onSys);
+          else if (mql.addListener) mql.addListener(onSys);
+        }
       }
     } catch (e) {}
   }
@@ -486,13 +498,37 @@
       '</svg>';
   }
 
+  // 液态玻璃：注入折射滤镜 SVG + 阶梯回退样式，仅注入一次（copilot 可能已注入 #caid-refract，故先判存在）
+  function ensureSixthGlass() {
+    try {
+      if (!document.getElementById('caid-refract')) {
+        var wrap = document.createElement('div');
+        wrap.innerHTML = '<svg width="0" height="0" style="position:absolute;width:0;height:0" aria-hidden="true"><defs><filter id="caid-refract" colorInterpolationFilters="sRGB" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="2" seed="14" result="noise"/><feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0" result="noiseA"/><feDisplacementMap in="SourceGraphic" in2="noiseA" scale="26" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>';
+        var svg = wrap.querySelector('svg');
+        if (svg) document.body.appendChild(svg);
+      }
+      if (!document.getElementById('caid-sixth-glass-style')) {
+        var st = document.createElement('style');
+        st.id = 'caid-sixth-glass-style';
+        st.textContent =
+          '/* 第六感气泡液态玻璃：先 saturate 毛玻璃作基线，再声明 url(#caid-refract) 折射版，Safari/Firefox 自动回退 */\n' +
+          '#caidSixthBubble{-webkit-backdrop-filter:blur(12px) saturate(160%);backdrop-filter:blur(12px) saturate(160%);}\n' +
+          '#caidSixthBubble{-webkit-backdrop-filter:blur(12px) url(#caid-refract) saturate(150%) brightness(1.03);backdrop-filter:blur(12px) url(#caid-refract) saturate(150%) brightness(1.03);}';
+        document.head.appendChild(st);
+      }
+    } catch (e) {}
+  }
+
   function styleBubble(b) {
     if (!b || !b.querySelector) return;
     var dark = SIXTH_THEME === 'dark';
-    // 气泡容器：浅色=磨砂白玻璃 / 深色=深蓝玻璃
-    b.style.background = dark ? 'rgba(23,38,66,.96)' : 'rgba(255,255,255,.92)';
-    b.style.borderColor = dark ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.7)';
-    b.style.boxShadow = dark ? '0 12px 34px rgba(0,0,0,.4)' : '0 12px 34px rgba(40,70,130,.18)';
+    // 气泡容器：浅色=磨砂白玻璃 / 深色=深蓝玻璃（留一点透明度让折射/背景透出来）
+    b.style.background = dark ? 'rgba(15,23,34,.55)' : 'rgba(255,255,255,.45)';
+    b.style.borderColor = dark ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.72)';
+    // 液态玻璃高光：顶部高光 + 底部内阴影 + 边缘折射发光 + 深度
+    b.style.boxShadow = dark
+      ? '0 12px 34px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 1px rgba(0,0,0,.5), inset 2px 2px 8px rgba(120,160,255,.08), inset -2px -2px 8px rgba(0,0,0,.35)'
+      : '0 12px 34px rgba(40,70,130,.18), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 1px rgba(90,120,180,.10), inset 2px 2px 8px rgba(255,255,255,.25), inset -2px -2px 8px rgba(100,140,220,.12)';
     b.style.color = dark ? '#e8eef7' : '#1c2433';
     var title = b.querySelector('.sixth-title');
     if (title) title.style.color = dark ? '#ffffff' : '#1c2433';
@@ -509,13 +545,13 @@
 
   function showBubble(sug, rule) {
     try {
+      ensureSixthGlass();
       var old = document.getElementById('caidSixthBubble');
       if (old) old.remove();
       var b = document.createElement('div');
       b.id = 'caidSixthBubble';
       b.style.cssText = 'position:fixed;right:80px;bottom:90px;z-index:2147483645;max-width:320px;width:auto;' +
         'border:1px solid;border-radius:14px;' +
-        'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'padding:12px 14px;font-size:14px;line-height:1.5;' +
         'display:flex;align-items:flex-start;gap:10px;';
       var left = document.createElement('div');

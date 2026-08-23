@@ -470,9 +470,15 @@
   });
 
   // 副驾 / 第六感主题同步：把 caidTheme 写到 <html> 的 data-caid-cp-theme，
-  // 供 MAIN world 的副驾浮球（caid-copilot.js）CSS 变量切换（浅色液态玻璃=默认 / 深色=可选）。
+  // 供 MAIN world 的副驾浮球（caid-copilot.js）CSS 变量切换（跟随系统=默认 / 浅色 / 深色）。
+  function __caidResolveTheme(theme) {
+    if (theme === 'system') {
+      try { return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { return 'light'; }
+    }
+    return theme === 'dark' ? 'dark' : 'light';
+  }
   function __caidApplyTheme(theme, silent) {
-    var t = theme === 'dark' ? 'dark' : 'light';
+    var t = __caidResolveTheme(theme);
     try { document.documentElement.setAttribute('data-caid-cp-theme', t); } catch (e) {}
     if (!silent) {
       try { window.postMessage({ __caid: true, kind: 'theme_applied', theme: t }, '*'); } catch (e2) {}
@@ -489,6 +495,19 @@
         __caidApplyTheme(changes.caidTheme.newValue);
       }
     });
+  } catch (e) {}
+  // 跟随系统：系统深浅变化时自动切换（仅当当前模式为 system）
+  try {
+    if (window.matchMedia) {
+      var __mql = window.matchMedia('(prefers-color-scheme: dark)');
+      var __onSys = function () {
+        chrome.storage.local.get('caidTheme', function (g2) {
+          if ((g2 && g2.caidTheme) === 'system') __caidApplyTheme('system');
+        });
+      };
+      if (__mql.addEventListener) __mql.addEventListener('change', __onSys);
+      else if (__mql.addListener) __mql.addListener(__onSys);
+    }
   } catch (e) {}
   window.addEventListener('message', function (e) {
     var d = e && e.data;

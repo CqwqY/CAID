@@ -3266,37 +3266,51 @@ if (pluginEditorTa) {
   if (el) el.addEventListener('input', savePluginDraftDeb);
 });
 
-// ============ 主题（浅色液态玻璃默认 / 深色）============
-const THEME_KEY = 'caidTheme';   // chrome.storage.local，工作台/副驾/第六感共享
-function applyTheme(theme) {
-  const t = theme === 'dark' ? 'dark' : 'light';
+// ============ 主题（跟随系统=默认 / 浅色 / 深色）============
+const THEME_KEY = 'caidTheme';   // chrome.storage.local，取值 'system'|'light'|'dark'，工作台/副驾/第六感共享
+const SYSTEM_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function resolveTheme(mode) {
+  // 把用户选择的模式解析成真正生效的 light/dark：system 模式跟随操作系统深浅
+  if (mode === 'system') return (SYSTEM_DARK && SYSTEM_DARK.matches) ? 'dark' : 'light';
+  return mode === 'dark' ? 'dark' : 'light';
+}
+function applyTheme(mode) {
+  const t = resolveTheme(mode);
   document.documentElement.setAttribute('data-theme', t);
-  // 设置面板同步选中态
+  // 设置面板同步选中态（显示用户的模式选项，非解析后的结果）
   const sel = caidQs('#themeSelect');
-  if (sel) sel.value = t;
+  if (sel) sel.value = (mode === 'system' ? 'system' : t);
   return t;
 }
 async function applyThemeFromStorage() {
-  try {
-    const data = await chrome.storage.local.get(THEME_KEY);
-    applyTheme((data && data[THEME_KEY]) || 'light');
-  } catch (e) { applyTheme('light'); }
   const sel = caidQs('#themeSelect');
   if (sel && !sel.dataset.bound) {
     sel.dataset.bound = '1';
     sel.addEventListener('change', async (e) => {
-      const t = e.target.value === 'dark' ? 'dark' : 'light';
-      applyTheme(t);
-      try { await chrome.storage.local.set({ [THEME_KEY]: t }); } catch (e2) {}
-      try { chrome.runtime.sendMessage({ type: 'CAID_THEME_CHANGED', theme: t }); } catch (e3) {}
+      const v = e.target.value;
+      const mode = (v === 'light' || v === 'dark' || v === 'system') ? v : 'system';
+      applyTheme(mode);
+      try { await chrome.storage.local.set({ [THEME_KEY]: mode }); } catch (e2) {}
+      try { chrome.runtime.sendMessage({ type: 'CAID_THEME_CHANGED', theme: mode }); } catch (e3) {}
       toast('主题已切换','success');
+    });
+  }
+  // 从存储恢复；未设置 → 跟随系统
+  try {
+    const data = await chrome.storage.local.get(THEME_KEY);
+    applyTheme((data && data[THEME_KEY]) || 'system');
+  } catch (e) { applyTheme('system'); }
+  // 跟随系统：系统深浅变化时自动切换
+  if (SYSTEM_DARK && SYSTEM_DARK.addEventListener) {
+    SYSTEM_DARK.addEventListener('change', async () => {
+      try { const d = await chrome.storage.local.get(THEME_KEY); applyTheme((d && d[THEME_KEY]) || 'system'); } catch (e) {}
     });
   }
   // 跨页面（如另一标签页切换主题）时同步
   try {
     chrome.storage.onChanged.addListener(function (changes, area) {
       if (area === 'local' && changes[THEME_KEY]) {
-        applyTheme((changes[THEME_KEY].newValue) || 'light');
+        applyTheme(changes[THEME_KEY].newValue || 'system');
       }
     });
   } catch (e) {}

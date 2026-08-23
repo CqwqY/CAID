@@ -331,10 +331,10 @@
   // ---------- 面板 UI（自带样式，不依赖宿主页 CSS）----------
   const STYLE = `
 /* ===== CAID 副驾主题（浅色液态玻璃=默认 / 深色=可选），变量作用域隔离，不污染宿主页 ===== */
-html[data-caid-cp-theme="light"]{--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
-html[data-caid-cp-theme="dark"]{--cp-bg:#0f1722;--cp-bg-2:#10243b;--cp-bg-3:#0b1420;--cp-ink:#e6f1fb;--cp-muted:#9fb6cf;--cp-muted-2:#5b7187;--cp-rule:rgba(255,255,255,.10);--cp-rule-2:#1f3650;--cp-accent:#5b8dff;--cp-accent-2:#3a7bc8;--cp-accent-deep:#2a6bb8;--cp-green:#3dd68c;--cp-green-soft:#0b2a22;--cp-amber:#ffd479;--cp-amber-glow:#ffd479;--cp-amber-soft:#2a2416;--cp-red:#ff6b6b;--cp-red-soft:#2a1414;--cp-blue-soft:#0f2036;--cp-code-bg:#08111c;--cp-code-ink:#9fe1cb;--cp-glass:rgba(15,23,34,.72);--cp-glass-border:#294a6b;--cp-shadow:0 8px 30px rgba(0,0,0,.5);}
+html[data-caid-cp-theme="light"]{--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.42);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);--cp-shine:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 1px rgba(90,120,180,.12),inset 2px 2px 10px rgba(255,255,255,.3),inset -2px -2px 10px rgba(100,140,220,.14);}
+html[data-caid-cp-theme="dark"]{--cp-bg:#0f1722;--cp-bg-2:#10243b;--cp-bg-3:#0b1420;--cp-ink:#e6f1fb;--cp-muted:#9fb6cf;--cp-muted-2:#5b7187;--cp-rule:rgba(255,255,255,.10);--cp-rule-2:#1f3650;--cp-accent:#5b8dff;--cp-accent-2:#3a7bc8;--cp-accent-deep:#2a6bb8;--cp-green:#3dd68c;--cp-green-soft:#0b2a22;--cp-amber:#ffd479;--cp-amber-glow:#ffd479;--cp-amber-soft:#2a2416;--cp-red:#ff6b6b;--cp-red-soft:#2a1414;--cp-blue-soft:#0f2036;--cp-code-bg:#08111c;--cp-code-ink:#9fe1cb;--cp-glass:rgba(15,23,34,.55);--cp-glass-border:#294a6b;--cp-shadow:0 8px 30px rgba(0,0,0,.5);--cp-shine:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 1px rgba(0,0,0,.5),inset 2px 2px 10px rgba(120,160,255,.1),inset -2px -2px 8px rgba(0,0,0,.4);}
 /* 无主题标记（旧版 / 切换动画前）默认浅色 */
-html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
+html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.42);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);--cp-shine:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 1px rgba(90,120,180,.12),inset 2px 2px 10px rgba(255,255,255,.3),inset -2px -2px 10px rgba(100,140,220,.14);}
 #caidExtCopilot{position:fixed;top:0;right:0;width:400px;height:100vh;max-height:100vh;z-index:2147483647;background:var(--cp-glass);backdrop-filter:blur(var(--cp-blur,12px));-webkit-backdrop-filter:blur(var(--cp-blur,12px));color:var(--cp-ink);font:13px/1.5 system-ui,sans-serif;display:none;box-shadow:var(--cp-shadow);border-left:1px solid var(--cp-glass-border);font-family:inherit;}\n#caidExtCopilot.open{display:flex;flex-direction:column;}
 #caidExtCopilot *{box-sizing:border-box;}
 #caidExtCopilot .cp-head{padding:12px 14px;background:var(--cp-bg-2);display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--cp-rule-2);}
@@ -439,8 +439,8 @@ html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6ed
 /* ============ 圆球按钮（状态呼吸灯）============ */
 #caidLauncher[data-caid-ready="1"]{width:44px;height:44px;}
 /* 悬浮球按下级主题跟随（浅色液态玻璃=默认 / 深色=可选），用 !important 覆盖内联渐变 */
-html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle at 30% 30%,#2f6fc0,#14355f)!important;box-shadow:0 5px 16px rgba(20,53,95,.55),inset 0 1px 0 rgba(255,255,255,.25)!important;}
-#caidLauncher{background:radial-gradient(circle at 30% 30%,#9fc2ff,#4c7dff)!important;box-shadow:0 5px 16px rgba(76,125,255,.45),inset 0 1px 0 rgba(255,255,255,.7)!important;}
+html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle at 30% 30%,#2f6fc0,#14355f)!important;box-shadow:0 5px 16px rgba(20,53,95,.55),inset 0 1px 0 rgba(255,255,255,.30),inset 0 -1px 2px rgba(0,0,0,.45),inset -2px -3px 6px rgba(0,0,0,.25)!important;}
+#caidLauncher{background:radial-gradient(circle at 30% 30%,#9fc2ff,#4c7dff)!important;box-shadow:0 5px 16px rgba(76,125,255,.45),inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 2px rgba(30,80,190,.30),inset -2px -3px 6px rgba(40,90,180,.16)!important;}
 #caidLauncher .caid-ball-ic{display:flex;align-items:center;justify-content:center;pointer-events:none;margin:0;line-height:0;width:100%;height:100%;}
 #caidLauncher .caid-ball-ic svg{margin:0!important;display:block!important;vertical-align:top;}
 #caidLauncher.state-running{background:radial-gradient(circle at 30% 30%,#3dd68c,#1d7a4f)!important;animation:caidBreatheG 1.6s ease-in-out infinite;}
@@ -490,6 +490,11 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
 #caidRecoBar .reco-btn.primary:hover{background:var(--cp-accent-2);}
 #caidRecoBar .reco-btn.ghost{background:transparent;color:var(--cp-muted);border:1px solid var(--cp-rule-2);}
 #caidRecoBar .reco-btn.ghost:hover{background:var(--cp-bg-3);}
+/* 液态玻璃：给所有磨砂玻璃面叠加折射滤镜(refraction)与高光(inset box-shadow)。url(#caid-refract) 仅 Chrome/Edge 生效，
+   Safari/Firefox 会自动丢弃最后一条 url() 声明、退回 saturate 毛玻璃，无需额外判定 */
+#caidExtCopilot,#caidQuickBar,#caidToastWrap .caid-toast,#caidFinalReply,#caidRecoBar{box-shadow:var(--cp-shadow),var(--cp-shine);}
+#caidExtCopilot,#caidQuickBar,#caidToastWrap .caid-toast,#caidFinalReply,#caidRecoBar{-webkit-backdrop-filter:blur(var(--cp-blur,12px)) saturate(160%);backdrop-filter:blur(var(--cp-blur,12px)) saturate(160%);}
+#caidExtCopilot,#caidQuickBar,#caidToastWrap .caid-toast,#caidFinalReply,#caidRecoBar{-webkit-backdrop-filter:blur(var(--cp-blur,12px)) url(#caid-refract) saturate(150%) brightness(1.03);backdrop-filter:blur(var(--cp-blur,12px)) url(#caid-refract) saturate(150%) brightness(1.03);}
 `;
   // 自建启动按钮：仅当 content.js（ISOLATED world）未创建 #caidLauncher 时调用。
   // 用于扩展页 / 自己接管的 newtab —— content script 不注入该环境，没有常驻启动按钮。
@@ -564,6 +569,15 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
     style.textContent = STYLE;
     document.head.appendChild(style);
 
+    // 注入液态玻璃折射滤镜（仅 Chrome/Edge 用于 backdrop-filter: url(#caid-refract)）。
+    // 用 div.innerHTML 解析以正确带出 SVG 命名空间；若已被本页其它脚本注入则跳过。
+    if (!document.getElementById('caid-refract')) {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = '<svg width="0" height="0" style="position:absolute;width:0;height:0" aria-hidden="true"><defs><filter id="caid-refract" colorInterpolationFilters="sRGB" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="2" seed="14" result="noise"/><feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0" result="noiseA"/><feDisplacementMap in="SourceGraphic" in2="noiseA" scale="26" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>';
+      const svg = wrap.querySelector('svg');
+      if (svg) document.body.appendChild(svg);
+    }
+
     const aside = document.createElement('aside');
     aside.id = 'caidExtCopilot';
     // 面板默认收起。首次单击圆球只弹横向输入条，而非直接铺开整块面板；
@@ -607,8 +621,15 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
   }
   // 副驾主题应用：优先 chrome.storage（扩展页/新标签 MAIN world 有 chrome API），
   // 普通网页由 content.js 已在 <html> 写入 data-caid-cp-theme，直接读取即可。
+  // mode 支持 'system'（跟随系统）| 'light' | 'dark'，这里解析成实际生效的 light/dark。
+  function resolveCpTheme(mode) {
+    if (mode === 'system') {
+      try { return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { return 'light'; }
+    }
+    return mode === 'dark' ? 'dark' : 'light';
+  }
   function applyCpTheme(theme) {
-    var t = theme === 'dark' ? 'dark' : 'light';
+    var t = resolveCpTheme(theme);
     try { document.documentElement.setAttribute('data-caid-cp-theme', t); } catch (e) {}
     return t;
   }
@@ -617,11 +638,25 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get(['caidTheme'], function (got) {
-          applyCpTheme(got && got.caidTheme);
+          var mode = got && got.caidTheme;
+          applyCpTheme(mode === 'system' ? 'system' : mode);
           try {
             chrome.storage.onChanged.addListener(function (changes, area) {
               if (area === 'local' && changes && changes.caidTheme) applyCpTheme(changes.caidTheme.newValue);
             });
+          } catch (e2) {}
+          // 跟随系统：系统深浅变化时自动切换（仅当当前模式为 system）
+          try {
+            if (window.matchMedia) {
+              var mql = window.matchMedia('(prefers-color-scheme: dark)');
+              var onSys = function () {
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                  chrome.storage.local.get(['caidTheme'], function (g2) { if ((g2 && g2.caidTheme) === 'system') applyCpTheme('system'); });
+                }
+              };
+              if (mql.addEventListener) mql.addEventListener('change', onSys);
+              else if (mql.addListener) mql.addListener(onSys);
+            }
           } catch (e2) {}
         });
         applied = true;

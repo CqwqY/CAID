@@ -5,6 +5,13 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.24] - 2026-08-23
+
+### 优化（仅纯净版 caid-extension-lite）
+- **主题三选项：跟随系统（默认）/ 浅色 / 深色**：设置页「常规 → 主题」新增「跟随系统」选项并设为默认。选择经 `chrome.storage.local.caidTheme`（取值 `system`｜`light`｜`dark`）存储，工作台（`newtab-main.js`）、副驾（`caid-copilot.js`）、第六感（`caid-sixth-sense.js`）及普通网页桥接（`content.js`）均在 `system` 模式下用 `matchMedia('(prefers-color-scheme: dark)')` 解析实际深浅，并监听系统深浅变化自动切换。未设置主题时默认跟随系统，不再固定浅色。
+- **液态玻璃质感升级**：工作台模块卡、副驾面板/输入条/toast/终答浮层/建议条与第六感气泡统一引入 SVG `feTurbulence`+`feDisplacementMap` 折射滤镜（仅 Chrome/Edge 生效，Safari/Firefox 通过叠加声明自动回退毛玻璃）与四层 `inset box-shadow` 高光，玻璃更有折射与高光辨识度。
+- **玻璃更透光**：工作台、副驾与第六感气泡的玻璃背景透明度整体下调（浅色为主），让背景底色更透出来。
+
 ## [纯净版 v0.3.23] - 2026-08-23
 
 ### 新增（仅纯净版 caid-extension-lite，测试版）

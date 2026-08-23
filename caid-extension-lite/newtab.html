@@ -33,16 +33,22 @@
   --danger:   #ef4b6b;      /* 红 */
   --purple:   #9b6cff;      /* 紫 */
 
-  /* 玻璃态体系（浅色磨砂） */
-  --glass:        rgba(255,255,255,0.62);   /* 兼容旧变量名 */
-  --glass-bg:     rgba(255,255,255,0.62);
-  --glass-bg-2:   rgba(255,255,255,0.80);
+  /* 玻璃态体系（浅色磨砂，偏透光） */
+  --glass:        rgba(255,255,255,0.42);   /* 兼容旧变量名 */
+  --glass-bg:     rgba(255,255,255,0.42);
+  --glass-bg-2:   rgba(255,255,255,0.58);
   --glass-border: rgba(140,160,210,0.55);   /* 看得见的浅蓝描边 */
   --glass-border-2: rgba(255,255,255,0.85); /* 顶部高光 */
   --glass-blur:   12px;
   --shadow:       0 12px 34px rgba(70,100,170,0.20);
   --shadow-soft:  0 4px 16px rgba(70,100,170,0.12);
   --glass-glow:   inset 0 1px 0 rgba(255,255,255,0.8);
+  /* 液态玻璃：顶部高光 + 底部内阴影 + 边缘折射高光 + 深度，让玻璃"有辨识度" */
+  --glass-shine:
+    inset 0 1px 0 rgba(255,255,255,0.90),
+    inset 0 -1px 1px rgba(90,120,180,0.10),
+    inset 2px 2px 10px rgba(255,255,255,0.34),
+    inset -2px -2px 10px rgba(100,140,220,0.12);
 
   --radius:    14px;
   --radius-sm: 8px;
@@ -63,15 +69,21 @@ html[data-theme="dark"] {
   --warn:     #ffb454;
   --danger:   #ff5c7a;
   --purple:   #b48bff;
-  --glass:        rgba(22,25,38,0.55);      /* 兼容旧变量名 */
-  --glass-bg:     rgba(22,25,38,0.55);
-  --glass-bg-2:   rgba(30,34,52,0.45);
+  --glass:        rgba(22,25,38,0.45);      /* 兼容旧变量名 */
+  --glass-bg:     rgba(22,25,38,0.45);
+  --glass-bg-2:   rgba(30,34,52,0.38);
   --glass-border: rgba(255,255,255,0.14);
   --glass-border-2: rgba(255,255,255,0.18);
   --glass-blur:   8px;
   --shadow:       0 8px 32px rgba(0,0,0,0.45);
   --shadow-soft:  0 4px 16px rgba(0,0,0,0.28);
   --glass-glow:   inset 0 1px 0 rgba(255,255,255,0.08);
+  /* 液态玻璃（深色）：暗调下的高光/内阴影，保证边缘有辨识度 */
+  --glass-shine:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 1px rgba(0,0,0,0.5),
+    inset 2px 2px 10px rgba(120,160,255,0.09),
+    inset -2px -2px 8px rgba(0,0,0,0.40);
 }
 html[data-theme="dark"] body::before {
   background:
@@ -468,7 +480,11 @@ a:hover { text-decoration: underline; }
 .dash-task .t { flex-shrink: 0; color: var(--muted-2); font-variant-numeric: tabular-nums; }
 .dash-empty { color: var(--muted); font-size: 12.5px; padding: 6px 0; }
 .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; align-content: start; }
-.module-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px; cursor: pointer; transition: .18s; display: flex; flex-direction: column; gap: 10px; min-height: 96px; box-shadow: var(--glass-glow), var(--shadow-soft); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
+.module-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px; cursor: pointer; transition: .18s; display: flex; flex-direction: column; gap: 10px; min-height: 96px; box-shadow: var(--glass-shine), var(--shadow-soft); }
+/* 液态玻璃折射（仅 Chrome/Edge 支持 backdrop-filter: url(#svg)）：先声明 saturate 毛玻璃作基线，
+   再声明带 url(#caid-refract) 的折射版。不理解 url() 语法的浏览器会自动丢弃最后一条，安全回退到毛玻璃。 */
+.module-card { -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%); backdrop-filter: blur(var(--glass-blur)) saturate(160%); }
+.module-card { -webkit-backdrop-filter: blur(var(--glass-blur)) url(#caid-refract) saturate(150%) brightness(1.03); backdrop-filter: blur(var(--glass-blur)) url(#caid-refract) saturate(150%) brightness(1.03); }
 .module-card:hover { transform: translateY(-2px); border-color: rgba(91,141,255,.5); background: var(--glass-bg-2); }
 .module-card .mc-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(91,141,255,.16); color: var(--accent); }
 .module-card .mc-ic svg { width: 20px; height: 20px; }
@@ -2613,6 +2629,17 @@ a:hover { text-decoration: underline; }
 </style>
 
 </head><body>
+<!-- 液态玻璃折射滤镜：feTurbulence 生成噪声，feDisplacementMap 让背景像素弯曲（Chrome/Edge 生效，其余浏览器见 @supports 兜底） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="caid-refract" colorInterpolationFilters="sRGB" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="2" seed="14" result="noise"/>
+      <!-- 补 alpha：避免 Chromium 预乘 alpha 把位移归零 -->
+      <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0" result="noiseA"/>
+      <feDisplacementMap in="SourceGraphic" in2="noiseA" scale="26" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
 <div class="app">
   <div class="ctx-menu" id="pluginCtxMenu">
     <button class="ctx-item" id="pluginCtxEdit"><i data-lucide="pencil"></i>编辑插件</button>
@@ -2919,13 +2946,14 @@ a:hover { text-decoration: underline; }
       <div class="settings-panel" data-panel="general" style="display:none;">
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="palette"></i>主题外观</div>
-          <div class="setting-desc">选择工作台与副驾的配色风格。浅色为液态玻璃磨砂质感，深色为低光护眼风格。</div>
+          <div class="setting-desc">选择工作台与副驾的配色风格。跟随系统默认按操作系统深浅自动切换，也可固定为浅色液态玻璃或深色低光。</div>
           <div class="setting-row">
             <div class="setting-row-label">
               <div class="setting-name">主题</div>
               <div class="setting-desc">同步应用到工作台、副驾浮球与第六感气泡</div>
             </div>
             <select class="form-select" id="themeSelect" style="width:auto;">
+              <option value="system">跟随系统（默认）</option>
               <option value="light">浅色 · 液态玻璃</option>
               <option value="dark">深色 · 低光</option>
             </select>
