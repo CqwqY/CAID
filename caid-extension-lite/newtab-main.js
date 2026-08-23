@@ -2729,58 +2729,7 @@ async function savePlugins(list) {
   else LS.set(PLUGIN_STORE_KEY, list);
 }
 
-function injectPluginSection(def) {
-  const sections = caidQs('#sidebarSections') || caidQs('.sidebar-sections');
-  if (!sections) return;
-  // 防重复注入：registry 已有则跳过
-  if (pluginRegistry[def.id]) return;
-  // DOM 残留同名区块则先清理
-  const stale = caidQs('.sidebar-section[data-comp="plugin:' + def.id + '"]');
-  if (stale) stale.remove();
-  const sec = document.createElement('div');
-  sec.className = 'sidebar-section';
-  sec.dataset.comp = 'plugin:' + def.id;
-  sec.innerHTML =
-    '<div class="sidebar-header">' +
-      '<span class="sidebar-icon"><i data-lucide="' + escapeHtml(def.icon || 'puzzle') + '"></i></span>' +
-      '<span class="sidebar-title">' + escapeHtml(def.name || def.id) + '</span>' +
-      '<span class="plugin-kebab" title="更多操作"><i data-lucide="more-vertical"></i></span>' +
-      '<span class="sidebar-chevron"><i data-lucide="chevron-down"></i></span>' +
-    '</div>' +
-    // mount 视图已迁移到主内容区「插件」挂载点（服务器监控下方），侧边栏仅保留管理入口
-    '<div class="sidebar-body"><div class="plugin-body"><div class="plugin-inline-hint">内容显示在主区域</div></div></div>';
-  const settingsSec = caidQs('.sidebar-section[data-comp="settings"]');
-  if (settingsSec) sections.insertBefore(sec, settingsSec);
-  else sections.appendChild(sec);
-  const collapsed = state.uiPrefs.collapsed && state.uiPrefs.collapsed['plugin:' + def.id];
-  if (collapsed) sec.classList.add('collapsed');
-  sec.querySelector('.sidebar-header').addEventListener('click', (e) => {
-    // kebab 按钮单独处理，不触发折叠
-    if (e.target.closest('.plugin-kebab')) return;
-    sec.classList.toggle('collapsed');
-    state.uiPrefs.collapsed = state.uiPrefs.collapsed || {};
-    state.uiPrefs.collapsed['plugin:' + def.id] = sec.classList.contains('collapsed');
-    LS.set('uiPrefs', state.uiPrefs);
-  });
-  // 右键 header 区域：删除插件
-  const header = sec.querySelector('.sidebar-header');
-  header.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    showPluginCtxMenu(e.clientX, e.clientY, def.id, def.name || def.id);
-  });
-  // kebab 按钮：左键弹出菜单
-  const kebab = sec.querySelector('.plugin-kebab');
-  if (kebab) kebab.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const r = kebab.getBoundingClientRect();
-    showPluginCtxMenu(r.left, r.bottom + 4, def.id, def.name || def.id);
-  });
-  pluginRegistry[def.id] = { def: def, iframe: null, mounted: true };
-  if (window.lucide) lucide.createIcons();
-}
-
-// ============ 主内容区插件挂载点（服务器监控列表下方，mount 视图）============
+// ============ 主内容区插件挂载点（mount 视图）：与功能卡片平铺混排 ============
 function injectPluginZone(def) {
   const zone = caidQs('#pluginZone');
   const zoneBody = caidQs('#pluginZoneBody');
@@ -2797,6 +2746,7 @@ function injectPluginZone(def) {
     '<div class="plugin-zone-card-head">' +
       '<i data-lucide="' + escapeHtml(def.icon || 'puzzle') + '" style="width:14px;height:14px;"></i>' +
       '<span>' + escapeHtml(def.name || def.id) + '</span>' +
+      '<span class="plugin-kebab" title="更多操作"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></span>' +
     '</div>';
   const iframe = document.createElement('iframe');
   iframe.className = 'plugin-frame';
@@ -2807,11 +2757,29 @@ function injectPluginZone(def) {
   iframe.style.background = 'transparent';
   iframe.src = pluginSandboxUrl();   // 关键：不设 src 帧停在 about:blank，沙箱页不加载
   card.appendChild(iframe);
+  // 头部交互：左键点击非 kebab 区域折叠/展开；右键或 kebab 弹出管理菜单
+  const head = card.querySelector('.plugin-zone-card-head');
+  const kebab = card.querySelector('.plugin-kebab');
+  head.addEventListener('click', (e) => {
+    if (e.target.closest('.plugin-kebab')) return;
+    card.classList.toggle('collapsed');
+    try { LS.set('uiPrefs', state.uiPrefs); } catch (e2) {}
+  });
+  head.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showPluginCtxMenu(e.clientX, e.clientY, def.id, def.name || def.id);
+  });
+  kebab.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = kebab.getBoundingClientRect();
+    showPluginCtxMenu(r.left, r.bottom + 4, def.id, def.name || def.id);
+  });
   zoneBody.appendChild(card);
   zone.style.display = 'contents';
   if (window.lucide) lucide.createIcons();
-  const reg = pluginRegistry[def.id];
-  if (reg) reg.iframe = iframe;
+  const reg = pluginRegistry[def.id] || (pluginRegistry[def.id] = { def: def, iframe: iframe, mounted: true });
+  reg.iframe = iframe;
   mountPluginInFrame(iframe, def.code, def.id, 'mount', def.name);
 }
 
@@ -2883,7 +2851,7 @@ function renderPluginSections() {
   return getPlugins().then(list => {
     if (myToken !== _pluginRenderToken) return;   // 有更新的渲染任务在跑，本次作废
     list.filter(p => p.enabled !== false).forEach(p => {
-      if (p.code) { injectPluginSection(p); injectPluginZone(p); }
+      if (p.code) { injectPluginZone(p); }
       if (p.code && p.hasPanel && !p.panelHidden) injectRightPanel(p);
     });
     // 兼容副驾/外部保存的插件：缺 hasPanel/hasModal 元数据 → 沙箱校验补齐并写回，
