@@ -34,13 +34,15 @@
   --purple:   #9b6cff;      /* 紫 */
 
   /* 玻璃态体系（浅色磨砂） */
-  --glass:        rgba(255,255,255,0.60);   /* 兼容旧变量名 */
-  --glass-bg:     rgba(255,255,255,0.60);
-  --glass-bg-2:   rgba(255,255,255,0.78);
-  --glass-border: rgba(255,255,255,0.65);
-  --glass-blur:   10px;
-  --shadow:       0 10px 36px rgba(40,70,130,0.14);
-  --shadow-soft:  0 4px 18px rgba(40,70,130,0.10);
+  --glass:        rgba(255,255,255,0.62);   /* 兼容旧变量名 */
+  --glass-bg:     rgba(255,255,255,0.62);
+  --glass-bg-2:   rgba(255,255,255,0.80);
+  --glass-border: rgba(140,160,210,0.55);   /* 看得见的浅蓝描边 */
+  --glass-border-2: rgba(255,255,255,0.85); /* 顶部高光 */
+  --glass-blur:   12px;
+  --shadow:       0 12px 34px rgba(70,100,170,0.20);
+  --shadow-soft:  0 4px 16px rgba(70,100,170,0.12);
+  --glass-glow:   inset 0 1px 0 rgba(255,255,255,0.8);
 
   --radius:    14px;
   --radius-sm: 8px;
@@ -64,10 +66,12 @@ html[data-theme="dark"] {
   --glass:        rgba(22,25,38,0.55);      /* 兼容旧变量名 */
   --glass-bg:     rgba(22,25,38,0.55);
   --glass-bg-2:   rgba(30,34,52,0.45);
-  --glass-border: rgba(255,255,255,0.09);
+  --glass-border: rgba(255,255,255,0.14);
+  --glass-border-2: rgba(255,255,255,0.18);
   --glass-blur:   8px;
   --shadow:       0 8px 32px rgba(0,0,0,0.45);
   --shadow-soft:  0 4px 16px rgba(0,0,0,0.28);
+  --glass-glow:   inset 0 1px 0 rgba(255,255,255,0.08);
 }
 html[data-theme="dark"] body::before {
   background:
@@ -93,10 +97,11 @@ body::before {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse 60% 40% at 8% -4%,  rgba(120,160,255,0.35), transparent 60%),
-    radial-gradient(ellipse 50% 38% at 95% 6%,  rgba(180,150,255,0.30), transparent 62%),
-    radial-gradient(ellipse 70% 48% at 50% 105%,rgba(120,220,190,0.26), transparent 62%),
-    linear-gradient(160deg, #edf2ff 0%, #f4f7ff 45%, #eef4fa 100%);
+    radial-gradient(ellipse 60% 44% at 6% -6%,   rgba(110,150,255,0.40), transparent 62%),
+    radial-gradient(ellipse 55% 45% at 96% 4%,   rgba(170,140,255,0.34), transparent 62%),
+    radial-gradient(ellipse 75% 55% at 50% 108%, rgba(90,210,178,0.30), transparent 65%),
+    radial-gradient(ellipse 45% 40% at 50% 30%,  rgba(120,180,255,0.18), transparent 70%),
+    linear-gradient(160deg, #e6eeff 0%, #eef4ff 45%, #e8f0fb 100%);
   pointer-events: none;
   z-index: 0;
 }
@@ -463,7 +468,7 @@ a:hover { text-decoration: underline; }
 .dash-task .t { flex-shrink: 0; color: var(--muted-2); font-variant-numeric: tabular-nums; }
 .dash-empty { color: var(--muted); font-size: 12.5px; padding: 6px 0; }
 .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; align-content: start; }
-.module-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px; cursor: pointer; transition: .18s; display: flex; flex-direction: column; gap: 10px; min-height: 96px; }
+.module-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px; cursor: pointer; transition: .18s; display: flex; flex-direction: column; gap: 10px; min-height: 96px; box-shadow: var(--glass-glow), var(--shadow-soft); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 .module-card:hover { transform: translateY(-2px); border-color: rgba(91,141,255,.5); background: var(--glass-bg-2); }
 .module-card .mc-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(91,141,255,.16); color: var(--accent); }
 .module-card .mc-ic svg { width: 20px; height: 20px; }

@@ -331,10 +331,10 @@
   // ---------- 面板 UI（自带样式，不依赖宿主页 CSS）----------
   const STYLE = `
 /* ===== CAID 副驾主题（浅色液态玻璃=默认 / 深色=可选），变量作用域隔离，不污染宿主页 ===== */
-html[data-caid-cp-theme="light"]{--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(255,255,255,.7);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
+html[data-caid-cp-theme="light"]{--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
 html[data-caid-cp-theme="dark"]{--cp-bg:#0f1722;--cp-bg-2:#10243b;--cp-bg-3:#0b1420;--cp-ink:#e6f1fb;--cp-muted:#9fb6cf;--cp-muted-2:#5b7187;--cp-rule:rgba(255,255,255,.10);--cp-rule-2:#1f3650;--cp-accent:#5b8dff;--cp-accent-2:#3a7bc8;--cp-accent-deep:#2a6bb8;--cp-green:#3dd68c;--cp-green-soft:#0b2a22;--cp-amber:#ffd479;--cp-amber-glow:#ffd479;--cp-amber-soft:#2a2416;--cp-red:#ff6b6b;--cp-red-soft:#2a1414;--cp-blue-soft:#0f2036;--cp-code-bg:#08111c;--cp-code-ink:#9fe1cb;--cp-glass:rgba(15,23,34,.72);--cp-glass-border:#294a6b;--cp-shadow:0 8px 30px rgba(0,0,0,.5);}
 /* 无主题标记（旧版 / 切换动画前）默认浅色 */
-html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(255,255,255,.7);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
+html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6edfb;--cp-ink:#1c2433;--cp-muted:#5b6577;--cp-muted-2:#7c8698;--cp-rule:rgba(20,40,80,.10);--cp-rule-2:rgba(20,40,80,.14);--cp-accent:#4c7dff;--cp-accent-2:#6b96ff;--cp-accent-deep:#2a6bb8;--cp-green:#18b976;--cp-green-soft:#e4f7ef;--cp-amber:#f59e2e;--cp-amber-glow:#e8a13a;--cp-amber-soft:#fdf3e2;--cp-red:#ef4b6b;--cp-red-soft:#fdecef;--cp-blue-soft:#e6eefc;--cp-code-bg:#f4f6fb;--cp-code-ink:#0f4c52;--cp-glass:rgba(255,255,255,.62);--cp-glass-border:rgba(140,160,210,.55);--cp-shadow:0 10px 36px rgba(40,70,130,.16);}
 #caidExtCopilot{position:fixed;top:0;right:0;width:400px;height:100vh;max-height:100vh;z-index:2147483647;background:var(--cp-glass);backdrop-filter:blur(var(--cp-blur,12px));-webkit-backdrop-filter:blur(var(--cp-blur,12px));color:var(--cp-ink);font:13px/1.5 system-ui,sans-serif;display:none;box-shadow:var(--cp-shadow);border-left:1px solid var(--cp-glass-border);font-family:inherit;}\n#caidExtCopilot.open{display:flex;flex-direction:column;}
 #caidExtCopilot *{box-sizing:border-box;}
 #caidExtCopilot .cp-head{padding:12px 14px;background:var(--cp-bg-2);display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--cp-rule-2);}
@@ -438,6 +438,9 @@ html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6ed
 
 /* ============ 圆球按钮（状态呼吸灯）============ */
 #caidLauncher[data-caid-ready="1"]{width:44px;height:44px;}
+/* 悬浮球按下级主题跟随（浅色液态玻璃=默认 / 深色=可选），用 !important 覆盖内联渐变 */
+html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle at 30% 30%,#2f6fc0,#14355f)!important;box-shadow:0 5px 16px rgba(20,53,95,.55),inset 0 1px 0 rgba(255,255,255,.25)!important;}
+#caidLauncher{background:radial-gradient(circle at 30% 30%,#9fc2ff,#4c7dff)!important;box-shadow:0 5px 16px rgba(76,125,255,.45),inset 0 1px 0 rgba(255,255,255,.7)!important;}
 #caidLauncher .caid-ball-ic{display:flex;align-items:center;justify-content:center;pointer-events:none;margin:0;line-height:0;width:100%;height:100%;}
 #caidLauncher .caid-ball-ic svg{margin:0!important;display:block!important;vertical-align:top;}
 #caidLauncher.state-running{background:radial-gradient(circle at 30% 30%,#3dd68c,#1d7a4f)!important;animation:caidBreatheG 1.6s ease-in-out infinite;}
@@ -873,7 +876,7 @@ html:not([data-caid-cp-theme]){--cp-bg:#f0f4fc;--cp-bg-2:#ffffff;--cp-bg-3:#e6ed
       searchEl.style.display = 'block';
       searchEl.innerHTML = results.map(r =>
         '<div>• <a href="' + cpEscapeHtml(r.url || '#') + '" target="_blank" rel="noopener">' +
-        cpEscapeHtml(r.title || '') + '</a>' + (r.snippet ? '<div style="color:#7fb0e0;">' + cpEscapeHtml(r.snippet) + '</div>' : '') + '</div>'
+        cpEscapeHtml(r.title || '') + '</a>' + (r.snippet ? '<div style="color:var(--cp-muted);">' + cpEscapeHtml(r.snippet) + '</div>' : '') + '</div>'
       ).join('');
     },
     renderCode(code, lang) {
