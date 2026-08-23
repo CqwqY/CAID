@@ -20,6 +20,7 @@
   var CFG = {
     enabled: true,
     cooldownMin: 10,   // 同一站点同一提示的冷却（分钟）
+    rareCooldownMin: 30, // 点「降低频次」后该场景的冷却（分钟）
     dwellSec: 6,       // 停止交互多少秒视为「在读」
     depthPct: 40,      // 滚动深度阈值 %
     rules: { product: true, copy: true, search: true }
@@ -439,6 +440,7 @@
   }
 
   var lastShown = {}; // host|id -> ts
+  var downrated = {}; // host|id -> true：用户点过「降低频次」，使用更长的冷却
   function shouldFire(rule) {
     var kind = rule && rule.id;
     if (!kind) return false;
@@ -447,9 +449,10 @@
     // 会话内全局节流：每分钟至多一次
     if (window.__caidSixthLastGlobal && Date.now() - window.__caidSixthLastGlobal < 60000) return false;
     var key = HOST + '|' + kind;
+    var cdMin = downrated[key] ? (CFG.rareCooldownMin || 30) : (CFG.cooldownMin || 10);
     if (lastShown[key]) {
       var el = Date.now() - lastShown[key];
-      if (el < (CFG.cooldownMin || 10) * 60000) return false;
+      if (el < cdMin * 60000) return false;
     }
     lastShown[key] = Date.now();
     window.__caidSixthLastGlobal = Date.now();
@@ -463,7 +466,7 @@
       '</svg>';
   }
 
-  function showBubble(sug) {
+  function showBubble(sug, rule) {
     try {
       var old = document.getElementById('caidSixthBubble');
       if (old) old.remove();
@@ -484,12 +487,26 @@
       go.textContent = sug.action;
       go.style.cssText = 'border:none;background:#2f6fc0;color:#fff;font-size:12px;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
       go.addEventListener('click', function () { try { b.remove(); } catch (e) {} wakeCopilot(sug.task); });
+      // 「忽略」：仅关闭本次气泡，不改变触发频率
       var x = document.createElement('button');
       x.textContent = '忽略';
-      x.title = '忽略本次提示';
+      x.title = '仅关闭本次提示，下次仍会正常触发';
       x.style.cssText = 'border:1px solid rgba(255,255,255,.18);background:transparent;color:#aeb9c8;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
       x.addEventListener('click', function () { try { b.remove(); } catch (e) {} });
+      // 「降低频次」：标记该场景，之后使用更长的冷却（默认 30 分钟）
+      var r = document.createElement('button');
+      r.textContent = '降低频次';
+      r.title = '以后减少这类提示的出现频率';
+      r.style.cssText = 'border:1px solid rgba(255,255,255,.18);background:transparent;color:#aeb9c8;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
+      r.addEventListener('click', function () {
+        try {
+          if (rule && rule.id) downrated[HOST + '|' + rule.id] = true;
+          if (rule && rule.id) lastShown[HOST + '|' + rule.id] = Date.now();
+          b.remove();
+        } catch (e) {}
+      });
       btns.appendChild(go);
+      btns.appendChild(r);
       btns.appendChild(x);
       b.appendChild(left);
       b.appendChild(btns);
