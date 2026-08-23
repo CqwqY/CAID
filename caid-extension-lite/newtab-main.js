@@ -1769,24 +1769,73 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
 });
 
 // ============ 第六感设置（chrome.storage.local.caidSixth）============
+// 内置规则 id → 中文名（与 caid-sixth-sense.js 的 RULES 表一一对应）
+const SIXTH_RULE_LABELS = {
+  product: '商品页', search: '搜索结果', copy: '复制内容',
+  news_article: '新闻/文章', tutorial: '教程/文档', long_read: '长文阅读',
+  email: '邮件', meeting_notes: '会议纪要', travel_booking: '旅行比价',
+  restaurant: '餐厅/美食', job_search: '招聘职位', social_media_post: '社交动态',
+  group_chat: '群聊消息', financial_report: '财报/金融', crypto: '加密货币',
+  code_browsing: '项目源码', readme_guide: '项目介绍/README',
+};
+// 渲染「触发场景」开关列表（内置 + 自定义规则），并回填当前保存状态（未保存过/未知 id 默认开启）
+function renderSixthRuleSwitches(container, rules) {
+  container.innerHTML = '';
+  const ids = Object.keys(SIXTH_RULE_LABELS);
+  if (!rules || typeof rules !== 'object') rules = {};
+  ids.forEach(id => {
+    const on = rules[id] !== false;
+    const label = SIXTH_RULE_LABELS[id] || id;
+    container.appendChild(makeRuleSwitch(id, label, on));
+  });
+}
+// 自定义规则（chrome.storage.local.caidSixthRules）也补进开关列表；label 取 bubble.action 或 id
+function appendCustomSixthRules(container, customList, rules) {
+  if (!Array.isArray(customList)) return;
+  customList.forEach(r => {
+    if (!r || !r.id) return;
+    if (container.querySelector('input[data-rule="' + r.id + '"]')) return;
+    const label = (r.bubble && r.bubble.action) || r.id;
+    const on = rules[r.id] !== false;
+    container.appendChild(makeRuleSwitch(r.id, label, on));
+  });
+}
+
+function makeRuleSwitch(id, label, checked) {
+  const lab = document.createElement('label');
+  lab.style.cssText = 'display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;color:#c8d2e0;cursor:pointer;';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.dataset.rule = id;
+  box.checked = !!checked;
+  box.style.cssText = 'width:auto;vertical-align:middle;';
+  lab.appendChild(box);
+  lab.appendChild(document.createTextNode(label));
+  return lab;
+}
+
 async function fillSixthForm() {
   let c = {};
   try { c = (await chrome.storage.local.get('caidSixth')).caidSixth || {}; } catch (e) {}
   caidQs('#sixthEnabled').checked = c.enabled !== false;
   caidQs('#sixthCooldown').value = (typeof c.cooldownMin === 'number' ? c.cooldownMin : 10);
-  caidQs('#sixthRuleProduct').checked = c.rules ? c.rules.product !== false : true;
-  caidQs('#sixthRuleSearch').checked = c.rules ? c.rules.search !== false : true;
-  caidQs('#sixthRuleCopy').checked = c.rules ? c.rules.copy !== false : true;
+  const box = caidQs('#sixthRulesList');
+  if (!box) return;
+  renderSixthRuleSwitches(box, c.rules);
+  let custom = [];
+  try { custom = (await chrome.storage.local.get('caidSixthRules')).caidSixthRules || []; } catch (e) {}
+  appendCustomSixthRules(box, custom, c.rules);
 }
 caidQs('#saveSixthBtn').addEventListener('click', async () => {
+  const box = caidQs('#sixthRulesList');
+  const rules = {};
+  if (box) {
+    box.querySelectorAll('input[data-rule]').forEach(el => { rules[el.dataset.rule] = el.checked; });
+  }
   const cfg = {
     enabled: caidQs('#sixthEnabled').checked,
     cooldownMin: parseInt(caidQs('#sixthCooldown').value, 10) || 10,
-    rules: {
-      product: caidQs('#sixthRuleProduct').checked,
-      search: caidQs('#sixthRuleSearch').checked,
-      copy: caidQs('#sixthRuleCopy').checked,
-    },
+    rules,
   };
   try { await chrome.storage.local.set({ caidSixth: cfg }); }
   catch (e) { return toast('保存失败：' + String(e), 'error', 4000); }

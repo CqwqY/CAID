@@ -2994,12 +2994,8 @@ a:hover { text-decoration: underline; }
             <input type="number" class="form-input" id="sixthCooldown" min="0" max="120" style="max-width:140px;">
           </div>
           <div class="form-group">
-            <label class="form-label">触发场景</label>
-            <div>
-              <label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;"><input type="checkbox" id="sixthRuleProduct" style="width:auto;">商品页</label>
-              <label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;"><input type="checkbox" id="sixthRuleSearch" style="width:auto;">搜索结果</label>
-              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="sixthRuleCopy" style="width:auto;">复制内容</label>
-            </div>
+            <label class="form-label">触发场景（开关决定哪些意图会主动弹出气泡，可单独关闭个别场景）</label>
+            <div id="sixthRulesList" style="display:flex;flex-wrap:wrap;gap:6px 20px;"></div>
           </div>
           <button class="btn primary" id="saveSixthBtn"><i data-lucide="save"></i>保存第六感设置</button>
           <div class="setting-desc" style="margin-top:8px;font-size:12px;">配置仅存于扩展本地 chrome.storage，对已打开页面即时生效。</div>
