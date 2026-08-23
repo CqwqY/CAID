@@ -3277,6 +3277,8 @@ function resolveTheme(mode) {
 function applyTheme(mode) {
   const t = resolveTheme(mode);
   document.documentElement.setAttribute('data-theme', t);
+  // 同步 localStorage 缓存，供 <head> 内联脚本渲染前读取，避免深色刷新生闪白
+  try { localStorage.setItem('caidThemeCache', (mode === 'system' ? 'system' : t)); } catch (e) {}
   // 设置面板同步选中态（显示用户的模式选项，非解析后的结果）
   const sel = caidQs('#themeSelect');
   if (sel) sel.value = (mode === 'system' ? 'system' : t);
@@ -3312,8 +3314,40 @@ async function applyThemeFromStorage() {
       if (area === 'local' && changes[THEME_KEY]) {
         applyTheme(changes[THEME_KEY].newValue || 'system');
       }
+      if (area === 'local' && changes[BLUR_KEY]) {
+        applyBlur(changes[BLUR_KEY].newValue);
+      }
     });
   } catch (e) {}
+}
+
+// ============ 玻璃模糊度（chrome.storage.local.caidBlur，取 0~30px，默认 12） ============
+const BLUR_KEY = 'caidBlur';
+const BLUR_DEFAULT = 12;
+function applyBlur(px) {
+  const v = (px === undefined || px === null || isNaN(px)) ? BLUR_DEFAULT : Number(px);
+  const clamp = Math.min(30, Math.max(0, v));
+  document.documentElement.style.setProperty('--glass-blur', clamp + 'px');
+  const inp = caidQs('#blurRange');
+  if (inp) inp.value = clamp;
+  const lbl = caidQs('#blurVal');
+  if (lbl) lbl.textContent = clamp + 'px';
+  return clamp;
+}
+async function applyBlurFromStorage() {
+  const inp = caidQs('#blurRange');
+  if (inp && !inp.dataset.bound) {
+    inp.dataset.bound = '1';
+    inp.addEventListener('input', async (e) => {
+      const v = applyBlur(e.target.value);
+      try { await chrome.storage.local.set({ [BLUR_KEY]: v }); } catch (e2) {}
+      try { chrome.runtime.sendMessage({ type: 'CAID_BLUR_CHANGED', value: v }); } catch (e3) {}
+    });
+  }
+  try {
+    const data = await chrome.storage.local.get(BLUR_KEY);
+    applyBlur((data && data[BLUR_KEY]) || BLUR_DEFAULT);
+  } catch (e) { applyBlur(BLUR_DEFAULT); }
 }
 
 // ============ Init ============
@@ -3327,6 +3361,7 @@ async function init() {
 
   // 主题：浅色液态玻璃（默认）/ 深色，存 chrome.storage 供工作台、副驾、第六感共享
   await applyThemeFromStorage();
+  await applyBlurFromStorage();
 
   // Clock
   updateClock();

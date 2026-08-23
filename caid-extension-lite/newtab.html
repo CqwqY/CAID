@@ -16,6 +16,22 @@
 <script src="vendor/marked.min.js"></script>
 <link rel="stylesheet" href="vendor/github-dark.min.css">
 <script src="vendor/highlight.min.js"></script>
+<script>
+/* 防主题闪烁（FOUC）：在 body 渲染前，用 localStorage 同步缓存的应用主题，避免刷新时"深色先闪白再变黑"。
+   缓存由 newtab-main.js 的 applyTheme 在写 chrome.storage 时同步刷新；system 模式在此用 matchMedia 解析。 */
+(function () {
+  try {
+    var m = localStorage.getItem('caidThemeCache');
+    var t = 'light';
+    if (m === 'dark') t = 'dark';
+    else if (m === 'light') t = 'light';
+    else {
+      try { t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { t = 'light'; }
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
 <style>
 :root {
   /* 清爽浅色液态玻璃色板 */
@@ -2273,6 +2289,28 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--rule);
 }
 .setting-block:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+
+/* ============ 设置：全屏 + 左侧分类导航 + 右侧详情 ============ */
+#settingsModal { padding: 0; align-items: stretch; }
+.settings-modal {
+  width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh;
+  border-radius: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: none;
+}
+.settings-modal .modal-header,
+.settings-modal .modal-footer { flex-shrink: 0; }
+.settings-modal .modal-body { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
+.settings-modal .modal-tabs {
+  flex: 0 0 208px; display: flex; flex-direction: column; gap: 2px; margin: 0;
+  padding: 16px 12px; background: transparent; border-right: 1px solid var(--rule); border-radius: 0; overflow-y: auto;
+}
+.settings-modal .modal-tab {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+  font-size: 13.5px; font-weight: 500; color: var(--muted); border-radius: 8px; text-align: left;
+}
+.settings-modal .modal-tab i { width: 16px; height: 16px; flex-shrink: 0; }
+.settings-modal .modal-tab.active { background: var(--bg3); color: var(--ink); box-shadow: inset 0 0 0 1px var(--rule); }
+.settings-modal .modal-tab:not(.active):hover { background: var(--bg2); color: var(--ink); }
+.settings-modal .settings-panel { flex: 1; min-width: 0; overflow-y: auto; padding: 24px 30px 40px; height: 100%; }
 .setting-title {
   font-size: 14px;
   font-weight: 600;
@@ -2931,7 +2969,7 @@ a:hover { text-decoration: underline; }
 
 <!-- Settings Modal -->
 <div class="modal-backdrop" id="settingsModal">
-  <div class="modal" style="max-width:640px;">
+  <div class="modal settings-modal">
     <div class="modal-header">
       <div class="modal-title"><i data-lucide="settings" style="width:18px;height:18px;display:inline;vertical-align:middle;margin-right:6px;"></i>设置</div>
       <button class="btn primary" id="settingsCheckUpdate" style="margin-left:auto;padding:6px 12px;font-size:12px;"><i data-lucide="refresh-cw" style="width:14px;height:14px;display:inline;vertical-align:middle;margin-right:4px;"></i>检查更新</button>
@@ -2940,7 +2978,13 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab" data-tab="general">常规</button>        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="sixth">第六感</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab" data-tab="general"><i data-lucide="palette"></i>常规</button>
+        <button class="modal-tab active" data-tab="llm"><i data-lucide="cpu"></i>AI 回答</button>
+        <button class="modal-tab" data-tab="copilot"><i data-lucide="bot"></i>副驾</button>
+        <button class="modal-tab" data-tab="sixth"><i data-lucide="sparkles"></i>第六感</button>
+        <button class="modal-tab" data-tab="servers"><i data-lucide="server"></i>服务器监控</button>
+        <button class="modal-tab" data-tab="plugins"><i data-lucide="puzzle"></i>插件</button>
+        <button class="modal-tab" data-tab="data"><i data-lucide="database"></i>数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="general" style="display:none;">
@@ -2957,6 +3001,16 @@ a:hover { text-decoration: underline; }
               <option value="light">浅色 · 液态玻璃</option>
               <option value="dark">深色 · 低光</option>
             </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-row-label">
+              <div class="setting-name">模糊度</div>
+              <div class="setting-desc">玻璃背景的毛玻璃模糊强度，拖动即时生效</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;min-width:220px;">
+              <input type="range" id="blurRange" min="0" max="30" value="12" step="1" style="flex:1;">
+              <span id="blurVal" style="font-size:12px;color:var(--muted);width:38px;text-align:right;">12px</span>
+            </div>
           </div>
         </div>
 

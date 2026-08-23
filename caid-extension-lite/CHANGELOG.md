@@ -5,6 +5,17 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.25] - 2026-08-23
+
+### 新增（仅纯净版 caid-extension-lite）
+- **玻璃模糊度可配置**：设置页「常规 → 主题外观」新增「模糊度」滑杆（0~30px，默认 12px），拖动即时生效。取值存 `chrome.storage.local.caidBlur`，通过 `--glass-blur` 变量驱动工作台玻璃；跨页面经 `storage.onChanged` 实时同步。
+
+### 重构（仅纯净版 caid-extension-lite）
+- **设置页改为全屏 + 左侧分类导航 + 右侧详情**：设置弹窗由居中小窗改为占满整个工作台页面的布局，顶部保留标题/检查更新/关闭，左侧竖向分类导航（常规 / AI 回答 / 副驾 / 第六感 / 服务器监控 / 插件 / 数据管理，均带图标），右侧为对应分类的详细设置，右侧区域独立滚动。
+
+### 优化（仅纯净版 caid-extension-lite）
+- **修复深色主题刷新「先闪白再变黑」**：在 `<head>` 注入内联脚本，于页面渲染前用 localStorage 同步缓存值（`caidThemeCache`，由主题写入时同步刷新，system 模式用 `matchMedia` 解析）立即应用主题，消除深色模式下的白屏闪烁。
+
 ## [纯净版 v0.3.24] - 2026-08-23
 
 ### 优化（仅纯净版 caid-extension-lite）
