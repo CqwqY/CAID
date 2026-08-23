@@ -1591,7 +1591,7 @@ async function renderDashboard() {
 // 打开设置弹窗（可指定面板 tab）
 function openSettingsModal(tab) {
   openModal('settingsModal', () => {
-    fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList();
+    fillSettingsForm(); fillCopilotForm(); fillSixthForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList();
     if (tab) {
       const btn = caidQs(`#settingsTabs .modal-tab[data-tab="${tab}"]`);
       if (btn) btn.click();
@@ -1768,6 +1768,30 @@ caidQs('#saveSettingsBtn').addEventListener('click', async () => {
   toast('设置已保存','success');
 });
 
+// ============ 第六感设置（chrome.storage.local.caidSixth）============
+async function fillSixthForm() {
+  let c = {};
+  try { c = (await chrome.storage.local.get('caidSixth')).caidSixth || {}; } catch (e) {}
+  caidQs('#sixthEnabled').checked = c.enabled !== false;
+  caidQs('#sixthCooldown').value = (typeof c.cooldownMin === 'number' ? c.cooldownMin : 10);
+  caidQs('#sixthRuleProduct').checked = c.rules ? c.rules.product !== false : true;
+  caidQs('#sixthRuleSearch').checked = c.rules ? c.rules.search !== false : true;
+  caidQs('#sixthRuleCopy').checked = c.rules ? c.rules.copy !== false : true;
+}
+caidQs('#saveSixthBtn').addEventListener('click', async () => {
+  const cfg = {
+    enabled: caidQs('#sixthEnabled').checked,
+    cooldownMin: parseInt(caidQs('#sixthCooldown').value, 10) || 10,
+    rules: {
+      product: caidQs('#sixthRuleProduct').checked,
+      search: caidQs('#sixthRuleSearch').checked,
+      copy: caidQs('#sixthRuleCopy').checked,
+    },
+  };
+  try { await chrome.storage.local.set({ caidSixth: cfg }); }
+  catch (e) { return toast('保存失败：' + String(e), 'error', 4000); }
+  toast('第六感设置已保存，已打开页面即时生效', 'success');
+});
 // ============ 副驾配置（独立于 AI 回答，存 chrome.storage.local.caidLlm）============
 async function fillCopilotForm() {
   let ext = {};
@@ -2203,7 +2227,7 @@ function switchSettingsTab(name) {
   refreshIcons();
 }
 function openServerSettings() {
-  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); fillReadPrefs(); renderMistakeList(); switchSettingsTab('servers'); });
+  openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); fillSixthForm(); renderServerList(); fillReadPrefs(); renderMistakeList(); switchSettingsTab('servers'); });
 }
 
 const addServerBtn = caidQs('#addServerBtn');
@@ -3267,7 +3291,7 @@ async function init() {
 
   // Sidebar settings buttons
   const btnOpenSettings = caidQs('#sidebarOpenSettings');
-  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); }));
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); fillSixthForm(); renderServerList(); renderPluginList(); fillReadPrefs(); }));
   const btnSetHome = caidQs('#sidebarSetHome');
   if (btnSetHome) btnSetHome.addEventListener('click', openHomepageModal);
 
@@ -3284,7 +3308,7 @@ async function init() {
 
   // options_ui 入口（右键图标→选项）：newtab.html#settings 自动弹出设置 Modal
   if (location.hash === '#settings') {
-    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList(); }), 150);
+    setTimeout(() => openModal('settingsModal', () => { fillSettingsForm(); fillCopilotForm(); fillSixthForm(); renderServerList(); renderPluginList(); fillReadPrefs(); renderMistakeList(); }), 150);
   }
 }
 

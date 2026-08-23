@@ -61,6 +61,15 @@
       try { _consumeCtxPending(); } catch (e) {}
       return;
     }
+    if (d.__caidType === 'CAID_SIXTH_SENSE') {
+      // 第六感：content.js 主动唤醒副驾执行一个任务
+      var _sixTask = String(d && d.task || '');
+      try {
+        if (typeof window.__caidSixthInject === 'function') { window.__caidSixthInject(_sixTask); }
+        else { window.__caidSixthPending = _sixTask; } // 面板未就绪则暂存，buildPanel 后消费
+      } catch (e) {}
+      return;
+    }
     if (d.__caidType === 'CAID_UPDATE_RESP') {
       renderCopilotUpdate(d.data, _updateManual);
       _updateManual = false;
@@ -2170,6 +2179,34 @@
   if (sendEl) sendEl.addEventListener('click', sendTask);
   if (inputEl) inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); } });
   if (closeEl) closeEl.addEventListener('click', function () { var cp = document.getElementById('caidExtCopilot'); if (cp) cp.classList.remove('open'); });
+
+  // ---------- 第六感：消费 content.js 主动唤醒的任务 ----------
+  // content.js（ISOLATED world）采集行为信号 → 弹气泡 → 用户点「帮我整理」→ postMessage
+  // CAID_SIXTH_SENSE，或写 data-caid-sixth-pending dataset 兜底。此处在面板就绪后提供
+  // __caidSixthInject 消费入口：填入输入框、打开面板、直接执行任务。
+  window.__caidSixthInject = function (task) {
+    try {
+      if (!task || !inputEl) return;
+      var _cp = document.getElementById('caidExtCopilot');
+      if (_cp) _cp.classList.add('open');
+      var _launcher = document.getElementById('caidLauncher');
+      if (_launcher) { _launcher.setAttribute('data-panel-open', '1'); _launcher.style.display = 'none'; }
+      inputEl.value = String(task);
+      sendTask();
+    } catch (e) { console.warn('[CAID-R] 第六感任务执行失败:', e.message || e); }
+  };
+  // 启动前 content.js 落下的 dataset 待处理任务（页面注入时序兜底）
+  try {
+    var _sixthDs = document.documentElement.getAttribute('data-caid-sixth-pending');
+    if (_sixthDs) {
+      document.documentElement.removeAttribute('data-caid-sixth-pending');
+      try {
+        var _sj = JSON.parse(_sixthDs);
+        if (_sj && _sj.task) setTimeout(function () { window.__caidSixthInject(String(_sj.task)); }, 300);
+      } catch (e2) {}
+    }
+    if (window.__caidSixthPending) { var _sp = window.__caidSixthPending; window.__caidSixthPending = null; if (_sp) setTimeout(function () { window.__caidSixthInject(String(_sp)); }, 300); }
+  } catch (e3) { console.warn('[CAID-R] 消费第六感 dataset 失败:', e3.message || e3); }
 
   // ---------- 强行终止当前任务 ----------
   // PageAgent 内置 agent.stop()：abort 内部 AbortController -> 循环中的 signal.throwIfAborted() 抛错 -> 结束 execute()。

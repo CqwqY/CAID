@@ -2879,7 +2879,7 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="modal-body">
       <div class="modal-tabs" id="settingsTabs">
-        <button class="modal-tab" data-tab="general">常规</button>        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
+        <button class="modal-tab" data-tab="general">常规</button>        <button class="modal-tab active" data-tab="llm">AI 回答</button>        <button class="modal-tab" data-tab="copilot">副驾</button>        <button class="modal-tab" data-tab="sixth">第六感</button>        <button class="modal-tab" data-tab="servers">服务器监控</button>        <button class="modal-tab" data-tab="plugins">插件</button>        <button class="modal-tab" data-tab="data">数据管理</button>
       </div>
 
       <div class="settings-panel" data-panel="general" style="display:none;">
@@ -2979,6 +2979,30 @@ a:hover { text-decoration: underline; }
           <div class="setting-title"><i data-lucide="notebook-pen"></i>错题本（AI 纠错记录）</div>
           <div class="setting-desc">副驾运行时会始终遵守这里的纠错记录。在此查看、编辑或删除错题；圆球上「纠错」亦可新增。</div>
           <div id="mistakeAdminList"></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="sixth" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="sparkles"></i>第六感 · 主动协助</div>
+          <div class="setting-desc">在普通网页上，插件会根据你的行为信号（停留、滚动、复制、搜索）<b>本地</b>推断意图，主动弹出一条轻量气泡建议，点击即可唤醒副驾执行对应任务。全程在本机处理，不记录页面正文。</div>
+          <div class="form-group">
+            <label class="form-label" style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="sixthEnabled" style="width:auto;">启用第六感（关闭后不再弹出任何主动气泡）</label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">重复提示间隔（分钟）</label>
+            <input type="number" class="form-input" id="sixthCooldown" min="0" max="120" style="max-width:140px;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">触发场景</label>
+            <div>
+              <label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;"><input type="checkbox" id="sixthRuleProduct" style="width:auto;">商品页</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;"><input type="checkbox" id="sixthRuleSearch" style="width:auto;">搜索结果</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="sixthRuleCopy" style="width:auto;">复制内容</label>
+            </div>
+          </div>
+          <button class="btn primary" id="saveSixthBtn"><i data-lucide="save"></i>保存第六感设置</button>
+          <div class="setting-desc" style="margin-top:8px;font-size:12px;">配置仅存于扩展本地 chrome.storage，对已打开页面即时生效。</div>
         </div>
       </div>
 

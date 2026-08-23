@@ -5,7 +5,16 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
-## [纯净版 v0.3.22] - 2026-08-22
+## [纯净版 v0.3.23] - 2026-08-23
+
+### 新增（仅纯净版 caid-extension-lite，测试版）
+- **第六感 · 主动协助**：新增 `caid-sixth-sense.js`（ISOLATED world，随页面加载即运行）。在普通网页上采集行为信号（停留、滚动、复制、搜索）并用本地规则引擎推断意图，主动弹出一条轻量气泡建议（无 emoji、本机处理、不记录页面正文），点击「帮我整理/帮我总结」即唤醒副驾执行对应任务，可「忽略」。
+- **气泡 → 副驾串联**：content.js 侧在副驾未注入时写 `data-caid-sixth-pending` dataset 并触发 `BOOT_COPILOT`，注入完成后 `postMessage({ __caidType:'CAID_SIXTH_SENSE', task })`；caid-copilot.js 新增 `__caidSixthInject` 消费入口与 dataset 兜底消费，填入输入框、打开面板并直接执行任务。
+- **触发场景**：商品页（taobao/jd/amazon/商品 path 等模式匹配 + 停留 + 滚动深度达成 → 「帮我整理参数」）、搜索结果页（搜索引擎 host 或 `q=` → 「整理结果要点」）、复制内容（50~3000 字符且内容可总结 → 「帮我总结」）。
+- **规则表扩展**：除商品/搜索/复制外，内置预设见 `caid-sixth-sense.js` 的 `RULES` 表，含新闻文章、教程/文档、长文、邮件、会议纪要、旅行比价、餐厅、招聘、社交动态、群聊、财报、加密货币、代码浏览、项目 README 等场景。每规则可用自己的 `dwellSec`/`depthPct`（默认回退全局 6s/40%）。
+- **降频**：同一站点同一提示在可配置冷却期（默认 10 分钟）内不再重复，全局每分钟至多一次，避免打扰。
+- **设置页新增「第六感」页签**：开关、重复提示间隔（分钟）、触发场景勾选（商品页/搜索结果/复制）；配置存 `chrome.storage.local.caidSixth`，对已打开页面实时生效（`fillSixthForm` / `saveSixthBtn`）。
+- **规则表化，开发者可扩展更多场景**：内置商品页/搜索结果/复制三条规则统一收进声明式规则表 `RULES`（`caid-sixth-sense.js`）。每条规则含 `id` / `signal`(dwell|copy) / `match{host,path,meta,urlHasQuery,and}` / `bubble`；支持 AND、OR、meta 标签匹配与复制长度区间。另支持把自定义规则数组写入 `chrome.storage.local.caidSixthRules` 追加进表（字符串正则会在加载时编译），无需改代码。
 
 ### 重构（仅纯净版 caid-extension-lite）
 - **移除「AI 主动建议」**：选项页中的智能推荐区（`#smartZone`，含时段卡片、常去站点、AI 主动建议）整体移除，不再动态生成推荐内容、也不再调 LLM 生成建议。删除 `renderSmartZone` / `renderSmartAiSuggestion` / `bindSmartZoneEvents` 等函数与其 DOM、CSS，去掉无效的 `smartAiCache` / `smartAiPeriod` 存储读写。
