@@ -469,6 +469,33 @@
     }
   });
 
+  // 副驾 / 第六感主题同步：把 caidTheme 写到 <html> 的 data-caid-cp-theme，
+  // 供 MAIN world 的副驾浮球（caid-copilot.js）CSS 变量切换（浅色液态玻璃=默认 / 深色=可选）。
+  function __caidApplyTheme(theme, silent) {
+    var t = theme === 'dark' ? 'dark' : 'light';
+    try { document.documentElement.setAttribute('data-caid-cp-theme', t); } catch (e) {}
+    if (!silent) {
+      try { window.postMessage({ __caid: true, kind: 'theme_applied', theme: t }, '*'); } catch (e2) {}
+    }
+  }
+  try {
+    chrome.storage.local.get('caidTheme', function (got) {
+      __caidApplyTheme(got && got.caidTheme, true);
+    });
+  } catch (e) {}
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'local' && changes && changes.caidTheme) {
+        __caidApplyTheme(changes.caidTheme.newValue);
+      }
+    });
+  } catch (e) {}
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'apply_theme' || !d.theme) return;
+    __caidApplyTheme(d.theme);
+  });
+
   // MAIN world 的副驾内联设置表单通过 postMessage 把配置写入扩展存储
   // （MAIN world 无 chrome.*，由 ISOLATED world 用 chrome.storage.local 写入）
   window.addEventListener('message', function (e) {

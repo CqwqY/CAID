@@ -18,31 +18,63 @@
 <script src="vendor/highlight.min.js"></script>
 <style>
 :root {
-  /* 深色 AI 感基础色板（炭黑+靛蓝） */
-  --bg:       #0a0b14;      /* 页面主背景：深夜靛蓝黑 */
-  --bg2:      #12151f;      /* 次级背景：卡片填充 */
-  --bg3:      #1b1f2c;      /* 三级背景：悬浮/填充 */
-  --ink:      #e6e8f0;      /* 主文字：柔和白 */
-  --muted:    #8b93a7;      /* 次文字：冷灰 */
-  --rule:     rgba(255,255,255,0.08);  /* 细边：极淡白描边 */
-  --accent:   #5b8dff;      /* 主蓝：快捷入口/按钮 */
-  --accent-2: #4f7cff;      /* 蓝渐变 2 */
-  --accent2:  #3dd68c;      /* 绿：AI回答 */
-  --warn:     #ffb454;      /* 橙：Bing搜索 */
-  --danger:   #ff5c7a;      /* 红 */
-  --purple:   #b48bff;      /* 紫 */
+  /* 清爽浅色液态玻璃色板 */
+  --bg:       #eef2f9;      /* 页面主背景：浅雾蓝 */
+  --bg2:      #f6f9fe;      /* 次级背景：卡片填充 */
+  --bg3:      #ffffff;      /* 三级背景：悬浮/填充 */
+  --ink:      #1c2433;      /* 主文字：深墨蓝 */
+  --muted:    #5b6577;      /* 次文字：灰蓝 */
+  --muted-2:  #7c8698;      /* 更浅的次文字 */
+  --rule:     rgba(20,40,80,0.10);  /* 细边：淡描边 */
+  --accent:   #4c7dff;      /* 主蓝：快捷入口/按钮 */
+  --accent-2: #6b96ff;      /* 蓝渐变 2 */
+  --accent2:  #18b976;      /* 绿：AI回答 */
+  --warn:     #f59e2e;      /* 橙：Bing搜索 */
+  --danger:   #ef4b6b;      /* 红 */
+  --purple:   #9b6cff;      /* 紫 */
 
-  /* 玻璃态体系 */
+  /* 玻璃态体系（浅色磨砂） */
+  --glass:        rgba(255,255,255,0.60);   /* 兼容旧变量名 */
+  --glass-bg:     rgba(255,255,255,0.60);
+  --glass-bg-2:   rgba(255,255,255,0.78);
+  --glass-border: rgba(255,255,255,0.65);
+  --glass-blur:   10px;
+  --shadow:       0 10px 36px rgba(40,70,130,0.14);
+  --shadow-soft:  0 4px 18px rgba(40,70,130,0.10);
+
+  --radius:    14px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+}
+/* 深色主题（设置页可选用）：覆盖浅色默认值 */
+html[data-theme="dark"] {
+  --bg:       #0a0b14;
+  --bg2:      #12151f;
+  --bg3:      #1b1f2c;
+  --ink:      #e6e8f0;
+  --muted:    #8b93a7;
+  --muted-2:  #6f7890;
+  --rule:     rgba(255,255,255,0.08);
+  --accent:   #5b8dff;
+  --accent-2: #4f7cff;
+  --accent2:  #3dd68c;
+  --warn:     #ffb454;
+  --danger:   #ff5c7a;
+  --purple:   #b48bff;
+  --glass:        rgba(22,25,38,0.55);      /* 兼容旧变量名 */
   --glass-bg:     rgba(22,25,38,0.55);
   --glass-bg-2:   rgba(30,34,52,0.45);
   --glass-border: rgba(255,255,255,0.09);
   --glass-blur:   8px;
   --shadow:       0 8px 32px rgba(0,0,0,0.45);
   --shadow-soft:  0 4px 16px rgba(0,0,0,0.28);
-
-  --radius:    14px;
-  --radius-sm: 8px;
-  --radius-pill: 999px;
+}
+html[data-theme="dark"] body::before {
+  background:
+    radial-gradient(ellipse 60% 40% at 10% 0%,  rgba(91,141,255,0.18), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 90% 10%, rgba(180,139,255,0.14), transparent 60%),
+    radial-gradient(ellipse 70% 45% at 50% 100%,rgba(61,214,140,0.08), transparent 60%),
+    linear-gradient(180deg, #0a0b14 0%, #0c0e18 60%, #0a0b14 100%);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -61,10 +93,10 @@ body::before {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse 60% 40% at 10% 0%,  rgba(91,141,255,0.18), transparent 60%),
-    radial-gradient(ellipse 50% 35% at 90% 10%, rgba(180,139,255,0.14), transparent 60%),
-    radial-gradient(ellipse 70% 45% at 50% 100%,rgba(61,214,140,0.08), transparent 60%),
-    linear-gradient(180deg, #0a0b14 0%, #0c0e18 60%, #0a0b14 100%);
+    radial-gradient(ellipse 60% 40% at 8% -4%,  rgba(120,160,255,0.35), transparent 60%),
+    radial-gradient(ellipse 50% 38% at 95% 6%,  rgba(180,150,255,0.30), transparent 62%),
+    radial-gradient(ellipse 70% 48% at 50% 105%,rgba(120,220,190,0.26), transparent 62%),
+    linear-gradient(160deg, #edf2ff 0%, #f4f7ff 45%, #eef4fa 100%);
   pointer-events: none;
   z-index: 0;
 }
@@ -2880,6 +2912,21 @@ a:hover { text-decoration: underline; }
       </div>
 
       <div class="settings-panel" data-panel="general" style="display:none;">
+        <div class="setting-block">
+          <div class="setting-title"><i data-lucide="palette"></i>主题外观</div>
+          <div class="setting-desc">选择工作台与副驾的配色风格。浅色为液态玻璃磨砂质感，深色为低光护眼风格。</div>
+          <div class="setting-row">
+            <div class="setting-row-label">
+              <div class="setting-name">主题</div>
+              <div class="setting-desc">同步应用到工作台、副驾浮球与第六感气泡</div>
+            </div>
+            <select class="form-select" id="themeSelect" style="width:auto;">
+              <option value="light">浅色 · 液态玻璃</option>
+              <option value="dark">深色 · 低光</option>
+            </select>
+          </div>
+        </div>
+
         <div class="setting-block">
           <div class="setting-title"><i data-lucide="layout-dashboard"></i>新标签页</div>
           <div class="setting-desc">CAID 扩展动态接管浏览器新标签页：新建标签页自动重定向为本工作台（常驻开启）。若需恢复浏览器默认新标签页，请在扩展管理页停用或卸载本扩展。</div>

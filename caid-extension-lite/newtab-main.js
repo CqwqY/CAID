@@ -3266,6 +3266,42 @@ if (pluginEditorTa) {
   if (el) el.addEventListener('input', savePluginDraftDeb);
 });
 
+// ============ 主题（浅色液态玻璃默认 / 深色）============
+const THEME_KEY = 'caidTheme';   // chrome.storage.local，工作台/副驾/第六感共享
+function applyTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  // 设置面板同步选中态
+  const sel = caidQs('#themeSelect');
+  if (sel) sel.value = t;
+  return t;
+}
+async function applyThemeFromStorage() {
+  try {
+    const data = await chrome.storage.local.get(THEME_KEY);
+    applyTheme((data && data[THEME_KEY]) || 'light');
+  } catch (e) { applyTheme('light'); }
+  const sel = caidQs('#themeSelect');
+  if (sel && !sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', async (e) => {
+      const t = e.target.value === 'dark' ? 'dark' : 'light';
+      applyTheme(t);
+      try { await chrome.storage.local.set({ [THEME_KEY]: t }); } catch (e2) {}
+      try { chrome.runtime.sendMessage({ type: 'CAID_THEME_CHANGED', theme: t }); } catch (e3) {}
+      toast('主题已切换','success');
+    });
+  }
+  // 跨页面（如另一标签页切换主题）时同步
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'local' && changes[THEME_KEY]) {
+        applyTheme((changes[THEME_KEY].newValue) || 'light');
+      }
+    });
+  } catch (e) {}
+}
+
 // ============ Init ============
 async function init() {
   // （新标签页接管已改为 background 动态接管：newtab.html 只在开关开启或用户主动打开时出现，
@@ -3274,6 +3310,9 @@ async function init() {
   // 配置恢复：如果 localStorage 丢失配置，从 IndexedDB 备份恢复
   state.llmCfg = await ConfigBackup.restoreIfMissing('llmCfg', state.llmCfg);
   state.paCfg = await ConfigBackup.restoreIfMissing('paCfg', state.paCfg);
+
+  // 主题：浅色液态玻璃（默认）/ 深色，存 chrome.storage 供工作台、副驾、第六感共享
+  await applyThemeFromStorage();
 
   // Clock
   updateClock();

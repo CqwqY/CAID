@@ -16,6 +16,26 @@
   var HOST = location.hostname || '';
   var url = location.href || '';
 
+  // 主题：浅色液态玻璃=默认 / 深色=可选，与工作台、副驾共享 caidTheme
+  var SIXTH_THEME = 'light';
+  function applySixthTheme(theme) {
+    SIXTH_THEME = theme === 'dark' ? 'dark' : 'light';
+    var b = document.getElementById('caidSixthBubble');
+    if (b) { try { styleBubble(b); } catch (e) {} }
+  }
+  function initSixthTheme() {
+    try {
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get('caidTheme', function (got) {
+          applySixthTheme(got && got.caidTheme);
+        });
+        chrome.storage.onChanged.addListener(function (changes, area) {
+          if (area === 'local' && changes && changes.caidTheme) applySixthTheme(changes.caidTheme.newValue);
+        });
+      }
+    } catch (e) {}
+  }
+
   // ---------- 配置（chrome.storage.local.caidSixth）----------
   var CFG = {
     enabled: true,
@@ -466,6 +486,27 @@
       '</svg>';
   }
 
+  function styleBubble(b) {
+    if (!b || !b.querySelector) return;
+    var dark = SIXTH_THEME === 'dark';
+    // 气泡容器：浅色=磨砂白玻璃 / 深色=深蓝玻璃
+    b.style.background = dark ? 'rgba(23,38,66,.96)' : 'rgba(255,255,255,.92)';
+    b.style.borderColor = dark ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.7)';
+    b.style.boxShadow = dark ? '0 12px 34px rgba(0,0,0,.4)' : '0 12px 34px rgba(40,70,130,.18)';
+    b.style.color = dark ? '#e8eef7' : '#1c2433';
+    var title = b.querySelector('.sixth-title');
+    if (title) title.style.color = dark ? '#ffffff' : '#1c2433';
+    var hint = b.querySelector('.sixth-hint');
+    if (hint) hint.style.color = dark ? '#cfd9e6' : '#5b6577';
+    var go = b.querySelector('.sixth-go');
+    if (go) go.style.background = dark ? '#2f6fc0' : '#4c7dff';
+    var ghost = b.querySelectorAll('.sixth-ghost');
+    ghost.forEach(function (g) {
+      g.style.borderColor = dark ? 'rgba(255,255,255,.18)' : 'rgba(20,40,80,.18)';
+      g.style.color = dark ? '#aeb9c8' : '#5b6577';
+    });
+  }
+
   function showBubble(sug, rule) {
     try {
       var old = document.getElementById('caidSixthBubble');
@@ -473,31 +514,34 @@
       var b = document.createElement('div');
       b.id = 'caidSixthBubble';
       b.style.cssText = 'position:fixed;right:80px;bottom:90px;z-index:2147483645;max-width:320px;width:auto;' +
-        'background:rgba(23,38,66,.96);border:1px solid rgba(255,255,255,.14);border-radius:14px;' +
-        'box-shadow:0 12px 34px rgba(0,0,0,.4);backdrop-filter:blur(8px);' +
-        'padding:12px 14px;color:#e8eef7;font-size:14px;line-height:1.5;' +
+        'border:1px solid;border-radius:14px;' +
+        'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'padding:12px 14px;font-size:14px;line-height:1.5;' +
         'display:flex;align-items:flex-start;gap:10px;';
       var left = document.createElement('div');
       left.style.cssText = 'flex:1;min-width:0;';
-      left.innerHTML = '<div style="display:flex;align-items:center;font-weight:700;margin-bottom:4px;color:#fff;">' + caidSixthIcon() + '<span>第六感</span></div>' +
-        '<div style="font-size:13px;color:#cfd9e6;">' + sug.hint + '</div>';
+      left.innerHTML = '<div class="sixth-title" style="display:flex;align-items:center;font-weight:700;margin-bottom:4px;font-size:14px;">' + caidSixthIcon() + '<span>第六感</span></div>' +
+        '<div class="sixth-hint" style="font-size:13px;">' + sug.hint + '</div>';
       var btns = document.createElement('div');
       btns.style.cssText = 'display:flex;flex-direction:column;gap:6px;flex-shrink:0;';
       var go = document.createElement('button');
       go.textContent = sug.action;
-      go.style.cssText = 'border:none;background:#2f6fc0;color:#fff;font-size:12px;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
+      go.className = 'sixth-go';
+      go.style.cssText = 'border:none;color:#fff;font-size:12px;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;font-weight:600;';
       go.addEventListener('click', function () { try { b.remove(); } catch (e) {} wakeCopilot(sug.task); });
       // 「忽略」：仅关闭本次气泡，不改变触发频率
       var x = document.createElement('button');
       x.textContent = '忽略';
       x.title = '仅关闭本次提示，下次仍会正常触发';
-      x.style.cssText = 'border:1px solid rgba(255,255,255,.18);background:transparent;color:#aeb9c8;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
+      x.className = 'sixth-ghost';
+      x.style.cssText = 'border:1px solid;background:transparent;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
       x.addEventListener('click', function () { try { b.remove(); } catch (e) {} });
       // 「降低频次」：标记该场景，之后使用更长的冷却（默认 30 分钟）
       var r = document.createElement('button');
       r.textContent = '降低频次';
       r.title = '以后减少这类提示的出现频率';
-      r.style.cssText = 'border:1px solid rgba(255,255,255,.18);background:transparent;color:#aeb9c8;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
+      r.className = 'sixth-ghost';
+      r.style.cssText = 'border:1px solid;background:transparent;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
       r.addEventListener('click', function () {
         try {
           if (rule && rule.id) downrated[HOST + '|' + rule.id] = true;
@@ -511,6 +555,7 @@
       b.appendChild(left);
       b.appendChild(btns);
       document.body.appendChild(b);
+      styleBubble(b);
       // 自动收起
       var t = setTimeout(function () { try { b.remove(); } catch (e) {} }, 12000);
       b.addEventListener('mouseenter', function () { clearTimeout(t); });
@@ -602,7 +647,8 @@
     } catch (e) {}
   }
 
-  // 启动：先读配置 + 自定义规则，再采集（读取失败也照常，用默认值）
+  // 启动：先读配置 + 自定义规则 + 主题，再采集（读取失败也照常，用默认值）
+  try { initSixthTheme(); } catch (e) {}
   Promise.all([loadCfg(), loadCustomRules()]).then(function () {
     // 预留少量时间让 DOM/标题就绪，避免开头误判
     setTimeout(start, 800);

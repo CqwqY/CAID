@@ -8,6 +8,7 @@
 ## [纯净版 v0.3.23] - 2026-08-23
 
 ### 新增（仅纯净版 caid-extension-lite，测试版）
+- **主题切换：浅色液态玻璃（默认）与深色**：新增主题设置（设置页「常规 → 主题」），浅色为液态玻璃磨砂质感（默认），深色为低光护眼风格（保留可选并可随时切回）。选择通过 `chrome.storage.local.caidTheme` 存储，经 CSS 变量 `data-theme` 统一驱动，跨页面实时同步。副驾浮球（`caid-copilot.js`）与第六感气泡（`caid-sixth-sense.js`）的整套硬编码深色改为 CSS 变量 / 主题化样式，随工作台一起切换，三者保持一致。
 - **第六感 · 主动协助**：新增 `caid-sixth-sense.js`（ISOLATED world，随页面加载即运行）。在普通网页上采集行为信号（停留、滚动、复制、搜索）并用本地规则引擎推断意图，主动弹出一条轻量气泡建议（无 emoji、本机处理、不记录页面正文），点击「帮我整理/帮我总结」即唤醒副驾执行对应任务，可「忽略」。
 - **气泡 → 副驾串联**：content.js 侧在副驾未注入时写 `data-caid-sixth-pending` dataset 并触发 `BOOT_COPILOT`，注入完成后 `postMessage({ __caidType:'CAID_SIXTH_SENSE', task })`；caid-copilot.js 新增 `__caidSixthInject` 消费入口与 dataset 兜底消费，填入输入框、打开面板并直接执行任务。
 - **触发场景**：商品页（taobao/jd/amazon/商品 path 等模式匹配 + 停留 + 滚动深度达成 → 「帮我整理参数」）、搜索结果页（搜索引擎 host 或 `q=` → 「整理结果要点」）、复制内容（50~3000 字符且内容可总结 → 「帮我总结」）。
