@@ -2787,7 +2787,7 @@ function injectPluginZone(def) {
   if (!zone || !zoneBody) return;
   // 防重复：同名卡片已存在则只保证可见
   if (zoneBody.querySelector('.plugin-zone-card[data-pid="' + def.id + '"]')) {
-    zone.style.display = 'block';
+    zone.style.display = 'contents';
     return;
   }
   const card = document.createElement('div');
@@ -2808,7 +2808,7 @@ function injectPluginZone(def) {
   iframe.src = pluginSandboxUrl();   // 关键：不设 src 帧停在 about:blank，沙箱页不加载
   card.appendChild(iframe);
   zoneBody.appendChild(card);
-  zone.style.display = 'block';
+  zone.style.display = 'contents';
   if (window.lucide) lucide.createIcons();
   const reg = pluginRegistry[def.id];
   if (reg) reg.iframe = iframe;

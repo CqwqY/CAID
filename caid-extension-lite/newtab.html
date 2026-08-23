@@ -203,14 +203,12 @@ a:hover { text-decoration: underline; }
 }
 .sidebar-footer-btn:hover { background: rgba(91,141,255,0.16); border-color: var(--accent); }
 .sidebar-footer-btn svg { width: 16px; height: 16px; }
-/* 插件挂载：与功能区块同级，复用同一卡片网格样式 */
+/* 插件挂载：与功能区块同级平铺混排（display:contents 让插件卡直接参与外层卡片网格） */
 .panel-sections .plugin-zone {
-  width: 100%;
+  display: contents;
 }
 .panel-sections .plugin-zone-card-col {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  display: contents;
 }
 .panel-sections .plugin-zone-card {
   background: var(--glass);
@@ -2722,6 +2720,10 @@ a:hover { text-decoration: underline; }
               <div class="server-cards" id="serverCards"></div>
             </div>
           </div>
+        <!-- 插件挂载：作为同级卡片直接平铺在卡片网格内 -->
+        <div class="plugin-zone" id="pluginZone" style="display:none;">
+          <div class="plugin-zone-card-col" id="pluginZoneBody"></div>
+        </div>
         </div>
         <!-- 底部：创建插件 + 更新日志 -->
         <div class="sidebar-footer">
@@ -2732,10 +2734,6 @@ a:hover { text-decoration: underline; }
             style="margin-top:8px;border-style:solid;border-color:var(--rule);background:rgba(255,255,255,0.02);color:var(--muted);font-weight:500;">
             <i data-lucide="history"></i><span>更新日志</span>
           </button>
-        </div>
-        <!-- 插件挂载：作为同级卡片直接平铺在面板内 -->
-        <div class="plugin-zone" id="pluginZone" style="display:none;">
-          <div class="plugin-zone-card-col" id="pluginZoneBody"></div>
         </div>
       </div>
       <div class="hero">
