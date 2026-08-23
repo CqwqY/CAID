@@ -169,6 +169,39 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // 把常见英文报错映射为可读的中文提示；无法识别时回退原文（用于展示层）。
+  function friendlyError(err) {
+    var msg = String(err && err.message ? err.message : err).trim();
+    if (!msg) return '未知错误';
+    var m = msg.toLowerCase();
+    // 认证 / 密钥
+    if (m.indexOf('unauthorized') !== -1 || m.indexOf('auth') !== -1 || m.indexOf('401') !== -1 ||
+        m.indexOf('api key') !== -1 || m.indexOf('invalid key') !== -1 || m.indexOf('permission denied') !== -1 ||
+        m.indexOf('forbidden') !== -1 || m.indexOf('403') !== -1) return 'API Key 无效或无访问权限，请检查设置里的接口密钥';
+    // 额度 / 限流
+    if (m.indexOf('quota') !== -1 || m.indexOf('rate limit') !== -1 || m.indexOf('too many requests') !== -1 ||
+        m.indexOf('429') !== -1 || m.indexOf('insufficient balance') !== -1 || m.indexOf('out of credits') !== -1 ||
+        m.indexOf('billing') !== -1 || m.indexOf('insufficient_quota') !== -1) return '接口额度不足或请求过于频繁，请稍后再试或更换模型';
+    // 模型不存在 / 接口不支持
+    if (m.indexOf('model not found') !== -1 || m.indexOf('unknown model') !== -1 || m.indexOf('does not exist') !== -1 ||
+        m.indexOf('not found') !== -1 || m.indexOf('404') !== -1 || m.indexOf('no such model') !== -1) return '模型名称或接口地址不正确，请检查副驾设置';
+    // 网络 / 连接
+    if (m.indexOf('fetch failed') !== -1 || m.indexOf('network error') !== -1 || m.indexOf('failed to fetch') !== -1 ||
+        m.indexOf('connect') !== -1 || m.indexOf('enotfound') !== -1 || m.indexOf('econnrefused') !== -1 ||
+        m.indexOf('econnreset') !== -1 || m.indexOf('timeout') !== -1 || m.indexOf('timed out') !== -1 ||
+        m.indexOf('csp') !== -1 || m.indexOf('blocked by ') !== -1) return '网络连接失败或请求被页面策略拦截，请检查网络与接口地址';
+    // 上下文 / 长度
+    if (m.indexOf('context length') !== -1 || m.indexOf('context_length') !== -1 || m.indexOf('max_tokens') !== -1 ||
+        m.indexOf('too long') !== -1 || m.indexOf('token limit') !== -1 || m.indexOf('maximum context') !== -1) return '输入内容过长，已超出模型上下文限制，请精简任务或减少页面内容';
+    // 解析 / 格式
+    if (m.indexOf('json') !== -1 || m.indexOf('parse') !== -1 || m.indexOf('malformed') !== -1 ||
+        m.indexOf('syntax error') !== -1 || m.indexOf('unexpected token') !== -1 || m.indexOf('validation') !== -1) return '模型返回内容格式异常，已中断该步骤';
+    // 通用出错
+    if (m.indexOf('internal server error') !== -1 || m.indexOf('500') !== -1 || m.indexOf('502') !== -1 ||
+        m.indexOf('503') !== -1 || m.indexOf('service unavailable') !== -1) return '接口服务异常，请稍后重试';
+    return msg;
+  }
+
   // ---------- 迷你 Markdown 渲染（副驾回答富文本化；XSS 安全：先转义再替换）----------
   // 支持：围栏代码块（window.hljs 存在时高亮）、行内代码、标题 1-4、有序/无序列表、
   // 引用块、表格、分隔线、加粗/斜体、链接（仅 http/https）。
@@ -1442,7 +1475,7 @@
                 '<div class="cp-plan-confirm-body">' +
                   (step.desc ? '操作：' + cpEscapeHtml(step.desc) + '\n' : '') +
                   '工具：' + cpEscapeHtml(String(step.tool || '')) + '\n' +
-                  '错误：' + cpEscapeHtml(String(error || '未知错误')) +
+                  '错误：' + cpEscapeHtml(friendlyError(error)) +
                 '</div>' +
                 '<div class="cp-plan-confirm-actions">' +
                   '<button class="cp-plan-confirm-btn cancel">停止</button>' +
@@ -2029,7 +2062,7 @@
     else if (detail.type === 'executing') activityEl.textContent = '⚙️ 执行 ' + detail.tool;
     else if (detail.type === 'executed') activityEl.textContent = '✅ ' + detail.tool + ' (' + Math.round(detail.duration || 0) + 'ms)';
     else if (detail.type === 'retrying') activityEl.textContent = '🔁 重试 ' + detail.attempt + '/' + detail.maxAttempts;
-    else if (detail.type === 'error') activityEl.textContent = '❌ ' + detail.message;
+    else if (detail.type === 'error') activityEl.textContent = '❌ ' + friendlyError(detail.message);
   }
   function renderTools() {
     if (!toolsEl) return;
@@ -2076,7 +2109,7 @@
         div.innerHTML = '<span class="cp-tool">[' + cpEscapeHtml(tn) + ']</span> ' + cpEscapeHtml(out.slice(0, 240));
       }
       else if (ev.type === 'observation') { div.className = 'cp-evt'; div.textContent = '👁 ' + String(ev.content).slice(0, 300); }
-      else if (ev.type === 'error') { div.className = 'cp-evt-error'; div.textContent = '❌ ' + String(ev.message); }
+      else if (ev.type === 'error') { div.className = 'cp-evt-error'; div.textContent = '❌ ' + friendlyError(ev.message); }
       else { div.className = 'cp-evt'; div.textContent = JSON.stringify(ev).slice(0, 200); }
       logEl.appendChild(div);
     });
@@ -2118,7 +2151,7 @@
     });
   } catch (err) {
     console.error('[CAID] agent init error:', err);
-    if (statusEl) statusEl.textContent = '初始化失败: ' + err.message;
+    if (statusEl) statusEl.textContent = '初始化失败: ' + friendlyError(err);
   }
 
   // ---------- 发送任务 ----------
