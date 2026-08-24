@@ -903,6 +903,29 @@
     }
   });
 
+  // 让 MAIN world 的副驾（caid-copilot.js / PageAgent）把脚本交给本 ISOLATED world 执行。
+  // 原因：MAIN world 的 eval 受页面 CSP 约束（github 等 script-src 无 unsafe-eval 会被拦）；
+  // 而 ISOLATED world 有自己的安全边界，不受页面 CSP 影响，且与页面共享 DOM——
+  // 滚动 / 点击 / 填表 / 读 DOM 等"页面内行动"都能照常完成，结果经 postMessage 回传。
+  // 与 execute_javascript 同名逻辑：支持 async/await，脚本作为 async 函数体重写执行。
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || !d.__caid || d.kind !== 'execute_js' || typeof d.id !== 'number' || typeof d.script !== 'string') return;
+    var __jid = d.id;
+    var __jsrc = d.script;
+    (async function () {
+      try {
+        // 用 new Function 在 ISOLATED world 编译执行（不受页面 CSP 拦），脚本体按 async 处理以兼容 await。
+        var __jfn = new Function('signal', 'return (async () => {\n' + __jsrc + '\n})()');
+        var __jres = await __jfn(null);
+        var __jval = (__jres && typeof __jres.then === 'function') ? await __jres : String(__jres ?? '');
+        try { window.postMessage({ __caid: true, kind: 'execute_js_resp', id: __jid, ok: true, value: __jval }, '*'); } catch (e2) {}
+      } catch (err) {
+        try { window.postMessage({ __caid: true, kind: 'execute_js_resp', id: __jid, ok: false, error: String((err && err.message) || err) }, '*'); } catch (e3) {}
+      }
+    })();
+  });
+
   // MAIN world 的副驾在打开时检查版本更新：本 ISOLATED world 直接 fetch（扩展网络，不受页面 CSP 限制），
   // 解析成 { mustUpdate, version, description, latestVersion, releaseUrl, githubUrl } 回传副驾渲染提示。
   window.addEventListener('message', function (ev) {

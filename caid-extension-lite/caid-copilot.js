@@ -922,6 +922,24 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
   };
 
   // ---------- 13 个 customTools ----------
+  // ISOLATED world 执行桥：把脚本交给 content.js（ISOLATED world）执行，避开页面 CSP 对 eval 的限制。
+  // 由 PageAgent 的 executeJavascript 与 execute_javascript 工具共用；MAIN world 无 chrome.*，经 postMessage + id 回执。
+  window.__caidExecJsInIsolated = function (script, signal) {
+    return new Promise(function (resolve) {
+      var id = Date.now() + Math.floor(Math.random() * 100000);
+      var timer = setTimeout(function () { resolve({ ok: false, error: 'ISOLATED 执行超时' }); }, 15000);
+      function onMsg(e) {
+        var m = e && e.data;
+        if (!m || !m.__caid || m.kind !== 'execute_js_resp' || m.id !== id) return;
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+        resolve(m);
+      }
+      window.addEventListener('message', onMsg);
+      try { window.postMessage({ __caid: true, kind: 'execute_js', id: id, script: String(script) }, '*'); }
+      catch (err) { clearTimeout(timer); window.removeEventListener('message', onMsg); resolve({ ok: false, error: String((err && err.message) || err) }); }
+    });
+  };
   const tools = {
     execute_javascript: {
       description:
@@ -943,8 +961,15 @@ html[data-caid-cp-theme="dark"] #caidLauncher{background:radial-gradient(circle 
         try { before = stripHash(window.location.href); } catch (e) {}
         let out;
         if (!this || !this.pageController || typeof this.pageController.executeJavascript !== 'function') {
-          const result = (0, eval)(String(input && input.script));
-          out = (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
+          // 优先走 ISOLATED world 执行桥，避开页面 CSP 对 eval 的拦截；无桥才退回到 eval。
+          if (window.__caidExecJsInIsolated) {
+            const rb = await window.__caidExecJsInIsolated(String(input && input.script), signal);
+            if (!rb || !rb.ok) throw new Error((rb && rb.error) || 'script execution failed');
+            out = rb.value;
+          } else {
+            const result = (0, eval)(String(input && input.script));
+            out = (result && typeof result.then === 'function') ? (await result) : String(result ?? '');
+          }
         } else {
           const r = await this.pageController.executeJavascript(String(input && input.script), signal);
           signal && signal.throwIfAborted && signal.throwIfAborted();

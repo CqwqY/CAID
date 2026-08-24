@@ -5,6 +5,11 @@
 所有重要变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号采用语义化版本（主版本.次版本.修订）。
 
+## [纯净版 v0.3.26] - 2026-08-24
+
+### 修复（仅纯净版 caid-extension-lite）
+- **修复副驾执行 JavaScript 在严格 CSP 页面报 EvalError**：此前副驾（PageAgent `executeJavascript` 与 `execute_javascript` 工具 fallback）在 MAIN world 用 `eval` 执行字符串脚本，遇到 GitHub 等 `script-src` 不含 `unsafe-eval` 的页面会被 CSP 拦截并报 `EvalError`。现改为**下沉到 ISOLATED world 执行**：新增 `window.__caidExecJsInIsolated` 桥（`caid-copilot.js`），经 `postMessage` 把脚本交给 `content.js`（ISOLATED world，不受页面 CSP 约束，且与页面共享 DOM，滚动/点击/填表照常有效）用 `new Function` 执行，结果带请求 id 回传；PageAgent `executeJavascript` 优先走该桥。仅在无 content.js 场景（如扩展页）回退到原 `eval`。
+
 ## [纯净版 v0.3.25] - 2026-08-23
 
 ### 新增（仅纯净版 caid-extension-lite）
